@@ -228,8 +228,8 @@ func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 	snap.Repo.AppVersion = AppVersion
 	snap.Repo.LatestVersion = m.latestVer
 	snap.Repo.UpdateAvailable = m.updateAvail
-	snap.PendingProposal = m.pendingProposal
 	m.mu.RUnlock()
+	snap.PendingProposal = m.GetPendingProposal()
 	snap.Logs = m.recentLogs()
 	return snap, nil
 }
