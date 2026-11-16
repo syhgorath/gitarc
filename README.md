@@ -27,8 +27,14 @@ go test -v ./...
 go build -o gitarc .
 ./gitarc
 
+# GitArc'ı kendi reposunda (canlı dogfooding modu) aç
+./gitarc -repo .
+
 # Belirli bir yerel Git deposunu canlı modda aç
 ./gitarc -repo /Users/ziyayesilbahce/Developer/sshpocket
 ```
+
+## Canlı Mod (Dogfooding)
+`./gitarc -repo .` ile başlatıldığında GitArc kendi yerel dallarını, açık/birleşmiş GitHub PR'larını, Actions CI loglarını (`gh run view --log-failed`) ve Cross-PR dosya çarpışmalarını canlı olarak denetleyip yönetebilir.
 
 Arayüz, Go sunucusu olmadan `web/index.html` doğrudan tarayıcıda açıldığında da yerleşik `LocalFallbackEngine` ile simülasyon modunda çalışır.
