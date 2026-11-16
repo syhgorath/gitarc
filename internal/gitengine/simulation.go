@@ -788,7 +788,17 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 	var kept []model.BranchArc
 	removed := 0
 	for _, b := range m.simRepo.branches {
-		if b.OriginGone || b.State == "gone" || b.State == "merged" {
+		if b.State == "merged" {
+			if b.HasLocal || b.OriginGone {
+				b.HasLocal = false
+				b.OriginGone = false
+				b.IsHEAD = false
+				removed++
+			}
+			kept = append(kept, b)
+			continue
+		}
+		if b.OriginGone || b.State == "gone" {
 			removed++
 			continue
 		}
@@ -816,6 +826,12 @@ func (m *Manager) DeleteBranch(branchID string) (model.CockpitSnapshot, error) {
 		if b.ID == branchID {
 			found = true
 			deletedName = b.Name
+			if b.State == "merged" && (b.HasLocal || b.OriginGone) {
+				b.HasLocal = false
+				b.OriginGone = false
+				b.IsHEAD = false
+				kept = append(kept, b)
+			}
 			continue
 		}
 		kept = append(kept, b)
@@ -1345,25 +1361,39 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 }
 
 func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody string) (model.CockpitSnapshot, error) {
-	b, _, err := m.findLiveBranch(live, branchID)
+	b, snap, err := m.findLiveBranch(live, branchID)
 	if err != nil {
 		return model.CockpitSnapshot{}, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
+	title := strings.TrimSpace(prTitle)
+	if title == "" {
+		title = b.LastCommitMsg
+	}
+	if title == "" {
+		title = "feat: " + b.Name
+	}
+
+	if b.AheadMain == 0 {
+		if b.IsHEAD && snap.Repo.DirtyCount > 0 && !m.IsTeamMode() {
+			if out, _, addErr := runCmd(ctx, live.path, "git", "add", "-A"); addErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("değişiklikler stage edilemedi: %s", strings.TrimSpace(out))
+			}
+			if out, _, comErr := runCmd(ctx, live.path, "git", "commit", "-m", title); comErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("otomatik commit atılamadı: %s", strings.TrimSpace(out))
+			}
+		} else {
+			return model.CockpitSnapshot{}, fmt.Errorf("%s dalında %s dalına göre henüz yeni bir commit veya değişiklik yok; önce değişiklik yapın ya da boş dalı silin", b.Name, snap.Repo.DefaultBranch)
+		}
+	}
+
 	if out, _, err := runCmd(ctx, live.path, "git", "push", "-u", "origin", b.Name); err != nil {
 		return model.CockpitSnapshot{}, fmt.Errorf("push başarısız: %s (%v)", strings.TrimSpace(out), err)
 	}
 	if b.PR == nil {
 		if _, err := exec.LookPath("gh"); err == nil {
-			title := strings.TrimSpace(prTitle)
-			if title == "" {
-				title = b.LastCommitMsg
-			}
-			if title == "" {
-				title = "feat: " + b.Name
-			}
 			body := strings.TrimSpace(prBody)
 			if body == "" {
 				body = "GitArc canlı kokpitinden açıldı."
@@ -1502,6 +1532,23 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 	currentBranch := strings.TrimSpace(curOut)
 	defBranch := detectDefaultBranch(ctx, live.path)
 
+	if currentBranch != "" && currentBranch != defBranch && !m.IsTeamMode() && snapBefore.Repo.DirtyCount == 0 {
+		for _, b := range snapBefore.Branches {
+			if b.Name != currentBranch {
+				continue
+			}
+			isMergedPR := b.PR != nil && b.PR.ReviewState == "MERGED" && b.RemoteAhead == 0
+			if (b.OriginGone || b.State == "gone" || b.State == "merged" || isMergedPR) && b.UncommittedCount == 0 {
+				if _, _, swErr := runCmd(ctx, live.path, "git", "switch", defBranch); swErr == nil {
+					currentBranch = defBranch
+				} else if _, _, coErr := runCmd(ctx, live.path, "git", "checkout", defBranch); coErr == nil {
+					currentBranch = defBranch
+				}
+			}
+			break
+		}
+	}
+
 	removed := 0
 	for _, b := range snapBefore.Branches {
 		if !b.HasLocal || b.Name == currentBranch || b.Name == defBranch {
@@ -1589,12 +1636,29 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 	if !b.HasLocal && !b.HasRemote {
 		return model.CockpitSnapshot{}, fmt.Errorf("silinebilecek yerel veya uzak dal bulunamadı: %s", b.Name)
 	}
-	if b.IsHEAD || b.Name == snap.Repo.DefaultBranch {
-		return model.CockpitSnapshot{}, fmt.Errorf("aktif çalışma dalı (%s) silinemez; önce başka dala geçin", b.Name)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+
+	if b.Name == snap.Repo.DefaultBranch {
+		return model.CockpitSnapshot{}, fmt.Errorf("aktif çalışma dalı (%s) silinemez; önce başka dala geçin", b.Name)
+	}
+	if b.IsHEAD {
+		if snap.Repo.DirtyCount > 0 || b.UncommittedCount > 0 {
+			return model.CockpitSnapshot{}, fmt.Errorf("aktif dalda kaydedilmemiş değişiklikler var; önce commitleyin veya başka dala geçin")
+		}
+		if m.IsTeamMode() {
+			return model.CockpitSnapshot{}, fmt.Errorf("Team Server modunda aktif çalışma dalı (%s) silinemez", b.Name)
+		}
+		defBranch := snap.Repo.DefaultBranch
+		if defBranch == "" {
+			defBranch = "main"
+		}
+		if out, _, swErr := runCmd(ctx, live.path, "git", "switch", defBranch); swErr != nil {
+			if _, _, coErr := runCmd(ctx, live.path, "git", "checkout", defBranch); coErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("%s dalına otomatik geçilemedi: %s", defBranch, strings.TrimSpace(out))
+			}
+		}
+	}
 
 	if b.State == "open" && b.PR != nil && b.PR.Number > 0 {
 		if _, err := exec.LookPath("gh"); err == nil {
