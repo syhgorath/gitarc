@@ -1,15 +1,39 @@
 package gitengine
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"gitarc/internal/model"
 )
+
+var (
+	reSafeBranchName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$`)
+	reSafeSHA        = regexp.MustCompile(`^[0-9a-fA-F]{4,40}$`)
+)
+
+// validateBranchName rejects empty names, flag-like '-' prefixes, path traversals,
+// and characters outside safe git ref conventions.
+func validateBranchName(name string) error {
+	if name == "" {
+		return fmt.Errorf("dal adı boş olamaz")
+	}
+	if strings.HasPrefix(name, "-") || strings.Contains(name, "..") || strings.Contains(name, "//") || strings.HasSuffix(name, "/") || strings.HasSuffix(name, ".lock") {
+		return fmt.Errorf("geçersiz dal adı: %q", name)
+	}
+	if !reSafeBranchName.MatchString(name) {
+		return fmt.Errorf("dal adı geçersiz karakter içeriyor: %q", name)
+	}
+	return nil
+}
 
 // Manager coordinates active workspace repositories (simulation + live local repos)
 // and executes thread-safe lifecycle mutations on the cockpit graph.
@@ -55,14 +79,6 @@ func NewManager(extraRepoPath string) *Manager {
 			})
 		}
 	}
-	defaultKeyLab := "/Users/ziyayesilbahce/Developer/sshpocket"
-	if isGitDir(defaultKeyLab) && (extraRepoPath == "" || filepath.Clean(extraRepoPath) != defaultKeyLab) {
-		candidates = append(candidates, repoEntry{
-			id:   "live-sshpocket",
-			name: "sshpocket / KeyLab (Canlı)",
-			path: defaultKeyLab,
-		})
-	}
 	if wd, err := os.Getwd(); err == nil && isGitDir(wd) {
 		already := false
 		for _, c := range candidates {
@@ -75,6 +91,22 @@ func NewManager(extraRepoPath string) *Manager {
 				id:   "live-cwd",
 				name: filepath.Base(wd) + " (Canlı)",
 				path: wd,
+			})
+		}
+	}
+	defaultKeyLab := "/Users/ziyayesilbahce/Developer/sshpocket"
+	if isGitDir(defaultKeyLab) {
+		already := false
+		for _, c := range candidates {
+			if filepath.Clean(c.path) == filepath.Clean(defaultKeyLab) {
+				already = true
+			}
+		}
+		if !already {
+			candidates = append(candidates, repoEntry{
+				id:   "live-sshpocket",
+				name: "sshpocket / KeyLab (Canlı)",
+				path: defaultKeyLab,
 			})
 		}
 	}
@@ -170,21 +202,34 @@ func (m *Manager) SwitchRepo(repoID string) (model.CockpitSnapshot, error) {
 	return m.Snapshot()
 }
 
+func (m *Manager) activeLiveRepo() (*repoEntry, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.liveRepos {
+		if m.liveRepos[i].id == m.activeRepoID {
+			e := m.liveRepos[i]
+			return &e, true
+		}
+	}
+	return nil, false
+}
+
 // CreateBranch spawns a new open branch curve from the given spine commit (or latest main).
 func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitSnapshot, error) {
 	name = strings.TrimSpace(name)
-	if name == "" {
-		return model.CockpitSnapshot{}, fmt.Errorf("dal adı boş olamaz")
+	if err := validateBranchName(name); err != nil {
+		return model.CockpitSnapshot{}, err
 	}
 	if hemisphere != "upper" && hemisphere != "lower" {
 		hemisphere = "lower"
 	}
 
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.createBranchLive(live, name, hemisphere, fromSHA)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.activeRepoID != "sim-keylab" {
-		return model.CockpitSnapshot{}, fmt.Errorf("yazma aksiyonları güvenlik için yalnızca Kokpit Simülasyon modunda çalıştırılır")
-	}
 
 	for _, b := range m.simRepo.branches {
 		if b.Name == name && b.State != "merged" {
@@ -260,11 +305,12 @@ func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitS
 // MergeBranch closes an open half-parabola onto a new merge commit node on the main spine,
 // turning it into a complete parabolic arch.
 func (m *Manager) MergeBranch(branchID string) (model.CockpitSnapshot, error) {
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.mergeBranchLive(live, branchID)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.activeRepoID != "sim-keylab" {
-		return model.CockpitSnapshot{}, fmt.Errorf("yazma aksiyonları güvenlik için yalnızca Kokpit Simülasyon modunda çalıştırılır")
-	}
 
 	idx := -1
 	for i := range m.simRepo.branches {
@@ -326,11 +372,12 @@ func (m *Manager) MergeBranch(branchID string) (model.CockpitSnapshot, error) {
 // PromoteBranch pushes a lower-hemisphere local branch to remote and opens a PR,
 // flipping it into the upper hemisphere.
 func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) {
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.promoteBranchLive(live, branchID)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.activeRepoID != "sim-keylab" {
-		return model.CockpitSnapshot{}, fmt.Errorf("yazma aksiyonları güvenlik için yalnızca Kokpit Simülasyon modunda çalıştırılır")
-	}
 
 	for i := range m.simRepo.branches {
 		b := &m.simRepo.branches[i]
@@ -364,11 +411,12 @@ func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) 
 
 // AutoResolveConflict resolves CHANGELOG.md / lockfile conflicts by preserving both sides.
 func (m *Manager) AutoResolveConflict(branchID string) (model.CockpitSnapshot, error) {
+	if _, ok := m.activeLiveRepo(); ok {
+		return model.CockpitSnapshot{}, fmt.Errorf("canlı modda güvenli dosya düzenleme için dalı checkout edip union merge uygulayın")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.activeRepoID != "sim-keylab" {
-		return model.CockpitSnapshot{}, fmt.Errorf("yazma aksiyonları güvenlik için yalnızca Kokpit Simülasyon modunda çalıştırılır")
-	}
 
 	for i := range m.simRepo.branches {
 		b := &m.simRepo.branches[i]
@@ -389,11 +437,12 @@ func (m *Manager) AutoResolveConflict(branchID string) (model.CockpitSnapshot, e
 
 // PruneGone cleans up branches whose remote tracking ref is gone or already merged.
 func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.pruneGoneLive(live)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.activeRepoID != "sim-keylab" {
-		return model.CockpitSnapshot{}, 0, fmt.Errorf("yazma aksiyonları güvenlik için yalnızca Kokpit Simülasyon modunda çalıştırılır")
-	}
 
 	var kept []model.BranchArc
 	removed := 0
@@ -410,11 +459,12 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 
 // SyncSpine clears ahead/behind skew between local main and origin/main.
 func (m *Manager) SyncSpine() (model.CockpitSnapshot, error) {
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.syncSpineLive(live)
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.activeRepoID != "sim-keylab" {
-		return model.CockpitSnapshot{}, fmt.Errorf("yazma aksiyonları güvenlik için yalnızca Kokpit Simülasyon modunda çalıştırılır")
-	}
 
 	if m.simRepo.repo.Behind > 0 {
 		m.nextSeq++
@@ -746,4 +796,168 @@ func buildInitialKeyLabSimulation() simWorkspace {
 		nodes:    nodes,
 		branches: branches,
 	}
+}
+
+func (m *Manager) findLiveBranch(live *repoEntry, branchID string) (model.BranchArc, model.CockpitSnapshot, error) {
+	m.mu.RLock()
+	opts := m.repoOptionsLocked()
+	m.mu.RUnlock()
+
+	snap, err := CollectLiveRepo(live.id, live.name, live.path, opts)
+	if err != nil {
+		return model.BranchArc{}, snap, err
+	}
+	for _, b := range snap.Branches {
+		if b.ID == branchID {
+			if err := validateBranchName(b.Name); err != nil {
+				return model.BranchArc{}, snap, err
+			}
+			return b, snap, nil
+		}
+	}
+	return model.BranchArc{}, snap, fmt.Errorf("canlı depoda dal bulunamadı: %s", branchID)
+}
+
+func (m *Manager) createBranchLive(live *repoEntry, name, hemisphere, fromSHA string) (model.CockpitSnapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	args := []string{"branch", name}
+	if fromSHA != "" {
+		if !reSafeSHA.MatchString(fromSHA) {
+			return model.CockpitSnapshot{}, fmt.Errorf("geçersiz kaynak SHA: %q", fromSHA)
+		}
+		args = append(args, fromSHA)
+	}
+	if out, _, err := runCmd(ctx, live.path, "git", args...); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("dal oluşturulamadı: %s (%v)", strings.TrimSpace(out), err)
+	}
+	if hemisphere == "upper" {
+		if remoteOut, _, err := runCmd(ctx, live.path, "git", "remote"); err == nil && strings.TrimSpace(remoteOut) != "" {
+			if out, _, err := runCmd(ctx, live.path, "git", "push", "-u", "origin", name); err != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("dal yerelde açıldı ancak origin'e pushlanamadı: %s", strings.TrimSpace(out))
+			}
+		}
+	}
+	return m.Snapshot()
+}
+
+func (m *Manager) promoteBranchLive(live *repoEntry, branchID string) (model.CockpitSnapshot, error) {
+	b, _, err := m.findLiveBranch(live, branchID)
+	if err != nil {
+		return model.CockpitSnapshot{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	if out, _, err := runCmd(ctx, live.path, "git", "push", "-u", "origin", b.Name); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("push başarısız: %s (%v)", strings.TrimSpace(out), err)
+	}
+	if b.PR == nil {
+		if _, err := exec.LookPath("gh"); err == nil {
+			title := b.LastCommitMsg
+			if title == "" {
+				title = "feat: " + b.Name
+			}
+			out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", b.Name, "--title", title, "--body", "GitArc canlı kokpitinden açıldı.")
+			if prErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
+			}
+		}
+	}
+	return m.Snapshot()
+}
+
+func (m *Manager) mergeBranchLive(live *repoEntry, branchID string) (model.CockpitSnapshot, error) {
+	b, snap, err := m.findLiveBranch(live, branchID)
+	if err != nil {
+		return model.CockpitSnapshot{}, err
+	}
+	if b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved {
+		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında git merge-tree çakışması tespit edildi; önce çakışmayı çözün", b.Name)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	if b.PR != nil && b.PR.Number > 0 {
+		if _, err := exec.LookPath("gh"); err != nil {
+			return model.CockpitSnapshot{}, fmt.Errorf("PR merge için gh CLI gerekli")
+		}
+		out, _, err := runCmd(ctx, live.path, "gh", "pr", "merge", strconv.Itoa(b.PR.Number), "--merge", "--delete-branch")
+		if err != nil {
+			return model.CockpitSnapshot{}, fmt.Errorf("PR #%d merge edilemedi: %s", b.PR.Number, strings.TrimSpace(out))
+		}
+		_, _, _ = runCmd(ctx, live.path, "git", "fetch", "--prune", "origin")
+		return m.Snapshot()
+	}
+
+	if snap.Repo.DirtyCount > 0 {
+		return model.CockpitSnapshot{}, fmt.Errorf("çalışma dizininde %d uncommitted değişiklik var; yerel merge öncesi commit veya stash yapın", snap.Repo.DirtyCount)
+	}
+	defBranch := snap.Repo.DefaultBranch
+	if defBranch == "" {
+		defBranch = "main"
+	}
+	if cur, _, err := runCmd(ctx, live.path, "git", "branch", "--show-current"); err == nil && strings.TrimSpace(cur) != defBranch {
+		if out, _, err := runCmd(ctx, live.path, "git", "checkout", defBranch); err != nil {
+			return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi: %s", defBranch, strings.TrimSpace(out))
+		}
+	}
+	if out, _, err := runCmd(ctx, live.path, "git", "merge", "--no-ff", b.Name); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("yerel merge başarısız: %s", strings.TrimSpace(out))
+	}
+	return m.Snapshot()
+}
+
+func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	_, _, _ = runCmd(ctx, live.path, "git", "fetch", "--prune", "origin")
+	curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
+	currentBranch := strings.TrimSpace(curOut)
+	defBranch := detectDefaultBranch(ctx, live.path)
+
+	out, _, err := runCmd(ctx, live.path, "git", "for-each-ref", "--format=%(refname:short)\x1f%(upstream:track)", "refs/heads")
+	if err != nil {
+		return model.CockpitSnapshot{}, 0, fmt.Errorf("dalları okuma başarısız: %v", err)
+	}
+
+	removed := 0
+	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
+		parts := strings.Split(line, "\x1f")
+		if len(parts) < 2 {
+			continue
+		}
+		name := parts[0]
+		track := parts[1]
+		if !strings.Contains(track, "[gone]") || name == currentBranch || name == defBranch {
+			continue
+		}
+		if err := validateBranchName(name); err != nil {
+			continue
+		}
+		if _, _, err := runCmd(ctx, live.path, "git", "branch", "-d", name); err == nil {
+			removed++
+		}
+	}
+	snap, err := m.Snapshot()
+	return snap, removed, err
+}
+
+func (m *Manager) syncSpineLive(live *repoEntry) (model.CockpitSnapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if out, _, err := runCmd(ctx, live.path, "git", "fetch", "--prune", "origin"); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("git fetch başarısız: %s", strings.TrimSpace(out))
+	}
+
+	defBranch := detectDefaultBranch(ctx, live.path)
+	curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
+	statusOut, _, _ := runCmd(ctx, live.path, "git", "status", "--porcelain")
+	if strings.TrimSpace(curOut) == defBranch && strings.TrimSpace(statusOut) == "" {
+		_, _, _ = runCmd(ctx, live.path, "git", "merge", "--ff-only", "origin/"+defBranch)
+	}
+	return m.Snapshot()
 }

@@ -250,3 +250,49 @@ func TestCollectLiveRepoTemp(t *testing.T) {
 		t.Fatalf("expected git merge-tree to detect CHANGELOG.md conflict, got %+v", featBranch.Conflict)
 	}
 }
+
+func TestParseUpstreamTrack(t *testing.T) {
+	cases := []struct {
+		track  string
+		ahead  int
+		behind int
+		gone   bool
+	}{
+		{"[ahead 3, behind 1]", 3, 1, false},
+		{"[ahead 2]", 2, 0, false},
+		{"[behind 5]", 0, 5, false},
+		{"[gone]", 0, 0, true},
+		{"", 0, 0, false},
+	}
+	for _, tc := range cases {
+		a, b, g := parseUpstreamTrack(tc.track)
+		if a != tc.ahead || b != tc.behind || g != tc.gone {
+			t.Errorf("parseUpstreamTrack(%q) = (%d,%d,%v), want (%d,%d,%v)", tc.track, a, b, g, tc.ahead, tc.behind, tc.gone)
+		}
+	}
+}
+
+func TestExtractRunIDFromURL(t *testing.T) {
+	u := "https://github.com/syhgorath/gitarc/actions/runs/1198432109/job/334455"
+	if got := extractRunIDFromURL(u); got != "1198432109" {
+		t.Fatalf("expected 1198432109, got %q", got)
+	}
+	if got := extractRunIDFromURL("https://example.com/status"); got != "" {
+		t.Fatalf("expected empty run id, got %q", got)
+	}
+}
+
+func TestValidateBranchName(t *testing.T) {
+	valid := []string{"feat/dogfooding", "fix/v0.2.0-track", "chore_ci"}
+	for _, name := range valid {
+		if err := validateBranchName(name); err != nil {
+			t.Errorf("expected %q to be valid, got %v", name, err)
+		}
+	}
+	invalid := []string{"", "-upload-pack", "--exec", "feat/../main", "feat//bar", "feat/", "foo.lock", "bad space"}
+	for _, name := range invalid {
+		if err := validateBranchName(name); err == nil {
+			t.Errorf("expected %q to be rejected by validateBranchName", name)
+		}
+	}
+}

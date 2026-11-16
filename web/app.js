@@ -448,7 +448,7 @@
     const snap = state.snapshot;
     if (!snap) return;
 
-    const liveLabel = state.offlineMode ? 'Offline Simülasyon' : (snap.repo.mode === 'live' ? 'Canlı Git / Read-Only' : 'Simülasyon · Etkileşimli');
+    const liveLabel = state.offlineMode ? 'Offline Simülasyon' : (snap.repo.mode === 'live' ? 'Canlı Git · Aktif' : 'Simülasyon · Etkileşimli');
     el.modeBadge.textContent = `${snap.repo.name} · ${liveLabel}`;
 
     el.repoSelect.innerHTML = '';
@@ -462,9 +462,9 @@
 
     const goneCount = (snap.branches || []).filter((b) => b.originGone || b.state === 'gone').length;
     el.pruneCount.textContent = String(goneCount);
-    document.getElementById('btn-prune-gone').disabled = goneCount === 0 || snap.repo.mode === 'live';
-    document.getElementById('btn-new-branch').disabled = snap.repo.mode === 'live';
-    document.getElementById('btn-sync-spine').disabled = (snap.repo.ahead === 0 && snap.repo.behind === 0) || snap.repo.mode === 'live';
+    document.getElementById('btn-prune-gone').disabled = goneCount === 0 && snap.repo.mode !== 'live';
+    document.getElementById('btn-new-branch').disabled = false;
+    document.getElementById('btn-sync-spine').disabled = snap.repo.mode !== 'live' && snap.repo.ahead === 0 && snap.repo.behind === 0;
     document.getElementById('btn-reset-sim').hidden = snap.repo.mode === 'live';
   }
 
@@ -936,7 +936,7 @@
   function startCapsulePointer(ev, branch, groupEl) {
     const startPt = clientToSvg(ev.clientX, ev.clientY);
     const geom = buildArcPath(branch);
-    const canDragMerge = state.snapshot?.repo?.mode !== 'live' && branch.state === 'open';
+    const canDragMerge = branch.state === 'open';
 
     state.drag = {
       branch,
@@ -1063,8 +1063,8 @@
     const isLive = snap.repo.mode === 'live';
     const hasConflict = b.conflict?.hasConflict && !b.conflict.resolved;
     const isOpen = b.state === 'open';
-    const canPromote = !isLive && isOpen && b.hemisphere === 'lower';
-    const canMerge = !isLive && isOpen && !hasConflict;
+    const canPromote = isOpen && b.hemisphere === 'lower';
+    const canMerge = isOpen && !hasConflict;
 
     const ciState = b.pr?.ci?.state;
     const ciChip = ciState === 'FAILURE' ? '<span class="chip danger">CI: FAILURE</span>'
@@ -1086,7 +1086,7 @@
         <div class="det-actions">
           ${canPromote ? `<button type="button" class="btn primary sm" id="act-promote">↑ Push &amp; PR Aç</button>` : ''}
           ${isOpen ? `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⇄ Main'e Merge Et</button>` : ''}
-          ${hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">✦ Auto-Resolve</button>` : ''}
+          ${!isLive && hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">✦ Auto-Resolve</button>` : ''}
         </div>
       </div>
 
@@ -1277,23 +1277,20 @@
   }
 
   async function handleSyncSpine() {
-    if (state.snapshot?.repo?.mode === 'live') {
-      showToast('Canlı modda otomatik git pull/push güvenlik için kapalıdır', 'info');
-      return;
-    }
     try {
       const snap = state.offlineMode
         ? LocalFallbackEngine.syncSpine()
         : await apiCall('/api/spine/sync', 'POST', {});
       applySnapshot(snap);
-      showToast('main ile origin/main senkronize edildi (↑0 · ↓0)', 'ok');
+      showToast('main ile origin/main senkronize edildi', 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }
   }
 
   async function handleLocalTestRun(branchId, cmd) {
-    state.localRunOutput[branchId] = `$ cd /Users/ziyayesilbahce/Developer/sshpocket/go && ${cmd}\nÇalıştırılıyor...\n`;
+    const repoDir = state.snapshot?.repo?.path || '.';
+    state.localRunOutput[branchId] = `$ cd ${repoDir} && ${cmd}\nÇalıştırılıyor...\n`;
     renderInspector();
     try {
       if (!state.offlineMode) {

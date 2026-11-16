@@ -19,7 +19,33 @@ var (
 	reMergeTreeConflict = regexp.MustCompile(`CONFLICT\s*\([^)]+\):\s*Merge conflict in\s+(.+)$`)
 	reMergePRSubject    = regexp.MustCompile(`Merge pull request #(\d+) from \S+/([^\s]+)`)
 	reMergeBranchSubj   = regexp.MustCompile(`Merge branch '([^']+)'`)
+	reTrackAhead        = regexp.MustCompile(`ahead (\d+)`)
+	reTrackBehind       = regexp.MustCompile(`behind (\d+)`)
+	reActionsRunID      = regexp.MustCompile(`/actions/runs/(\d+)`)
 )
+
+// parseUpstreamTrack parses git %(upstream:track) values such as
+// "[ahead 2, behind 1]", "[ahead 3]", "[behind 4]", or "[gone]".
+func parseUpstreamTrack(track string) (ahead, behind int, gone bool) {
+	if strings.Contains(track, "[gone]") {
+		gone = true
+	}
+	if m := reTrackAhead.FindStringSubmatch(track); len(m) == 2 {
+		ahead, _ = strconv.Atoi(m[1])
+	}
+	if m := reTrackBehind.FindStringSubmatch(track); len(m) == 2 {
+		behind, _ = strconv.Atoi(m[1])
+	}
+	return ahead, behind, gone
+}
+
+// extractRunIDFromURL extracts the GitHub Actions run ID from a check detailsUrl.
+func extractRunIDFromURL(detailsURL string) string {
+	if m := reActionsRunID.FindStringSubmatch(detailsURL); len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
 
 // ParseMergeTreeOutput inspects the stdout/stderr of `git merge-tree --write-tree`
 // and builds a ConflictDetail without touching the working directory.
@@ -147,11 +173,16 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	}
 
 	ghPRs := map[string]model.PRStatus{}
+	var ghMergedArches []model.BranchArc
 	if remoteName != "" {
 		ghPRs = fetchGHPRs(ctx, repoPath)
 	}
 	branches := collectLocalBranches(ctx, repoPath, defaultBranch, nodes, shaToIdx, dirtyCount, ghPRs)
 	mergedArches := extractMergedArchesFromSpine(ctx, repoPath, defaultBranch, nodes, shaToIdx)
+	if remoteName != "" {
+		ghMergedArches = fetchGHMergedPRs(ctx, repoPath, nodes, shaToIdx, mergedArches)
+		mergedArches = append(mergedArches, ghMergedArches...)
+	}
 	branches = append(mergedArches, branches...)
 
 	ComputeCrossPRCollisions(branches)
@@ -311,7 +342,7 @@ func extractMergedArchesFromSpine(ctx context.Context, repoPath, defaultBranch s
 			MergeSHA:        node.ShortSHA,
 			HasRemote:       true,
 			RemoteRef:       "origin/" + name,
-			OriginGone:      true,
+			OriginGone:      false,
 			PR:              pr,
 			HasLocal:        false,
 			LastCommitMsg:   node.Subject,
@@ -330,10 +361,28 @@ type ghPRPayload struct {
 		Login string `json:"login"`
 	} `json:"author"`
 	StatusCheckRollup []struct {
-		Name       string `json:"name"`
-		Status     string `json:"status"`
-		Conclusion string `json:"conclusion"`
+		Name         string `json:"name"`
+		Context      string `json:"context"`
+		Status       string `json:"status"`
+		State        string `json:"state"`
+		Conclusion   string `json:"conclusion"`
+		DetailsURL   string `json:"detailsUrl"`
+		TargetURL    string `json:"targetUrl"`
+		WorkflowName string `json:"workflowName"`
 	} `json:"statusCheckRollup"`
+}
+
+type ghMergedPRPayload struct {
+	Number      int    `json:"number"`
+	HeadRefName string `json:"headRefName"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Author      struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	MergeCommit *struct {
+		OID string `json:"oid"`
+	} `json:"mergeCommit"`
 }
 
 func fetchGHPRs(ctx context.Context, repoPath string) map[string]model.PRStatus {
@@ -341,7 +390,9 @@ func fetchGHPRs(ctx context.Context, repoPath string) map[string]model.PRStatus 
 	if _, err := exec.LookPath("gh"); err != nil {
 		return res
 	}
-	out, _, err := runCmd(ctx, repoPath, "gh", "pr", "list", "--state", "open", "--limit", "20",
+	ghCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	out, _, err := runCmd(ghCtx, repoPath, "gh", "pr", "list", "--state", "open", "--limit", "20",
 		"--json", "number,headRefName,title,author,reviewDecision,statusCheckRollup,url")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return res
@@ -356,17 +407,51 @@ func fetchGHPRs(ctx context.Context, repoPath string) map[string]model.PRStatus 
 			rev = "REVIEW_REQUIRED"
 		}
 		ciState := "SUCCESS"
+		if len(it.StatusCheckRollup) == 0 {
+			ciState = "RUNNING"
+		}
 		failedStep := ""
+		runID := ""
+		workflow := "ci.yml"
 		for _, chk := range it.StatusCheckRollup {
-			if strings.EqualFold(chk.Conclusion, "FAILURE") || strings.EqualFold(chk.Conclusion, "TIMED_OUT") {
+			chkName := chk.Name
+			if chkName == "" {
+				chkName = chk.Context
+			}
+			if chk.WorkflowName != "" {
+				workflow = chk.WorkflowName
+			}
+			conc := strings.ToUpper(chk.Conclusion)
+			st := strings.ToUpper(chk.Status)
+			ctxSt := strings.ToUpper(chk.State)
+			if conc == "FAILURE" || conc == "TIMED_OUT" || conc == "CANCELLED" || ctxSt == "FAILURE" || ctxSt == "ERROR" {
 				ciState = "FAILURE"
-				failedStep = chk.Name
+				failedStep = chkName
+				runID = extractRunIDFromURL(chk.DetailsURL)
+				if runID == "" {
+					runID = extractRunIDFromURL(chk.TargetURL)
+				}
 				break
 			}
-			if !strings.EqualFold(chk.Status, "COMPLETED") && chk.Status != "" {
+			if (st != "" && st != "COMPLETED") || ctxSt == "PENDING" {
 				ciState = "RUNNING"
 			}
 		}
+
+		var rawLog string
+		var extracts []model.CIFailExtract
+		if ciState == "FAILURE" && runID != "" {
+			logCtx, logCancel := context.WithTimeout(ctx, 3*time.Second)
+			if logOut, _, err := runCmd(logCtx, repoPath, "gh", "run", "view", runID, "--log-failed"); err == nil && strings.TrimSpace(logOut) != "" {
+				if len(logOut) > 16000 {
+					logOut = logOut[len(logOut)-16000:]
+				}
+				rawLog = logOut
+				extracts = ExtractCILog(rawLog)
+			}
+			logCancel()
+		}
+
 		res[it.HeadRefName] = model.PRStatus{
 			Number:      it.Number,
 			Title:       it.Title,
@@ -375,13 +460,76 @@ func fetchGHPRs(ctx context.Context, repoPath string) map[string]model.PRStatus 
 			ReviewState: rev,
 			CI: &model.CIStatus{
 				State:      ciState,
-				Workflow:   "ci.yml",
+				Workflow:   workflow,
+				RunID:      runID,
 				Duration:   "—",
 				FailedStep: failedStep,
+				Extracts:   extracts,
+				RawLog:     rawLog,
 			},
 		}
 	}
 	return res
+}
+
+func fetchGHMergedPRs(ctx context.Context, repoPath string, nodes []model.CommitNode, shaToIdx map[string]int, existing []model.BranchArc) []model.BranchArc {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return nil
+	}
+	seenMergeIdx := map[int]bool{}
+	for _, a := range existing {
+		seenMergeIdx[a.EndSpineIndex] = true
+	}
+
+	ghCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	out, _, err := runCmd(ghCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--limit", "8",
+		"--json", "number,headRefName,title,author,mergeCommit,url")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return nil
+	}
+	var items []ghMergedPRPayload
+	if err := json.Unmarshal([]byte(out), &items); err != nil {
+		return nil
+	}
+
+	var arches []model.BranchArc
+	for _, it := range items {
+		if it.MergeCommit == nil || it.MergeCommit.OID == "" {
+			continue
+		}
+		endIdx, ok := shaToIdx[it.MergeCommit.OID]
+		if !ok || seenMergeIdx[endIdx] || endIdx == 0 {
+			continue
+		}
+		seenMergeIdx[endIdx] = true
+		startIdx := endIdx - 1
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		arches = append(arches, model.BranchArc{
+			ID:              fmt.Sprintf("gh-merged-%d", it.Number),
+			Name:            it.HeadRefName,
+			Hemisphere:      "upper",
+			State:           "merged",
+			StartSpineIndex: startIdx,
+			EndSpineIndex:   endIdx,
+			BaseSHA:         nodes[startIdx].ShortSHA,
+			MergeSHA:        nodes[endIdx].ShortSHA,
+			HasRemote:       true,
+			RemoteRef:       "origin/" + it.HeadRefName,
+			PR: &model.PRStatus{
+				Number:      it.Number,
+				Title:       it.Title,
+				Author:      it.Author.Login,
+				URL:         it.URL,
+				ReviewState: "MERGED",
+				CI:          &model.CIStatus{State: "SUCCESS", Workflow: "ci.yml", Duration: "—"},
+			},
+			LastCommitMsg: it.Title,
+		})
+	}
+	return arches
 }
 
 func collectLocalBranches(ctx context.Context, repoPath, defaultBranch string, nodes []model.CommitNode, shaToIdx map[string]int, dirtyCount int, ghPRs map[string]model.PRStatus) []model.BranchArc {
@@ -443,7 +591,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch string, n
 			}
 		}
 
-		originGone := strings.Contains(track, "[gone]")
+		remoteAhead, remoteBehind, originGone := parseUpstreamTrack(track)
 		hasRemote := upstream != "" && !originGone
 		hemisphere := "lower"
 		if hasRemote || originGone {
@@ -499,6 +647,8 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch string, n
 			IsHEAD:           isHead,
 			AheadMain:        aheadMain,
 			BehindMain:       behindMain,
+			RemoteAhead:      remoteAhead,
+			RemoteBehind:     remoteBehind,
 			UncommittedCount: uncommitted,
 			LastCommitMsg:    subject,
 			ChangedFiles:     changed,
