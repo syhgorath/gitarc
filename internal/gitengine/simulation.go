@@ -510,11 +510,109 @@ func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot,
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
+// CommitWorkingTree stages uncommitted changes on a new or current branch, commits them,
+// and optionally pushes and opens a GitHub Pull Request without touching a terminal.
+func (m *Manager) CommitWorkingTree(branchName, commitMsg, prTitle, prBody string, pushAndPR bool) (model.CockpitSnapshot, error) {
+	if m.IsTeamMode() {
+		err := fmt.Errorf("Team Server modunda paylaşılan çalışma dizini (HEAD) kilitlidir")
+		m.recordLog("error", "Konsolsuz Commit & PR", branchName, err.Error(), "")
+		return model.CockpitSnapshot{}, err
+	}
+	commitMsg = strings.TrimSpace(commitMsg)
+	if commitMsg == "" {
+		err := fmt.Errorf("commit mesajı boş olamaz")
+		m.recordLog("error", "Konsolsuz Commit & PR", branchName, err.Error(), "")
+		return model.CockpitSnapshot{}, err
+	}
+	branchName = strings.TrimSpace(branchName)
+	if branchName != "" {
+		if err := validateBranchName(branchName); err != nil {
+			m.recordLog("error", "Konsolsuz Commit & PR", branchName, err.Error(), "")
+			return model.CockpitSnapshot{}, err
+		}
+	}
+
+	if live, ok := m.activeLiveRepo(); ok {
+		snap, err := m.commitWorkingTreeLive(live, branchName, commitMsg, prTitle, prBody, pushAndPR)
+		okMsg := fmt.Sprintf("Değişiklikler '%s' dalına commitlendi", branchName)
+		if pushAndPR {
+			okMsg = fmt.Sprintf("Dal açıldı, commitlendi, pushlandı ve PR oluşturuldu (%s)", branchName)
+		}
+		return m.logLiveOutcome("Konsolsuz Commit & PR", branchName, okMsg, snap, err)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if branchName == "" {
+		branchName = "feat/working-tree"
+	}
+	m.simRepo.repo.DirtyCount = 0
+	for i := range m.simRepo.branches {
+		m.simRepo.branches[i].IsHEAD = false
+	}
+
+	startIdx := len(m.simRepo.nodes) - 1
+	baseSHA := m.simRepo.nodes[startIdx].ShortSHA
+	m.nextSeq++
+	newSHA := fmt.Sprintf("%07x", 0x9e1c200+m.nextSeq*19)
+	hemi := "lower"
+	hasRemote := false
+	remoteRef := ""
+	var pr *model.PRStatus
+	if pushAndPR {
+		hemi = "upper"
+		hasRemote = true
+		remoteRef = "origin/" + branchName
+		prNum := m.nextPR
+		m.nextPR++
+		t := strings.TrimSpace(prTitle)
+		if t == "" {
+			t = commitMsg
+		}
+		pr = &model.PRStatus{
+			Number:      prNum,
+			Title:       t,
+			Body:        strings.TrimSpace(prBody),
+			Author:      "ziya",
+			ReviewState: "REVIEW_REQUIRED",
+			CI:          &model.CIStatus{State: "RUNNING", Workflow: "ci.yml", Duration: "0m 12s"},
+		}
+	}
+
+	m.simRepo.branches = append(m.simRepo.branches, model.BranchArc{
+		ID:              fmt.Sprintf("br-%d-%s", m.nextSeq, sanitizeID(branchName)),
+		Name:            branchName,
+		Hemisphere:      hemi,
+		State:           "open",
+		StartSpineIndex: startIdx,
+		EndSpineIndex:   startIdx + 1,
+		BaseSHA:         baseSHA,
+		HasRemote:       hasRemote,
+		RemoteRef:       remoteRef,
+		PR:              pr,
+		HasLocal:        true,
+		LocalSHA:        newSHA,
+		Author:          "ziya",
+		IsHEAD:          true,
+		AheadMain:       1,
+		LastCommitMsg:   commitMsg,
+		ChangedFiles:    []string{"CHANGELOG.md"},
+	})
+	m.recordLogLocked("ok", "Konsolsuz Commit & PR", branchName, commitMsg, "")
+	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
+}
+
 // PromoteBranch pushes a lower-hemisphere local branch to remote and opens a PR,
 // flipping it into the upper hemisphere.
 func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) {
+	return m.PromoteBranchWithMeta(branchID, "", "")
+}
+
+// PromoteBranchWithMeta pushes a local branch to remote and creates a PR with custom title and body.
+func (m *Manager) PromoteBranchWithMeta(branchID, prTitle, prBody string) (model.CockpitSnapshot, error) {
 	if live, ok := m.activeLiveRepo(); ok {
-		snap, err := m.promoteBranchLive(live, branchID)
+		snap, err := m.promoteBranchLive(live, branchID, prTitle, prBody)
 		return m.logLiveOutcome("Push & PR Aç", branchID, "Dal origin'e pushlandı ve PR açıldı", snap, err)
 	}
 
@@ -534,9 +632,14 @@ func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) 
 			b.RemoteRef = "origin/" + b.Name
 			b.RemoteAhead = 0
 			b.RemoteBehind = 0
+			title := strings.TrimSpace(prTitle)
+			if title == "" {
+				title = "feat: " + b.Name
+			}
 			b.PR = &model.PRStatus{
 				Number:      prNum,
-				Title:       "feat: " + b.Name,
+				Title:       title,
+				Body:        strings.TrimSpace(prBody),
 				Author:      "ziya",
 				ReviewState: "REVIEW_REQUIRED",
 				CI: &model.CIStatus{
@@ -1179,7 +1282,69 @@ func (m *Manager) checkoutBranchLive(live *repoEntry, branchID string) (model.Co
 	return m.Snapshot()
 }
 
-func (m *Manager) promoteBranchLive(live *repoEntry, branchID string) (model.CockpitSnapshot, error) {
+func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, prTitle, prBody string, pushAndPR bool) (model.CockpitSnapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	defBranch := detectDefaultBranch(ctx, live.path)
+	curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
+	curBranch := strings.TrimSpace(curOut)
+
+	if branchName != "" && branchName != curBranch {
+		if pushAndPR && branchName == defBranch {
+			return model.CockpitSnapshot{}, fmt.Errorf("PR açmak için %s dışında yeni bir özellik dalı adı girin", defBranch)
+		}
+		if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+branchName); err == nil {
+			if out, _, swErr := runCmd(ctx, live.path, "git", "switch", branchName); swErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi: %s", branchName, strings.TrimSpace(out))
+			}
+		} else {
+			if out, _, cbErr := runCmd(ctx, live.path, "git", "checkout", "-b", branchName); cbErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("%s dalı açılamadı: %s", branchName, strings.TrimSpace(out))
+			}
+		}
+		curBranch = branchName
+	}
+
+	if pushAndPR && (curBranch == "" || curBranch == defBranch) {
+		return model.CockpitSnapshot{}, fmt.Errorf("PR açmak için %s dışında bir özellik dalı adı girin", defBranch)
+	}
+
+	if out, _, err := runCmd(ctx, live.path, "git", "add", "-A"); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("dosyalar stage edilemedi: %s", strings.TrimSpace(out))
+	}
+	if out, _, err := runCmd(ctx, live.path, "git", "commit", "-m", commitMsg); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("commit atılamadı: %s", strings.TrimSpace(out))
+	}
+
+	if pushAndPR {
+		remoteName := "origin"
+		if rOut, _, err := runCmd(ctx, live.path, "git", "remote"); err == nil && strings.TrimSpace(rOut) != "" {
+			remoteName = strings.Fields(rOut)[0]
+		}
+		if out, _, err := runCmd(ctx, live.path, "git", "push", "-u", remoteName, curBranch); err != nil {
+			return model.CockpitSnapshot{}, fmt.Errorf("commit atıldı ancak %s dalı pushlanamadı: %s", curBranch, strings.TrimSpace(out))
+		}
+		if _, err := exec.LookPath("gh"); err == nil {
+			title := strings.TrimSpace(prTitle)
+			if title == "" {
+				title = commitMsg
+			}
+			body := strings.TrimSpace(prBody)
+			if body == "" {
+				body = "GitArc kokpitinden oluşturuldu."
+			}
+			if out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", curBranch, "--title", title, "--body", body); prErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
+			}
+		}
+	}
+
+	InvalidateGHCache(live.path)
+	return m.Snapshot()
+}
+
+func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody string) (model.CockpitSnapshot, error) {
 	b, _, err := m.findLiveBranch(live, branchID)
 	if err != nil {
 		return model.CockpitSnapshot{}, err
@@ -1192,11 +1357,18 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID string) (model.Coc
 	}
 	if b.PR == nil {
 		if _, err := exec.LookPath("gh"); err == nil {
-			title := b.LastCommitMsg
+			title := strings.TrimSpace(prTitle)
+			if title == "" {
+				title = b.LastCommitMsg
+			}
 			if title == "" {
 				title = "feat: " + b.Name
 			}
-			out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", b.Name, "--title", title, "--body", "GitArc canlı kokpitinden açıldı.")
+			body := strings.TrimSpace(prBody)
+			if body == "" {
+				body = "GitArc canlı kokpitinden açıldı."
+			}
+			out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", b.Name, "--title", title, "--body", body)
 			if prErr != nil {
 				return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
 			}

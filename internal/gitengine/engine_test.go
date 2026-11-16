@@ -820,3 +820,106 @@ func TestMegaRepoCacheTeamModeAndProtection(t *testing.T) {
 		t.Fatalf("expected CheckForUpdates currentVersion=%q, got %v", AppVersion, updRes["currentVersion"])
 	}
 }
+
+func TestCommitWorkingTreeAndPromoteWithCustomPRMeta(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not installed")
+	}
+
+	workDir := t.TempDir()
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = workDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Tester",
+			"GIT_AUTHOR_EMAIL=tester@example.com",
+			"GIT_COMMITTER_NAME=Tester",
+			"GIT_COMMITTER_EMAIL=tester@example.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, string(out))
+		}
+	}
+
+	runGit("init", "-b", "main")
+	runGit("config", "user.name", "Tester")
+	runGit("config", "user.email", "tester@example.com")
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# GitArc\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit("add", "README.md")
+	runGit("commit", "-m", "chore: initial commit")
+
+	// Uncommitted (dirty) dosya oluştur
+	if err := os.WriteFile(filepath.Join(workDir, "wip_feature.txt"), []byte("yeni ozellik\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(workDir)
+	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
+		t.Fatalf("SwitchRepo failed: %v", err)
+	}
+	snapBefore, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if snapBefore.Repo.DirtyCount == 0 {
+		t.Fatalf("expected DirtyCount > 0 before CommitWorkingTree")
+	}
+
+	var foundWip bool
+	for _, b := range snapBefore.Branches {
+		if b.ID == "local-wip-working-tree" {
+			foundWip = true
+			if b.DraftPRTitle == "" {
+				t.Fatalf("expected DraftPRTitle to be populated for local-wip-working-tree")
+			}
+		}
+	}
+	if !foundWip {
+		t.Fatalf("expected local-wip-working-tree arc on dirty repo")
+	}
+
+	snapAfter, err := mgr.CommitWorkingTree("feat/ui-commit", "feat: commit from ui", "Custom PR Title", "Custom PR Body", false)
+	if err != nil {
+		t.Fatalf("CommitWorkingTree failed: %v", err)
+	}
+	if snapAfter.Repo.DirtyCount != 0 {
+		t.Fatalf("expected DirtyCount == 0 after CommitWorkingTree, got %d", snapAfter.Repo.DirtyCount)
+	}
+
+	var committedBranch *model.BranchArc
+	for i := range snapAfter.Branches {
+		if snapAfter.Branches[i].Name == "feat/ui-commit" {
+			committedBranch = &snapAfter.Branches[i]
+			break
+		}
+	}
+	if committedBranch == nil {
+		t.Fatalf("expected feat/ui-commit branch after CommitWorkingTree")
+	}
+	if !committedBranch.IsHEAD || committedBranch.LastCommitMsg != "feat: commit from ui" {
+		t.Fatalf("unexpected committed branch state: %+v", *committedBranch)
+	}
+
+	// Simülasyonda local dalı pushlamadan önce girilen özel PR başlık & açıklama ile yükseltme
+	simMgr := NewManager("")
+	promoSnap, err := simMgr.PromoteBranchWithMeta("br-local-wip", "Özel PR Başlığı", "Özel PR Gövdesi")
+	if err != nil {
+		t.Fatalf("PromoteBranchWithMeta failed: %v", err)
+	}
+	var promoted *model.BranchArc
+	for i := range promoSnap.Branches {
+		if promoSnap.Branches[i].ID == "br-local-wip" {
+			promoted = &promoSnap.Branches[i]
+			break
+		}
+	}
+	if promoted == nil || promoted.Hemisphere != "upper" || promoted.PR == nil {
+		t.Fatalf("expected br-local-wip to move to upper hemisphere with PR, got %+v", promoted)
+	}
+	if promoted.PR.Title != "Özel PR Başlığı" || promoted.PR.Body != "Özel PR Gövdesi" {
+		t.Fatalf("expected custom PR title/body preserved, got PR=%+v", *promoted.PR)
+	}
+}

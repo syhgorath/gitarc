@@ -2,6 +2,13 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
+## [0.8.0] - 2026-11-16
+
+### Eklenenler
+- **Konsolsuz Dal Açma, Commit & PR Oluşturma Stüdyosu (`/api/working-tree/commit`):** Çalışma ağacındaki kirli değişiklikleri (`wip/working-tree` veya yerel dallar) terminal açmadan yeni özellik dalına alma, commit mesajı, PR başlığı ve PR açıklamasını düzenleyip yerelde commitleme veya tek tıkla push + PR açma desteği eklendi.
+- **Push Öncesi PR Başlık & Açıklama Düzenleyici (`PromoteBranchWithMeta` + `/api/branch/promote`):** Alt raydaki yerel dalları `origin`'e pushlamadan önce PR başlığı ve açıklamasını kokpit içinden hazırlama ve bu bilgilerle PR açma eklendi.
+- **Canlı `CI: RUNNING` Pulse Efekti & Akıllı Auto-Merge Kuyruğu:** `CI: RUNNING` durumundaki dal parabolü, rozetleri ve Inspector çipi animasyonlu nabız efektiyle (`ci-running` / `running-pulse`) vurgulanır; CI çalışırken Merge / `⏳ CI Bitince Merge Et` tıklandığında dal kuyruğa alınır, CI geçince otomatik merge edilir, başarısız olursa kuyruk iptal edilip hata bildirimi + kalıcı log üretilir.
+
 ## [0.7.0] - 2026-11-16
 
 ### Eklenenler

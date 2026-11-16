@@ -31,6 +31,9 @@
     panning: null,
     drag: null,
     localRunOutput: {},
+    pendingAutoMerge: {},
+    autoMergingInFlight: {},
+    draftPrEdits: {},
     studio: null,
     clientLogs: [],
   };
@@ -411,14 +414,70 @@
         b.uncommittedCount = 0;
         return recompute();
       },
-      promoteBranch(branchId) {
+      promoteBranch(branchId, title = '', body = '') {
         const b = sim.branches.find((x) => x.id === branchId);
         if (!b) throw new Error('Dal bulunamadı');
         b.hemisphere = 'upper';
         b.hasRemote = true;
         b.remoteRef = 'origin/' + b.name;
+        const cleanTitle = (title || '').trim() || b.draftPrTitle || ('feat: ' + b.name);
+        const cleanBody = (body || '').trim() || b.draftPrBody || '';
         if (!b.pr) {
-          b.pr = { number: nextPr++, title: 'feat: ' + b.name, author: 'ziya', reviewState: 'REVIEW_REQUIRED', ci: { state: 'SUCCESS', workflow: 'ci.yml', duration: '1m 14s' } };
+          b.pr = { number: nextPr++, title: cleanTitle, body: cleanBody, author: 'ziya', reviewState: 'REVIEW_REQUIRED', ci: { state: 'RUNNING', workflow: 'ci.yml', duration: '0m 12s' } };
+        } else {
+          b.pr.title = cleanTitle;
+          b.pr.body = cleanBody;
+        }
+        return recompute();
+      },
+      commitWorkingTree(branchName, commitMsg, prTitle = '', prBody = '', pushAndPr = false) {
+        const cleanBranch = (branchName || '').trim() || 'feat/working-tree';
+        const cleanCommit = (commitMsg || '').trim();
+        if (!cleanCommit) throw new Error('Commit mesajı boş olamaz');
+        const startIdx = Math.max(0, sim.nodes.length - 1);
+        const baseSha = sim.nodes[startIdx]?.shortSha || '9f10b77';
+        seq++;
+        const id = `br-${seq}`;
+        sim.repo.dirtyCount = 0;
+        sim.branches.forEach((x) => {
+          x.isHead = false;
+          x.uncommittedCount = 0;
+        });
+        const cleanTitle = (prTitle || '').trim() || cleanCommit;
+        const cleanBody = (prBody || '').trim();
+        const pr = pushAndPr
+          ? { number: nextPr++, title: cleanTitle, body: cleanBody, author: 'ziya', reviewState: 'REVIEW_REQUIRED', ci: { state: 'RUNNING', workflow: 'ci.yml', duration: '0m 09s' } }
+          : null;
+        sim.branches.push({
+          id,
+          name: cleanBranch,
+          hemisphere: pushAndPr ? 'upper' : 'lower',
+          state: 'open',
+          startSpineIndex: startIdx,
+          endSpineIndex: startIdx + 1,
+          baseSha,
+          hasRemote: Boolean(pushAndPr),
+          remoteRef: pushAndPr ? 'origin/' + cleanBranch : '',
+          pr,
+          hasLocal: true,
+          localSha: (0x90a1000 + seq * 17).toString(16),
+          isHead: true,
+          aheadMain: 1,
+          behindMain: 0,
+          uncommittedCount: 0,
+          lastCommitMsg: cleanCommit,
+          draftPrTitle: cleanTitle,
+          draftPrBody: cleanBody,
+          changedFiles: ['CHANGELOG.md'],
+        });
+        return recompute();
+      },
+      completeRunningCI(branchId) {
+        const b = sim.branches.find((x) => x.id === branchId);
+        if (b?.pr?.ci && b.pr.ci.state === 'RUNNING') {
+          b.pr.ci.state = 'SUCCESS';
+          b.pr.ci.duration = '0m 41s';
+          b.pr.reviewState = 'APPROVED';
         }
         return recompute();
       },
@@ -632,8 +691,9 @@
     const lastNode = snap.nodes?.[snap.nodes.length - 1]?.shortSha || '';
     const bSig = (snap.branches || []).map((b) => [
       b.id, b.state, b.hemisphere, b.isHead ? 1 : 0, b.aheadMain, b.behindMain,
-      b.uncommittedCount, b.lastCommitMsg, b.originGone ? 1 : 0,
-      b.pr?.title || '', b.pr?.body || '', b.pr?.ci?.state || '',
+      b.uncommittedCount, b.lastCommitMsg, b.draftPrTitle || '', b.draftPrBody || '',
+      (b.changedFiles || []).length, b.originGone ? 1 : 0,
+      b.pr?.title || '', b.pr?.body || '', b.pr?.ci?.state || '', b.pr?.ci?.duration || '',
       b.conflict?.hasConflict ? 1 : 0,
     ].join('|')).join(';');
     const logSig = `${snap.logs?.length || 0}:${snap.logs?.[0]?.id || ''}`;
@@ -680,6 +740,36 @@
   function applySnapshot(snap) {
     state.snapshot = snap;
     state.lastSig = snapshotSignature(snap);
+
+    const queuedIds = Object.keys(state.pendingAutoMerge || {});
+    queuedIds.forEach((branchId) => {
+      const queued = state.pendingAutoMerge[branchId];
+      if (!queued) return;
+      const target = (snap.branches || []).find((x) => x.id === branchId || (queued.branchName && x.name === queued.branchName));
+      if (!target || target.state === 'merged') {
+        delete state.pendingAutoMerge[branchId];
+        return;
+      }
+      const ci = target.pr?.ci?.state;
+      if (ci === 'FAILURE') {
+        delete state.pendingAutoMerge[branchId];
+        showToast(`❌ ${target.name} dalında CI başarısız oldu; otomatik birleştirme iptal edildi`, 'danger');
+        return;
+      }
+      if (target.conflict?.hasConflict && !target.conflict.resolved) {
+        delete state.pendingAutoMerge[branchId];
+        showToast(`⚠ ${target.name} dalında çakışma tespit edildi; otomatik birleştirme durduruldu`, 'danger');
+        return;
+      }
+      if (ci === 'SUCCESS' && !state.autoMergingInFlight[branchId]) {
+        state.autoMergingInFlight[branchId] = true;
+        delete state.pendingAutoMerge[branchId];
+        executeMergeNow(target.id, queued.strategy || 'merge', true).finally(() => {
+          delete state.autoMergingInFlight[branchId];
+        });
+      }
+    });
+
     if (!state.selectedBranchId && snap.branches?.length) {
       const priority = snap.branches.find((b) => b.pr?.ci?.state === 'FAILURE')
         || snap.branches.find((b) => b.conflict?.hasConflict)
@@ -917,6 +1007,7 @@
   function branchToneClass(b) {
     if (b.pr?.ci?.state === 'FAILURE') return 'ci-fail';
     if (b.conflict?.hasConflict && !b.conflict.resolved) return 'conflict';
+    if (b.pr?.ci?.state === 'RUNNING') return 'ci-running';
     if (b.state === 'merged') return 'merged';
     if (b.originGone || b.state === 'gone') return 'gone';
     return b.hemisphere === 'lower' ? 'lower-open' : 'upper-open';
@@ -925,6 +1016,7 @@
   function branchStrokeColor(b) {
     if (b.pr?.ci?.state === 'FAILURE') return '#f85149';
     if (b.conflict?.hasConflict && !b.conflict.resolved) return '#f97316';
+    if (b.pr?.ci?.state === 'RUNNING') return '#d29922';
     if (b.state === 'merged') return '#3fb950';
     if (b.originGone || b.state === 'gone') return '#d29922';
     return b.hemisphere === 'lower' ? '#a371f7' : '#58a6ff';
@@ -1173,11 +1265,14 @@
 
     const isLower = b.hemisphere === 'lower';
     const isFailed = b.pr?.ci?.state === 'FAILURE';
+    const isRunning = b.pr?.ci?.state === 'RUNNING';
+    const isQueued = Boolean(state.pendingAutoMerge[b.id]);
     const hasConflict = Boolean(b.conflict?.hasConflict && !b.conflict.resolved);
     const isRemoteOnly = !b.hasLocal && b.hasRemote && b.state === 'open';
     const delTitle = isRemoteOnly ? 'PR Kapat &amp; Uzak Dalı Sil' : 'Dalı Sil';
 
     let badgeTone = 'sky';
+    let badgePulse = false;
     let badgeText = b.pr ? `PR #${b.pr.number} · ${b.pr.reviewState}` : 'Remote Ray';
     if (isFailed) {
       badgeTone = 'danger';
@@ -1185,6 +1280,10 @@
     } else if (hasConflict) {
       badgeTone = 'warn';
       badgeText = b.pr ? `PR #${b.pr.number} · Çakışma` : 'Merge Çakışması';
+    } else if (isRunning) {
+      badgeTone = 'warn';
+      badgePulse = true;
+      badgeText = `PR #${b.pr.number} · CI Çalışıyor`;
     } else if (b.originGone || b.state === 'gone') {
       badgeTone = 'warn';
       badgeText = 'origin: gone';
@@ -1232,7 +1331,7 @@
       `;
     } else if (isLower) {
       if (isWorkingTreeWip) {
-        actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🔍 Yerel Farkı Gör</button>`;
+        actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🚀 Commit &amp; PR Stüdyosu</button>`;
       } else {
         actionRowHtml = `
           <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
@@ -1241,6 +1340,12 @@
           <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
         `;
       }
+    } else if (isRunning) {
+      actionRowHtml = `
+        <button type="button" class="cap-btn amber ${isQueued ? 'running-pulse' : ''}" data-act="merge">${isQueued ? '⏳ CI Bekleniyor (İptal)' : '⏳ CI Bitince Merge Et'}</button>
+        ${checkoutBtn}
+        <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
+      `;
     } else {
       actionRowHtml = `
         <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge (Parabolü Kapat)</button>
@@ -1251,7 +1356,7 @@
 
     card.innerHTML = `
       <div class="cap-top-row">
-        <span class="cap-badge ${badgeTone}">${esc(badgeText)}</span>
+        <span class="cap-badge ${badgeTone} ${badgePulse ? 'running-pulse' : ''}">${esc(badgeText)}</span>
         ${b.isHead ? '<span class="cap-head-pill">HEAD</span>' : ''}
       </div>
       <div class="cap-name">${esc(b.name)}</div>
@@ -1428,12 +1533,17 @@
     const isRemoteOnly = !b.hasLocal && b.hasRemote;
     const isVirtualWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
     const ciState = b.pr?.ci?.state;
+    const isRunning = ciState === 'RUNNING';
+    const isQueued = Boolean(state.pendingAutoMerge[b.id]);
+    const canCommitWorkingTree = isOpen && (isVirtualWip || (b.uncommittedCount || 0) > 0);
     const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip;
     const canMerge = isOpen && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
 
     const ciChip = ciState === 'FAILURE' ? '<span class="chip danger">CI: FAILURE</span>'
-      : ciState === 'RUNNING' ? '<span class="chip accent">CI: RUNNING</span>'
+      : ciState === 'RUNNING' ? '<span class="chip warn running-pulse">CI: RUNNING</span>'
         : ciState === 'SUCCESS' ? '<span class="chip ok">CI: PASS</span>' : '';
+
+    const queuedChip = isQueued ? '<span class="chip warn running-pulse">⏳ Auto-Merge Kuyruğunda</span>' : '';
 
     let html = `
       <div class="det-header">
@@ -1444,6 +1554,7 @@
         <div class="det-badges">
           ${b.pr ? `<span class="chip accent">PR #${b.pr.number}</span>` : ''}
           ${ciChip}
+          ${queuedChip}
           ${b.isHead ? '<span class="chip ok">HEAD</span>' : ''}
           ${isRemoteOnly ? '<span class="chip warn">☁ Yerelde Yok (Sadece Origin)</span>' : ''}
           ${b.originGone ? '<span class="chip warn">origin: gone</span>' : ''}
@@ -1459,7 +1570,9 @@
                 <option value="rebase" ${state.mergeStrategy === 'rebase' ? 'selected' : ''}>Rebase</option>
                 <option value="auto" ${state.mergeStrategy === 'auto' ? 'selected' : ''}>Auto-Merge (Queue)</option>
               </select>
-              <button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>
+              ${isRunning
+                ? `<button type="button" class="btn warn sm ${isQueued ? 'running-pulse' : ''}" id="act-merge">${isQueued ? '⏳ CI Bekleniyor (İptal Et)' : '⏳ CI Bitince Otomatik Merge Et'}</button>`
+                : `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>`}
             </div>
           ` : ''}
           ${hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">⚡ Çakışma Stüdyosunu Aç</button>` : ''}
@@ -1551,6 +1664,72 @@
       `;
     }
 
+    if (canCommitWorkingTree) {
+      const defaultWtBranch = isVirtualWip ? 'feat/local-changes' : b.name;
+      const defaultCommitMsg = b.lastCommitMsg || b.draftPrTitle || 'feat: cockpit workflow updates';
+      const defaultPrTitle = b.draftPrTitle || b.lastCommitMsg || defaultCommitMsg;
+      const defaultPrBody = b.draftPrBody || '';
+      html += `
+        <div class="diag-card">
+          <h4>
+            <span>🚀 Konsolsuz Dal Aç, Commit &amp; PR Oluştur</span>
+            <span class="chip accent">${b.uncommittedCount || 0} dosya</span>
+          </h4>
+          <div class="wt-note">${isVirtualWip ? 'Şu an <strong>main</strong> üzerindeki kaydedilmemiş değişiklikleri görüyorsunuz. Terminal açmadan yeni dal açabilir, commit atabilir ve doğrudan push + PR oluşturabilirsiniz.' : 'Bu daldaki kaydedilmemiş değişiklikleri konsol kullanmadan yerelde commitleyin veya tek tıkla pushlayıp PR açın.'}</div>
+          <form id="form-commit-wt" class="edit-form">
+            <div class="wt-field">
+              <label class="wt-label" for="wt-branch-name">Özellik Dalı Adı</label>
+              <input type="text" id="wt-branch-name" class="input-control mono" value="${esc(defaultWtBranch)}" placeholder="feat/cockpit-updates" required>
+            </div>
+            <div class="wt-field">
+              <label class="wt-label" for="wt-commit-msg">Commit Mesajı</label>
+              <input type="text" id="wt-commit-msg" class="input-control mono" value="${esc(defaultCommitMsg)}" placeholder="feat: ..." required>
+            </div>
+            <div class="wt-field">
+              <label class="wt-label" for="wt-pr-title">PR Başlığı (Push &amp; PR için)</label>
+              <input type="text" id="wt-pr-title" class="input-control mono" value="${esc(defaultPrTitle)}" placeholder="PR başlığı">
+            </div>
+            <div class="wt-field">
+              <label class="wt-label" for="wt-pr-body">PR Açıklaması</label>
+              <textarea id="wt-pr-body" class="textarea-control" placeholder="Neler değişti ve nasıl doğrulandı?">${esc(defaultPrBody)}</textarea>
+            </div>
+            <div class="det-actions">
+              <button type="submit" class="btn emerald sm" id="act-wt-commit-only" ${snap.repo.teamMode ? 'disabled' : ''}>💾 Sadece Dal Aç &amp; Commit At</button>
+              <button type="button" class="btn primary sm" id="act-wt-commit-push" ${snap.repo.teamMode ? 'disabled' : ''}>🚀 Commit + Push &amp; PR Oluştur</button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+
+    if (canPromote) {
+      const savedDraft = state.draftPrEdits[b.name];
+      const promoteTitle = savedDraft?.title ?? b.draftPrTitle ?? b.lastCommitMsg ?? ('feat: ' + b.name);
+      const promoteBody = savedDraft?.body ?? b.draftPrBody ?? '';
+      html += `
+        <div class="diag-card">
+          <h4>
+            <span>📝 Push Öncesi PR Başlık &amp; Açıklama</span>
+            <span class="chip purple">Local → Remote</span>
+          </h4>
+          <div class="wt-note">Dalı origin’e pushlamadan önce PR başlığını ve açıklamasını burada hazırlayıp kaydedebilirsiniz.</div>
+          <form id="form-promote-pr" class="edit-form">
+            <div class="wt-field">
+              <label class="wt-label" for="promote-pr-title">PR Başlığı</label>
+              <input type="text" id="promote-pr-title" class="input-control mono" value="${esc(promoteTitle)}" placeholder="Örn: feat(ui): Add cockpit workflow" required>
+            </div>
+            <div class="wt-field">
+              <label class="wt-label" for="promote-pr-body">PR Açıklaması</label>
+              <textarea id="promote-pr-body" class="textarea-control" placeholder="Neler değişti ve doğrulama adımları...">${esc(promoteBody)}</textarea>
+            </div>
+            <div class="det-actions">
+              <button type="submit" class="btn primary sm" id="act-promote-submit">🚀 Pushla &amp; Bu Bilgilerle PR Aç</button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+
     if (b.changedFiles?.length) {
       html += `
         <div class="diag-card">
@@ -1612,6 +1791,44 @@
 
     document.getElementById('act-checkout')?.addEventListener('click', () => handleCheckoutBranch(b.id));
     document.getElementById('act-promote')?.addEventListener('click', () => handlePromoteBranch(b.id));
+    document.getElementById('form-commit-wt')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const bName = document.getElementById('wt-branch-name').value;
+      const cMsg = document.getElementById('wt-commit-msg').value;
+      const pTitle = document.getElementById('wt-pr-title').value;
+      const pBody = document.getElementById('wt-pr-body').value;
+      const btn = document.getElementById('act-wt-commit-only');
+      handleCommitWorkingTree(bName, cMsg, pTitle, pBody, false, btn);
+    });
+    document.getElementById('act-wt-commit-push')?.addEventListener('click', () => {
+      const form = document.getElementById('form-commit-wt');
+      if (form && form.reportValidity && !form.reportValidity()) return;
+      const bName = document.getElementById('wt-branch-name').value;
+      const cMsg = document.getElementById('wt-commit-msg').value;
+      const pTitle = document.getElementById('wt-pr-title').value;
+      const pBody = document.getElementById('wt-pr-body').value;
+      const btn = document.getElementById('act-wt-commit-push');
+      handleCommitWorkingTree(bName, cMsg, pTitle, pBody, true, btn);
+    });
+    document.getElementById('promote-pr-title')?.addEventListener('input', (ev) => {
+      state.draftPrEdits[b.name] = {
+        title: ev.target.value,
+        body: document.getElementById('promote-pr-body')?.value || '',
+      };
+    });
+    document.getElementById('promote-pr-body')?.addEventListener('input', (ev) => {
+      state.draftPrEdits[b.name] = {
+        title: document.getElementById('promote-pr-title')?.value || '',
+        body: ev.target.value,
+      };
+    });
+    document.getElementById('form-promote-pr')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const pTitle = document.getElementById('promote-pr-title').value;
+      const pBody = document.getElementById('promote-pr-body').value;
+      const btn = document.getElementById('act-promote-submit');
+      handlePromoteBranch(b.id, pTitle, pBody, btn);
+    });
     document.getElementById('merge-strategy')?.addEventListener('change', (ev) => {
       state.mergeStrategy = ev.target.value;
     });
@@ -1701,29 +1918,123 @@
     }
   }
 
-  async function handleMergeBranch(branchId) {
-    const strategy = state.mergeStrategy || 'merge';
+  async function executeMergeNow(branchId, strategy = 'merge', fromQueue = false) {
     try {
       const snap = state.offlineMode
         ? LocalFallbackEngine.mergeBranch(branchId, strategy)
         : await apiCall('/api/branch/merge', 'POST', { branchId, strategy });
       applySnapshot(snap);
-      showToast(`Dal merkez main omurgasına (${strategy}) birleşti — Tam parabol tamamlandı!`, 'ok');
+      showToast(
+        fromQueue
+          ? `✅ CI başarılı! Dal otomatik olarak (${strategy}) main'e birleştirildi.`
+          : `Dal merkez main omurgasına (${strategy}) birleşti — Tam parabol tamamlandı!`,
+        'ok',
+      );
     } catch (err) {
       showToast(err.message, 'warn');
       renderSVG();
     }
   }
 
-  async function handlePromoteBranch(branchId) {
+  async function handleMergeBranch(branchId) {
+    const b = state.snapshot?.branches?.find((x) => x.id === branchId);
+    const strategy = state.mergeStrategy || 'merge';
+    if (b?.pr?.ci?.state === 'RUNNING') {
+      if (state.pendingAutoMerge[branchId]) {
+        delete state.pendingAutoMerge[branchId];
+        recordClientLog('info', 'Auto-Merge İptal', b.name, 'CI bekleme kuyruğundan çıkarıldı');
+        showToast(`${b.name} için otomatik birleştirme kuyruğu iptal edildi`, 'info');
+      } else {
+        state.pendingAutoMerge[branchId] = { strategy, branchName: b.name };
+        recordClientLog('ok', 'Auto-Merge Kuyruğu', b.name, `CI geçince (${strategy}) otomatik birleştirilecek`);
+        showToast(`⏳ ${b.name} kuyruğa alındı: CI geçince otomatik merge edilecek!`, 'info');
+        if (state.offlineMode) {
+          setTimeout(() => {
+            if (!state.pendingAutoMerge[branchId]) return;
+            try {
+              const nextSnap = LocalFallbackEngine.completeRunningCI(branchId);
+              applySnapshot(nextSnap);
+            } catch {
+              // ignore
+            }
+          }, 2600);
+        }
+      }
+      renderSVG();
+      renderInspector();
+      return;
+    }
+    await executeMergeNow(branchId, strategy, false);
+  }
+
+  async function handleCommitWorkingTree(branchName, commitMsg, prTitle, prBody, pushAndPr, btnEl = null) {
+    const cleanBranch = (branchName || '').trim();
+    const cleanCommit = (commitMsg || '').trim();
+    if (!cleanBranch || !cleanCommit) {
+      showToast('Özellik dalı adı ve commit mesajı zorunludur', 'warn');
+      return;
+    }
+    if (!pushAndPr) {
+      state.draftPrEdits[cleanBranch] = {
+        title: (prTitle || '').trim() || cleanCommit,
+        body: (prBody || '').trim(),
+      };
+    } else {
+      delete state.draftPrEdits[cleanBranch];
+    }
+    if (btnEl) btnEl.disabled = true;
     try {
       const snap = state.offlineMode
-        ? LocalFallbackEngine.promoteBranch(branchId)
-        : await apiCall('/api/branch/promote', 'POST', { branchId });
+        ? LocalFallbackEngine.commitWorkingTree(cleanBranch, cleanCommit, prTitle || '', prBody || '', Boolean(pushAndPr))
+        : await apiCall('/api/working-tree/commit', 'POST', {
+          branchName: cleanBranch,
+          commitMsg: cleanCommit,
+          prTitle: (prTitle || '').trim(),
+          prBody: (prBody || '').trim(),
+          pushAndPr: Boolean(pushAndPr),
+        });
+      const created = (snap.branches || []).find((x) => x.name === cleanBranch);
+      if (created) {
+        state.selectedBranchId = created.id;
+      }
+      applySnapshot(snap);
+      showToast(
+        pushAndPr
+          ? `Dal açıldı, commitlendi, pushlandı ve PR oluşturuldu (${cleanBranch})!`
+          : `Değişiklikler '${cleanBranch}' dalına commitlendi!`,
+        'ok',
+      );
+    } catch (err) {
+      showToast(err.message, 'danger');
+    } finally {
+      if (btnEl) btnEl.disabled = false;
+    }
+  }
+
+  async function handlePromoteBranch(branchId, explicitTitle, explicitBody, btnEl = null) {
+    const b = state.snapshot?.branches?.find((x) => x.id === branchId);
+    let title = explicitTitle;
+    let body = explicitBody;
+    if (title === undefined && state.selectedBranchId === branchId) {
+      title = document.getElementById('promote-pr-title')?.value ?? state.draftPrEdits[b?.name]?.title ?? b?.draftPrTitle ?? '';
+      body = document.getElementById('promote-pr-body')?.value ?? state.draftPrEdits[b?.name]?.body ?? b?.draftPrBody ?? '';
+    }
+    if (btnEl) btnEl.disabled = true;
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.promoteBranch(branchId, title || '', body || '')
+        : await apiCall('/api/branch/promote', 'POST', {
+          branchId,
+          title: (title || '').trim(),
+          body: (body || '').trim(),
+        });
+      if (b?.name) delete state.draftPrEdits[b.name];
       applySnapshot(snap);
       showToast('Dal origin’e pushlandı ve PR açılarak üst raya taşındı!', 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
+    } finally {
+      if (btnEl) btnEl.disabled = false;
     }
   }
 

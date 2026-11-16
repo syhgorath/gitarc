@@ -167,6 +167,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/branch/checkout", a.guard(a.handleCheckoutBranch))
 	mux.HandleFunc("/api/branch/merge", a.guard(a.handleMergeBranch))
 	mux.HandleFunc("/api/branch/promote", a.guard(a.handlePromoteBranch))
+	mux.HandleFunc("/api/working-tree/commit", a.guard(a.handleCommitWorkingTree))
 	mux.HandleFunc("/api/conflict/inspect", a.guard(a.handleInspectConflict))
 	mux.HandleFunc("/api/branch/resolve", a.guard(a.handleResolveConflict))
 	mux.HandleFunc("/api/branch/fix-ci", a.guard(a.handleFixCI))
@@ -295,11 +296,32 @@ func (a *App) handleAmendCommit(w http.ResponseWriter, r *http.Request) {
 func (a *App) handlePromoteBranch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		BranchID string `json:"branchId"`
+		Title    string `json:"title"`
+		Body     string `json:"body"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
 	}
-	snap, err := a.mgr.PromoteBranch(req.BranchID)
+	snap, err := a.mgr.PromoteBranchWithMeta(req.BranchID, req.Title, req.Body)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleCommitWorkingTree(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchName string `json:"branchName"`
+		CommitMsg  string `json:"commitMsg"`
+		PRTitle    string `json:"prTitle"`
+		PRBody     string `json:"prBody"`
+		PushAndPR  bool   `json:"pushAndPr"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.CommitWorkingTree(req.BranchName, req.CommitMsg, req.PRTitle, req.PRBody, req.PushAndPR)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
