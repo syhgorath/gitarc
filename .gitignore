@@ -1,5 +1,6 @@
 # Compiled binary & test artifacts
 /gitarc
+*.exe
 *.test
 *.out
 
