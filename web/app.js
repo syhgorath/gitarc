@@ -368,14 +368,26 @@
     return bAuth === me || prAuth === me || Boolean(b.isHead);
   }
 
+  function isMergedOrGone(b) {
+    return Boolean(b.state === 'merged' || b.state === 'gone' || b.originGone);
+  }
+
+  function isOpenPR(b) {
+    return Boolean(b.pr && b.pr.number > 0 && b.state === 'open' && b.pr.reviewState !== 'MERGED');
+  }
+
+  function isLocalOpen(b) {
+    return Boolean(b.hasLocal && b.state === 'open' && !isMergedOrGone(b));
+  }
+
   function renderKPIs() {
     const branches = state.snapshot?.branches || [];
-    const upperCount = branches.filter((b) => b.hemisphere === 'upper' && b.state !== 'merged').length;
-    const lowerCount = branches.filter((b) => (b.hemisphere === 'lower' && b.state !== 'merged') || (b.state === 'merged' && (b.hasLocal || b.originGone))).length;
-    const mineCount = branches.filter((b) => b.state !== 'merged' && isMyBranch(b)).length;
-    const conflictCount = branches.filter((b) => (b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length > 0)).length;
-    const failCount = branches.filter((b) => b.pr?.ci?.state === 'FAILURE').length;
-    const goneCount = branches.filter((b) => b.originGone || b.state === 'gone' || b.state === 'merged').length;
+    const upperCount = branches.filter(isOpenPR).length;
+    const lowerCount = branches.filter(isLocalOpen).length;
+    const mineCount = branches.filter((b) => b.state === 'open' && !isMergedOrGone(b) && isMyBranch(b)).length;
+    const conflictCount = branches.filter((b) => b.state === 'open' && !isMergedOrGone(b) && ((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length > 0))).length;
+    const failCount = branches.filter((b) => b.state === 'open' && b.pr?.ci?.state === 'FAILURE').length;
+    const goneCount = branches.filter(isMergedOrGone).length;
 
     const defs = [
       { key: 'all', label: 'Tümü', val: branches.length, tone: '' },
@@ -401,7 +413,7 @@
     });
 
     const prBadge = document.createElement('span');
-    prBadge.className = 'kpi-pill';
+    prBadge.className = `kpi-pill ${upperCount ? 'accent' : ''}`;
     prBadge.innerHTML = `<span>Üst Ray (PR)</span><strong>${upperCount}</strong>`;
     el.kpiPills.appendChild(prBadge);
   }
@@ -415,15 +427,15 @@
     }
     switch (state.filter) {
       case 'mine':
-        return isMyBranch(b);
+        return Boolean(b.state === 'open' && !isMergedOrGone(b) && isMyBranch(b));
       case 'lower':
-        return b.hemisphere === 'lower' || (b.state === 'merged' && Boolean(b.hasLocal || b.originGone));
+        return isLocalOpen(b);
       case 'issues':
-        return Boolean((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length));
+        return Boolean(b.state === 'open' && !isMergedOrGone(b) && ((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length)));
       case 'ci_fail':
-        return b.pr?.ci?.state === 'FAILURE';
+        return Boolean(b.state === 'open' && b.pr?.ci?.state === 'FAILURE');
       case 'gone':
-        return Boolean(b.originGone || b.state === 'gone' || b.state === 'merged');
+        return isMergedOrGone(b);
       default:
         return true;
     }
@@ -1535,7 +1547,24 @@
 
   async function handleMergeBranch(branchId) {
     const b = state.snapshot?.branches?.find((x) => x.id === branchId);
+    if (!b) return;
     const strategy = state.mergeStrategy || 'merge';
+    const defBranch = state.snapshot?.repo?.defaultBranch || 'main';
+
+    let cmd = '';
+    if (b.pr && b.pr.number > 0) {
+      const flag = strategy === 'squash' ? '--squash' : strategy === 'rebase' ? '--rebase' : '--merge';
+      cmd = `gh pr merge ${b.pr.number} ${flag} --auto`;
+    } else {
+      const flag = strategy === 'squash' ? '--squash' : '--no-ff';
+      cmd = `git checkout ${defBranch} && git merge ${flag} ${b.name}`;
+    }
+
+    const confirmed = window.confirm(
+      `⚠️ MERGE ONAYI:\n"${b.name}" dalı ${defBranch} omurgasına (${strategy}) birleştirilecek.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu birleştirme işlemini onaylıyor musunuz?`,
+    );
+    if (!confirmed) return;
+
     if (b?.pr?.ci?.state === 'RUNNING') {
       if (state.pendingAutoMerge[branchId]) {
         delete state.pendingAutoMerge[branchId];
@@ -1579,6 +1608,14 @@
     } else {
       delete state.draftPrEdits[cleanBranch];
     }
+    if (pushAndPr) {
+      const cmd = `git switch -c ${cleanBranch} && git add -A && git commit -m "${cleanCommit}" && git push -u origin ${cleanBranch} && gh pr create --head ${cleanBranch} --title "${prTitle || cleanCommit}"`;
+      const confirmed = window.confirm(
+        `⚠️ PUSH & PR ONAYI:\nÇalışma dizini kaydedilip doğrudan uzak sunucuya pushlanacak ve GitHub PR açılacaktır.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
+      );
+      if (!confirmed) return;
+    }
+
     if (btnEl) btnEl.disabled = true;
     try {
       const snap = state.offlineMode
@@ -1616,6 +1653,13 @@
       title = document.getElementById('promote-pr-title')?.value ?? state.draftPrEdits[b?.name]?.title ?? b?.draftPrTitle ?? '';
       body = document.getElementById('promote-pr-body')?.value ?? state.draftPrEdits[b?.name]?.body ?? b?.draftPrBody ?? '';
     }
+    const bName = b ? b.name : branchId;
+    const cmd = `git push -u origin ${bName} && gh pr create --head ${bName} --title "${title || bName}"`;
+    const confirmed = window.confirm(
+      `⚠️ PUSH & PR AÇMA ONAYI:\n"${bName}" dalı uzak sunucuya pushlanacak ve GitHub PR oluşturulacaktır.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
+    );
+    if (!confirmed) return;
+
     if (btnEl) btnEl.disabled = true;
     try {
       const snap = state.offlineMode
@@ -1914,6 +1958,25 @@
   }
 
   async function handleDeleteBranch(branchId) {
+    const b = state.snapshot?.branches?.find((x) => x.id === branchId);
+    const branchName = b ? b.name : branchId;
+    const isRemote = b && !b.hasLocal && b.hasRemote;
+    const isBoth = b && b.hasLocal && b.hasRemote;
+
+    let cmd = '';
+    if (isRemote) {
+      cmd = `git push origin --delete ${branchName}`;
+    } else if (isBoth) {
+      cmd = `git branch -D ${branchName} && git push origin --delete ${branchName}`;
+    } else {
+      cmd = `git branch -D ${branchName}`;
+    }
+
+    const confirmed = window.confirm(
+      `⚠️ DAL SİLME ONAYI:\n"${branchName}" dalı silinecektir.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu silme işlemini onaylıyor musunuz?`,
+    );
+    if (!confirmed) return;
+
     try {
       const snap = state.offlineMode
         ? LocalFallbackEngine.deleteBranch(branchId)
@@ -1926,6 +1989,12 @@
   }
 
   async function handlePruneGone() {
+    const cmd = "git fetch --prune && git branch -vv | grep ': gone]' | awk '{print $1}' | xargs -r git branch -D";
+    const confirmed = window.confirm(
+      `⚠️ KALINTI TEMİZLİĞİ ONAYI:\nUzak sunucuda birleşmiş veya silinmiş (gone) tüm yerel dallar temizlenecektir.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu temizlik işlemini onaylıyor musunuz?`,
+    );
+    if (!confirmed) return;
+
     try {
       let snap;
       let removed = 0;

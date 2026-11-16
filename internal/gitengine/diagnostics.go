@@ -218,7 +218,8 @@ func ComputeCrossPRCollisions(branches []model.BranchArc) {
 
 	fileToBranches := map[string][]int{}
 	for i := range branches {
-		if branches[i].State != "open" || len(branches[i].ChangedFiles) == 0 {
+		// Madde 2: Cross-PR çarpışması YALNIZCA açık PR'lar arasında hesaplanır.
+		if branches[i].State != "open" || branches[i].PR == nil || branches[i].PR.Number <= 0 || branches[i].PR.ReviewState == "MERGED" || len(branches[i].ChangedFiles) == 0 {
 			continue
 		}
 		seenFile := map[string]bool{}
