@@ -119,15 +119,36 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 				return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi: %s", branchName, strings.TrimSpace(out))
 			}
 		} else {
-			if out, _, cbErr := runCmd(ctx, live.path, "git", "checkout", "-b", branchName); cbErr != nil {
+			targetBase := "origin/" + defBranch
+			if _, _, err := runCmd(ctx, live.path, "git", "rev-parse", "--verify", "--quiet", targetBase); err != nil {
+				targetBase = defBranch
+			}
+			out, _, cbErr := runCmd(ctx, live.path, "git", "switch", "-c", branchName, targetBase)
+			if cbErr != nil {
+				// Fallback to basic checkout -b if switch from targetBase fails
+				out, _, cbErr = runCmd(ctx, live.path, "git", "checkout", "-b", branchName)
+			}
+			if cbErr != nil {
 				return model.CockpitSnapshot{}, fmt.Errorf("%s dalı açılamadı: %s", branchName, strings.TrimSpace(out))
 			}
 		}
 		curBranch = branchName
 	}
 
-	if pushAndPR && (curBranch == "" || curBranch == defBranch) {
-		return model.CockpitSnapshot{}, fmt.Errorf("PR açmak için %s dışında bir özellik dalı adı girin", defBranch)
+	if pushAndPR {
+		if curBranch == "" || curBranch == defBranch {
+			return model.CockpitSnapshot{}, fmt.Errorf("PR açmak için %s dışında bir özellik dalı adı girin", defBranch)
+		}
+		// Block pushing to an already merged branch
+		snap, _ := m.Snapshot()
+		for _, b := range snap.Branches {
+			if b.Name == curBranch {
+				if b.State == "merged" || b.OriginGone || (b.PR != nil && b.PR.ReviewState == "MERGED") {
+					return model.CockpitSnapshot{}, fmt.Errorf("'%s' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın üzerine push yapılamaz, lütfen yeni bir dal açın", curBranch)
+				}
+				break
+			}
+		}
 	}
 
 	if out, _, err := runCmd(ctx, live.path, "git", "add", "-A"); err != nil {

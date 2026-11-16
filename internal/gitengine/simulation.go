@@ -579,6 +579,16 @@ func (m *Manager) CommitWorkingTree(branchName, commitMsg, prTitle, prBody strin
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if pushAndPR && branchName != "" {
+		for _, b := range m.simRepo.branches {
+			if b.Name == branchName && (b.State == "merged" || b.OriginGone) {
+				err := fmt.Errorf("'%s' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın üzerine push yapılamaz, lütfen yeni bir dal açın", branchName)
+				m.recordLogLocked("error", "Konsolsuz Commit & PR", branchName, err.Error(), "")
+				return model.CockpitSnapshot{}, err
+			}
+		}
+	}
+
 	if branchName == "" {
 		branchName = "feat/working-tree"
 	}
