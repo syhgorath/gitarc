@@ -447,7 +447,7 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 	var kept []model.BranchArc
 	removed := 0
 	for _, b := range m.simRepo.branches {
-		if b.OriginGone || b.State == "gone" {
+		if b.OriginGone || b.State == "gone" || b.State == "merged" {
 			removed++
 			continue
 		}
@@ -455,6 +455,31 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 	}
 	m.simRepo.branches = kept
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), removed, nil
+}
+
+// DeleteBranch removes a single branch from the simulation graph or safely deletes
+// a local merged branch in live mode (`git branch -d`).
+func (m *Manager) DeleteBranch(branchID string) (model.CockpitSnapshot, error) {
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.deleteBranchLive(live, branchID)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var kept []model.BranchArc
+	found := false
+	for _, b := range m.simRepo.branches {
+		if b.ID == branchID {
+			found = true
+			continue
+		}
+		kept = append(kept, b)
+	}
+	if !found {
+		return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	}
+	m.simRepo.branches = kept
+	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
 // SyncSpine clears ahead/behind skew between local main and origin/main.
@@ -958,6 +983,25 @@ func (m *Manager) syncSpineLive(live *repoEntry) (model.CockpitSnapshot, error) 
 	statusOut, _, _ := runCmd(ctx, live.path, "git", "status", "--porcelain")
 	if strings.TrimSpace(curOut) == defBranch && strings.TrimSpace(statusOut) == "" {
 		_, _, _ = runCmd(ctx, live.path, "git", "merge", "--ff-only", "origin/"+defBranch)
+	}
+	return m.Snapshot()
+}
+
+func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.CockpitSnapshot, error) {
+	b, snap, err := m.findLiveBranch(live, branchID)
+	if err != nil {
+		return model.CockpitSnapshot{}, err
+	}
+	if !b.HasLocal || b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
+		return model.CockpitSnapshot{}, fmt.Errorf("yalnızca gerçek yerel dallar silinebilir")
+	}
+	if b.IsHEAD || b.Name == snap.Repo.DefaultBranch {
+		return model.CockpitSnapshot{}, fmt.Errorf("aktif çalışma dalı (%s) silinemez; önce başka dala geçin", b.Name)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if out, _, err := runCmd(ctx, live.path, "git", "branch", "-d", b.Name); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("dal silinemedi (henüz merge edilmemiş olabilir): %s", strings.TrimSpace(out))
 	}
 	return m.Snapshot()
 }

@@ -246,8 +246,27 @@ func TestCollectLiveRepoTemp(t *testing.T) {
 	if featBranch == nil {
 		t.Fatalf("expected feat/changelog-entry in live branches, got %+v", snap.Branches)
 	}
+	if featBranch.Hemisphere != "lower" {
+		t.Fatalf("expected unpushed local branch without PR to open in lower hemisphere, got %q", featBranch.Hemisphere)
+	}
 	if featBranch.Conflict == nil || !featBranch.Conflict.HasConflict || !featBranch.Conflict.IsChangelogOrLock {
 		t.Fatalf("expected git merge-tree to detect CHANGELOG.md conflict, got %+v", featBranch.Conflict)
+	}
+}
+
+func TestSimulationDeleteBranch(t *testing.T) {
+	mgr := NewManager("")
+	snap, err := mgr.DeleteBranch("br-local-exp")
+	if err != nil {
+		t.Fatalf("DeleteBranch failed: %v", err)
+	}
+	for _, b := range snap.Branches {
+		if b.ID == "br-local-exp" {
+			t.Fatalf("expected br-local-exp to be deleted")
+		}
+	}
+	if _, err := mgr.DeleteBranch("non-existent"); err == nil {
+		t.Fatalf("expected error deleting unknown branch")
 	}
 }
 
