@@ -40,24 +40,27 @@ func TestAssignLanesIntervalPacking(t *testing.T) {
 }
 
 func TestExtractCILog(t *testing.T) {
-	raw := `2026-11-16T07:12:05Z === RUN   TestShellGoldCompare
-    compare_test.go:118: mismatch on key 'hardening_pve_apply'
---- FAIL: TestShellGoldCompare (0.42s)
-panic: runtime error: index out of range [3] with length 3
-	go/internal/shellgold/compare.go:94 +0x1b4
-FAIL	keylab/internal/shellgold	0.614s`
+	raw := `2026-11-16T07:12:05.110Z === RUN   TestShellGoldCompare
+2026-11-16T07:12:06.489Z     compare_test.go:118: mismatch on key 'hardening_pve_apply'
+2026-11-16T07:12:06.520Z --- FAIL: TestShellGoldCompare (0.42s)
+2026-11-16T07:12:06.529Z panic: runtime error: index out of range [3] with length 3
+2026-11-16T07:12:06.531Z 	go/internal/shellgold/compare.go:94 +0x1b4
+2026-11-16T07:12:06.532Z FAIL	keylab/internal/shellgold	0.614s`
 
 	extracts := ExtractCILog(raw)
-	if len(extracts) < 2 {
-		t.Fatalf("expected at least 2 extracts (fail + panic), got %d: %+v", len(extracts), extracts)
+	if len(extracts) != 2 {
+		t.Fatalf("expected exactly 2 extracts (fail + panic, no false lint_fail), got %d: %+v", len(extracts), extracts)
 	}
 
 	var sawFail, sawPanic bool
 	for _, ex := range extracts {
+		if strings.Contains(ex.Message, "2026-11-16T") {
+			t.Errorf("expected ISO timestamp stripped from message, got %q", ex.Message)
+		}
 		if ex.Kind == "test_fail" && ex.Symbol == "TestShellGoldCompare" && strings.Contains(ex.FileLine, "compare_test.go:118") {
 			sawFail = true
-			if !strings.Contains(ex.ReproCmd, "TestShellGoldCompare") {
-				t.Errorf("expected reproCmd to include test filter, got %q", ex.ReproCmd)
+			if !strings.Contains(ex.ReproCmd, "TestShellGoldCompare") || !strings.Contains(ex.ReproCmd, "./internal/shellgold") {
+				t.Errorf("expected reproCmd to include package and test filter, got %q", ex.ReproCmd)
 			}
 		}
 		if ex.Kind == "panic" && strings.Contains(ex.Message, "index out of range") && strings.Contains(ex.FileLine, "compare.go:94") {
@@ -118,7 +121,7 @@ func TestSimulationLifecycleActions(t *testing.T) {
 	}
 
 	// Merging conflicted br-open-421 before AutoResolve must fail
-	if _, err := mgr.MergeBranch("br-open-421"); err == nil {
+	if _, err := mgr.MergeBranch("br-open-421", "merge"); err == nil {
 		t.Fatalf("expected merge to fail while CHANGELOG conflict is unresolved")
 	}
 
@@ -128,7 +131,7 @@ func TestSimulationLifecycleActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AutoResolveConflict failed: %v", err)
 	}
-	snap, err = mgr.MergeBranch("br-open-421")
+	snap, err = mgr.MergeBranch("br-open-421", "squash")
 	if err != nil {
 		t.Fatalf("MergeBranch after AutoResolve failed: %v", err)
 	}
@@ -246,8 +249,92 @@ func TestCollectLiveRepoTemp(t *testing.T) {
 	if featBranch == nil {
 		t.Fatalf("expected feat/changelog-entry in live branches, got %+v", snap.Branches)
 	}
+	if featBranch.Hemisphere != "lower" {
+		t.Fatalf("expected unpushed local branch without PR to open in lower hemisphere, got %q", featBranch.Hemisphere)
+	}
 	if featBranch.Conflict == nil || !featBranch.Conflict.HasConflict || !featBranch.Conflict.IsChangelogOrLock {
 		t.Fatalf("expected git merge-tree to detect CHANGELOG.md conflict, got %+v", featBranch.Conflict)
+	}
+}
+
+func TestSimulationDeleteBranch(t *testing.T) {
+	mgr := NewManager("")
+	snap, err := mgr.DeleteBranch("br-local-exp")
+	if err != nil {
+		t.Fatalf("DeleteBranch failed: %v", err)
+	}
+	for _, b := range snap.Branches {
+		if b.ID == "br-local-exp" {
+			t.Fatalf("expected br-local-exp to be deleted")
+		}
+	}
+	if _, err := mgr.DeleteBranch("non-existent"); err == nil {
+		t.Fatalf("expected error deleting unknown branch")
+	}
+}
+
+func TestFixCIAndMergeLock(t *testing.T) {
+	mgr := NewManager("")
+	if _, err := mgr.MergeBranch("br-open-422", ""); err == nil {
+		t.Fatalf("expected MergeBranch to fail while CI status is FAILURE")
+	}
+	snap, err := mgr.FixCI("br-open-422")
+	if err != nil {
+		t.Fatalf("FixCI failed: %v", err)
+	}
+	var fixed *model.BranchArc
+	for i := range snap.Branches {
+		if snap.Branches[i].ID == "br-open-422" {
+			fixed = &snap.Branches[i]
+		}
+	}
+	if fixed == nil || fixed.PR == nil || fixed.PR.CI == nil || fixed.PR.CI.State != "SUCCESS" {
+		t.Fatalf("expected br-open-422 CI to be SUCCESS after FixCI, got %+v", fixed)
+	}
+	if _, err := mgr.MergeBranch("br-open-422", "rebase"); err != nil {
+		t.Fatalf("expected MergeBranch to succeed after FixCI, got %v", err)
+	}
+}
+
+func TestCheckoutEditPRAndAmendCommit(t *testing.T) {
+	mgr := NewManager("")
+	// Non-HEAD branch cannot amend commit
+	if _, err := mgr.AmendLastCommit("br-local-wip", "updated msg"); err == nil {
+		t.Fatalf("expected AmendLastCommit to fail for non-HEAD branch")
+	}
+	// Checkout local branch makes it HEAD and allows AmendLastCommit
+	snap, err := mgr.CheckoutBranch("br-local-wip")
+	if err != nil {
+		t.Fatalf("CheckoutBranch failed: %v", err)
+	}
+	var wip *model.BranchArc
+	for i := range snap.Branches {
+		if snap.Branches[i].ID == "br-local-wip" {
+			wip = &snap.Branches[i]
+		}
+	}
+	if wip == nil || !wip.IsHEAD || !wip.CanAmendCommit {
+		t.Fatalf("expected checked-out br-local-wip to be HEAD and amendable: %+v", wip)
+	}
+	snap, err = mgr.AmendLastCommit("br-local-wip", "feat(doctor): refined keychain ACL check")
+	if err != nil {
+		t.Fatalf("AmendLastCommit failed: %v", err)
+	}
+	for _, b := range snap.Branches {
+		if b.ID == "br-local-wip" && b.LastCommitMsg != "feat(doctor): refined keychain ACL check" {
+			t.Fatalf("unexpected amended commit msg: %q", b.LastCommitMsg)
+		}
+	}
+
+	// Update PR metadata
+	snap, err = mgr.UpdatePRMeta("br-open-421", "feat(report): clean audit export", "Updated PR body")
+	if err != nil {
+		t.Fatalf("UpdatePRMeta failed: %v", err)
+	}
+	for _, b := range snap.Branches {
+		if b.ID == "br-open-421" && (b.PR.Title != "feat(report): clean audit export" || b.PR.Body != "Updated PR body") {
+			t.Fatalf("unexpected PR metadata after UpdatePRMeta: %+v", b.PR)
+		}
 	}
 }
 
@@ -294,5 +381,155 @@ func TestValidateBranchName(t *testing.T) {
 		if err := validateBranchName(name); err == nil {
 			t.Errorf("expected %q to be rejected by validateBranchName", name)
 		}
+	}
+}
+
+func TestCollectLiveRepoRemoteOnlyAndConflictMutations(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not installed")
+	}
+
+	originDir := t.TempDir()
+	workDir := t.TempDir()
+
+	runGitIn := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Tester",
+			"GIT_AUTHOR_EMAIL=tester@example.com",
+			"GIT_COMMITTER_NAME=Tester",
+			"GIT_COMMITTER_EMAIL=tester@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v in %s failed: %v\n%s", args, dir, err, string(out))
+		}
+		return string(out)
+	}
+
+	runGitIn(originDir, "init", "--bare", "-b", "main")
+	runGitIn(workDir, "init", "-b", "main")
+	runGitIn(workDir, "config", "user.name", "Tester")
+	runGitIn(workDir, "config", "user.email", "tester@example.com")
+	runGitIn(workDir, "remote", "add", "origin", originDir)
+
+	// Başlangıç omurgası (main)
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- init\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# GitArc Test Repo\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "add", "CHANGELOG.md", "README.md")
+	runGitIn(workDir, "commit", "-m", "chore: initial commit")
+	runGitIn(workDir, "push", "-u", "origin", "main")
+
+	// Mutasyon 1: Yerelde silinmiş ama origin üzerinde açık & çakışmalı dal
+	runGitIn(workDir, "checkout", "-b", "feat/old-conflicted-pr")
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- feature conflicting entry\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "feat: conflicting changelog update")
+	runGitIn(workDir, "push", "-u", "origin", "feat/old-conflicted-pr")
+	runGitIn(workDir, "checkout", "main")
+	runGitIn(workDir, "branch", "-D", "feat/old-conflicted-pr")
+
+	// Mutasyon 2: Merge edilmiş ama origin'de kalıntısı bırakılmış artık dal
+	runGitIn(workDir, "checkout", "-b", "feat/stale-merged-remote")
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# GitArc Test Repo\n- merged feature\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "feat: merged feature")
+	runGitIn(workDir, "push", "-u", "origin", "feat/stale-merged-remote")
+	runGitIn(workDir, "checkout", "main")
+	runGitIn(workDir, "merge", "--no-ff", "feat/stale-merged-remote", "-m", "Merge pull request #77 from test/feat/stale-merged-remote")
+	runGitIn(workDir, "branch", "-d", "feat/stale-merged-remote")
+
+	// Mutasyon 3: main ilerlemesi ve çakışma tetikleme
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- main release conflict update\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "chore: release update on main")
+	runGitIn(workDir, "push", "origin", "main")
+
+	// Doğrulama 1: CollectLiveRepo remote-only çakışmalı dalı ve stale merged dalı görmeli
+	snap, err := CollectLiveRepo("live-mut", "mut-repo", workDir, nil)
+	if err != nil {
+		t.Fatalf("CollectLiveRepo failed: %v", err)
+	}
+
+	var oldConflicted *model.BranchArc
+	var staleEntries []model.BranchArc
+	for i := range snap.Branches {
+		b := snap.Branches[i]
+		if b.Name == "feat/old-conflicted-pr" {
+			cp := b
+			oldConflicted = &cp
+		}
+		if b.Name == "feat/stale-merged-remote" {
+			staleEntries = append(staleEntries, b)
+		}
+	}
+
+	if oldConflicted == nil {
+		t.Fatalf("expected remote-only branch feat/old-conflicted-pr to be discovered, got branches: %+v", snap.Branches)
+	}
+	if oldConflicted.HasLocal || !oldConflicted.HasRemote {
+		t.Fatalf("expected HasLocal=false HasRemote=true for remote-only branch, got %+v", oldConflicted)
+	}
+	if oldConflicted.Hemisphere != "upper" || oldConflicted.State != "open" {
+		t.Fatalf("expected upper/open branch arc, got hemisphere=%q state=%q", oldConflicted.Hemisphere, oldConflicted.State)
+	}
+	if oldConflicted.AheadMain != 1 || oldConflicted.BehindMain < 1 {
+		t.Fatalf("expected AheadMain=1 BehindMain>=1, got ahead=%d behind=%d", oldConflicted.AheadMain, oldConflicted.BehindMain)
+	}
+	if oldConflicted.Conflict == nil || !oldConflicted.Conflict.HasConflict || !oldConflicted.Conflict.IsChangelogOrLock {
+		t.Fatalf("expected git merge-tree to detect CHANGELOG conflict on remote-only branch, got %+v", oldConflicted.Conflict)
+	}
+
+	if len(staleEntries) == 0 {
+		t.Fatalf("expected feat/stale-merged-remote to appear as merged arch, got none")
+	}
+	for _, st := range staleEntries {
+		if st.State == "open" {
+			t.Fatalf("expected stale merged remote branch to not be open, got %+v", st)
+		}
+	}
+
+	// Mutasyon 4: Manager.DeleteBranch ile remote-only dalı silme
+	mgr := NewManager(workDir)
+	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
+		t.Fatalf("SwitchRepo(live-custom) failed: %v", err)
+	}
+	afterDel, err := mgr.DeleteBranch(oldConflicted.ID)
+	if err != nil {
+		t.Fatalf("DeleteBranch(%q) failed: %v", oldConflicted.ID, err)
+	}
+	for _, b := range afterDel.Branches {
+		if b.Name == "feat/old-conflicted-pr" {
+			t.Fatalf("expected feat/old-conflicted-pr to be removed after DeleteBranch, still found: %+v", b)
+		}
+	}
+
+	checkRef := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/feat/old-conflicted-pr")
+	checkRef.Dir = originDir
+	if err := checkRef.Run(); err == nil {
+		t.Fatalf("expected refs/heads/feat/old-conflicted-pr to be deleted in bare origin repo")
+	}
+
+	// Mutasyon 5: PruneGone ile merge edilmiş uzak kalıntı dalın origin'den temizlenmesi
+	_, removed, err := mgr.PruneGone()
+	if err != nil {
+		t.Fatalf("PruneGone failed: %v", err)
+	}
+	if removed < 1 {
+		t.Fatalf("expected PruneGone to delete at least 1 stale remote branch, got removed=%d", removed)
+	}
+	checkStaleRef := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/feat/stale-merged-remote")
+	checkStaleRef.Dir = originDir
+	if err := checkStaleRef.Run(); err == nil {
+		t.Fatalf("expected refs/heads/feat/stale-merged-remote to be deleted in bare origin repo after PruneGone")
 	}
 }
