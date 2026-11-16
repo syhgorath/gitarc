@@ -81,17 +81,41 @@
             <button type="button" class="z-btn" id="zoom-in" title="Yakınlaştır">+</button>
           </div>
         </div>
+
+        <!-- PocketUI Tabbed Bottom Dock -->
+        <footer class="bottom-dock" id="bottom-dock" aria-label="PocketUI Alt Panel">
+          <div class="dock-header">
+            <div class="dock-tabs" role="tablist">
+              <button type="button" class="dock-tab active" data-tab="radar" id="dock-tab-radar" role="tab" aria-selected="true">
+                🚨 Hata &amp; Uyarı Radarı <span class="dock-badge" id="dock-radar-count">0</span>
+              </button>
+              <button type="button" class="dock-tab" data-tab="logs" id="dock-tab-logs" role="tab" aria-selected="false">
+                📜 Sistem &amp; Git Logları <span class="dock-badge" id="dock-log-count">0</span>
+              </button>
+              <button type="button" class="dock-tab" data-tab="actions" id="dock-tab-actions" role="tab" aria-selected="false">
+                ⚡ Son İşlemler <span class="dock-badge" id="dock-action-count">0</span>
+              </button>
+            </div>
+            <div class="dock-tools">
+              <button type="button" class="dock-tool-btn" id="dock-clear-btn" title="Logları temizle">🧹 Temizle</button>
+              <button type="button" class="dock-tool-btn" id="dock-toggle-btn" title="Alt paneli daralt / genişlet">▼</button>
+            </div>
+          </div>
+          <div class="dock-body" id="dock-body">
+            <div class="dock-pane active" id="dock-pane-radar" role="tabpanel">
+              <div class="dock-radar-list" id="radar-list"></div>
+            </div>
+            <div class="dock-pane hidden" id="dock-pane-logs" role="tabpanel">
+              <div class="dock-logs-list" id="dock-logs-stream"></div>
+            </div>
+            <div class="dock-pane hidden" id="dock-pane-actions" role="tabpanel">
+              <div class="dock-actions-list" id="dock-actions-stream"></div>
+            </div>
+          </div>
+        </footer>
       </section>
 
-      <aside class="inspector-pane" aria-label="Akıllı Teşhis ve Yaşam Döngüsü Paneli">
-        <div class="panel-section radar-section">
-          <div class="panel-head">
-            <h2>Akıllı Hata Radarı</h2>
-            <span class="radar-counter" id="radar-count">0 uyarı</span>
-          </div>
-          <div class="radar-list" id="radar-list"></div>
-        </div>
-
+      <aside class="inspector-pane" aria-label="Dal ve Commit Stüdyosu">
         <div class="panel-section detail-section" id="inspector-detail">
           <div class="empty-detail">İncelemek için soldaki parabolik grafikten bir dal kapsülü veya düğüm seçin.</div>
         </div>
