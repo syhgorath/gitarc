@@ -2188,7 +2188,7 @@
     }
 
     const isNewBranch = cleanBranch !== curBranch;
-    const switchCmd = isNewBranch ? `git switch -c ${cleanBranch} origin/${defBranch}` : '';
+    const switchCmd = isNewBranch ? `git checkout -b ${cleanBranch}` : '';
 
     // NEVER use git add -A or git add .!
     const filesListStr = candidateFiles.length > 0 ? candidateFiles.join(' ') : '<dosyalar>';
