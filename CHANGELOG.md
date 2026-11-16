@@ -2,6 +2,13 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
+## [0.4.0] - 2026-11-16
+
+### Eklenenler
+- **Uzak (`origin/*` / GitHub-Only PR) Dal Görünürlüğü & Çakışma Tespiti:** Yerel kopyası silinmiş olsa dahi `refs/remotes/origin/*` veya açık GitHub PR'ı bulunan tüm dallar üst yarı-kürede keşfedilir; `git merge-tree --write-tree` ile `origin/main` çakışmaları çalışma dizinine dokunmadan tespit edilir (`collectRemoteOnlyBranches`).
+- **Tek Tıkla Uzak PR Kapatma & Remote Dal Silme / İndirme:** `DeleteBranch` ve `PruneGone` artık yalnızca yerel dalları değil `gh pr close --delete-branch` ve `git push origin --delete` ile uzak kalıntı ve eski PR dallarını da temizler; yerelde olmayan uzak dallar `git switch --track` ile tek tıkla yerelde indirilip geçiş yapılabilir.
+- **TDD Mutasyon Test Süiti & Branch Adı Ayrıştırma Düzeltmesi:** `TestCollectLiveRepoRemoteOnlyAndConflictMutations` ile bare `origin` + klon üzerinde çakışma ve artık uzak dal mutasyonları doğrulanır; `reMergePRSubject` desenindeki `/` içeren dal adlarının kesilme hatası düzeltildi.
+
 ## [0.3.0] - 2026-11-16
 
 ### Eklenenler

@@ -39,7 +39,7 @@ func InvalidateGHCache(repoPath string) {
 
 var (
 	reMergeTreeConflict = regexp.MustCompile(`CONFLICT\s*\([^)]+\):\s*Merge conflict in\s+(.+)$`)
-	reMergePRSubject    = regexp.MustCompile(`Merge pull request #(\d+) from \S+/([^\s]+)`)
+	reMergePRSubject    = regexp.MustCompile(`Merge pull request #(\d+) from [^/\s]+/([^\s]+)`)
 	reMergeBranchSubj   = regexp.MustCompile(`Merge branch '([^']+)'`)
 	reTrackAhead        = regexp.MustCompile(`ahead (\d+)`)
 	reTrackBehind       = regexp.MustCompile(`behind (\d+)`)
@@ -211,6 +211,8 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 		mergedArches = append(mergedArches, ghMergedArches...)
 	}
 	branches := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, nodes, shaToIdx, dirtyCount, ghPRs, mergedPRs, mergedArches)
+	remoteBranches := collectRemoteOnlyBranches(ctx, repoPath, remoteName, defaultBranch, baseRef, nodes, shaToIdx, branches, ghPRs, mergedPRs, mergedArches)
+	branches = append(branches, remoteBranches...)
 	branches = append(mergedArches, branches...)
 
 	for i := range branches {
@@ -374,8 +376,8 @@ func extractMergedArchesFromSpine(ctx context.Context, repoPath, defaultBranch s
 			EndSpineIndex:   node.SpineIndex,
 			BaseSHA:         baseSHA,
 			MergeSHA:        node.ShortSHA,
-			HasRemote:       true,
-			RemoteRef:       "origin/" + name,
+			HasRemote:       false,
+			RemoteRef:       "",
 			OriginGone:      false,
 			PR:              pr,
 			HasLocal:        false,
@@ -601,8 +603,8 @@ func fetchGHMergedPRs(ctx context.Context, repoPath string, nodes []model.Commit
 			EndSpineIndex:   endIdx,
 			BaseSHA:         nodes[startIdx].ShortSHA,
 			MergeSHA:        nodes[endIdx].ShortSHA,
-			HasRemote:       true,
-			RemoteRef:       "origin/" + it.HeadRefName,
+			HasRemote:       false,
+			RemoteRef:       "",
 			PR:              &prObj,
 			LastCommitMsg:   it.Title,
 		})
@@ -617,6 +619,15 @@ func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 	}
 	if b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
 		return "git status -s && git add -A && git commit -m \"wip: save local changes\""
+	}
+	if !b.HasLocal && b.HasRemote {
+		if b.State == "merged" || b.OriginGone {
+			return fmt.Sprintf("git push origin --delete %s && git fetch --prune origin", b.Name)
+		}
+		if b.PR != nil && b.PR.Number > 0 {
+			return fmt.Sprintf("gh pr close %d --delete-branch", b.PR.Number)
+		}
+		return fmt.Sprintf("git push origin --delete %s", b.Name)
 	}
 	if b.State == "merged" || b.OriginGone || b.State == "gone" {
 		return fmt.Sprintf("git branch -D %s && git fetch --prune origin", b.Name)
@@ -863,6 +874,209 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 			LastCommitMsg:    fmt.Sprintf("%s üzerinde %d uncommitted değişiklik", defaultBranch, dirtyCount),
 		})
 	}
+	return branches
+}
+
+func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaultBranch, baseRef string, nodes []model.CommitNode, shaToIdx map[string]int, localBranches []model.BranchArc, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) []model.BranchArc {
+	if remoteName == "" {
+		return nil
+	}
+
+	localByName := map[string]bool{
+		defaultBranch: true,
+	}
+	for _, b := range localBranches {
+		localByName[b.Name] = true
+	}
+
+	mergedArchByName := map[string]int{}
+	for idx, a := range mergedArches {
+		if a.Name != "" {
+			mergedArchByName[a.Name] = idx
+		}
+		if a.HasLocal && a.Name != "" {
+			localByName[a.Name] = true
+		}
+	}
+
+	out, _, err := runCmd(ctx, repoPath, "git", "for-each-ref",
+		"--format=%(refname:short)\x1f%(objectname:short)\x1f%(contents:subject)",
+		"refs/remotes/"+remoteName)
+
+	var branches []model.BranchArc
+	lastSpine := len(nodes) - 1
+	seenRemote := map[string]bool{}
+	prefix := remoteName + "/"
+
+	if err == nil {
+		for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			parts := strings.Split(line, "\x1f")
+			if len(parts) < 3 {
+				continue
+			}
+			remoteRef := parts[0]
+			remoteSHA := parts[1]
+			subject := parts[2]
+			if !strings.HasPrefix(remoteRef, prefix) {
+				continue
+			}
+			name := strings.TrimPrefix(remoteRef, prefix)
+			if name == "" || name == "HEAD" || name == defaultBranch {
+				continue
+			}
+			seenRemote[name] = true
+
+			if archIdx, ok := mergedArchByName[name]; ok {
+				mergedArches[archIdx].HasRemote = true
+				mergedArches[archIdx].RemoteRef = remoteRef
+				mergedArches[archIdx].OriginGone = true
+			}
+
+			if localByName[name] {
+				continue
+			}
+
+			startIdx := lastSpine - 1
+			if startIdx < 0 {
+				startIdx = 0
+			}
+			baseSHA := nodes[startIdx].ShortSHA
+			if mbOut, _, err := runCmd(ctx, repoPath, "git", "merge-base", baseRef, remoteRef); err == nil {
+				mb := strings.TrimSpace(mbOut)
+				if idx, ok := shaToIdx[mb]; ok {
+					startIdx = idx
+					baseSHA = nodes[idx].ShortSHA
+				}
+			}
+
+			aheadMain, behindMain := 0, 0
+			if cntOut, _, err := runCmd(ctx, repoPath, "git", "rev-list", "--left-right", "--count", baseRef+"..."+remoteRef); err == nil {
+				fields := strings.Fields(cntOut)
+				if len(fields) == 2 {
+					behindMain, _ = strconv.Atoi(fields[0])
+					aheadMain, _ = strconv.Atoi(fields[1])
+				}
+			}
+
+			var prPtr *model.PRStatus
+			if prVal, ok := ghPRs[name]; ok {
+				p := prVal
+				prPtr = &p
+			}
+			mergedPR, isGHMerged := mergedPRs[name]
+
+			// Kural A: Merge edilmiş uzak kalıntı dal
+			if prPtr == nil && (isGHMerged || aheadMain == 0) {
+				if _, exists := mergedArchByName[name]; exists {
+					continue
+				}
+				var mp *model.PRStatus
+				if isGHMerged {
+					p := mergedPR
+					mp = &p
+				}
+				branches = append(branches, model.BranchArc{
+					ID:              "remote-" + sanitizeID(name),
+					Name:            name,
+					Hemisphere:      "upper",
+					State:           "merged",
+					StartSpineIndex: startIdx,
+					EndSpineIndex:   lastSpine,
+					BaseSHA:         baseSHA,
+					MergeSHA:        remoteSHA,
+					HasRemote:       true,
+					RemoteRef:       remoteRef,
+					OriginGone:      true,
+					PR:              mp,
+					HasLocal:        false,
+					LocalSHA:        remoteSHA,
+					AheadMain:       aheadMain,
+					BehindMain:      behindMain,
+					LastCommitMsg:   subject,
+				})
+				continue
+			}
+
+			// Kural B: Açık remote-only dal veya açık PR
+			var changed []string
+			if diffOut, _, err := runCmd(ctx, repoPath, "git", "diff", "--name-only", baseRef+"..."+remoteRef); err == nil {
+				for _, f := range strings.Split(strings.TrimSpace(diffOut), "\n") {
+					if strings.TrimSpace(f) != "" {
+						changed = append(changed, strings.TrimSpace(f))
+					}
+				}
+			}
+
+			var conflict *model.ConflictDetail
+			if aheadMain > 0 {
+				mtOut, mtCode, _ := runCmd(ctx, repoPath, "git", "merge-tree", "--write-tree", baseRef, remoteRef)
+				conflict = ParseMergeTreeOutput(mtCode, mtOut)
+			}
+
+			endIdx := startIdx + 2
+			if endIdx > lastSpine {
+				endIdx = lastSpine
+			}
+			if endIdx <= startIdx {
+				endIdx = startIdx + 1
+			}
+
+			branches = append(branches, model.BranchArc{
+				ID:              "remote-" + sanitizeID(name),
+				Name:            name,
+				Hemisphere:      "upper",
+				State:           "open",
+				StartSpineIndex: startIdx,
+				EndSpineIndex:   endIdx,
+				BaseSHA:         baseSHA,
+				HasRemote:       true,
+				RemoteRef:       remoteRef,
+				PR:              prPtr,
+				HasLocal:        false,
+				LocalSHA:        remoteSHA,
+				AheadMain:       aheadMain,
+				BehindMain:      behindMain,
+				LastCommitMsg:   subject,
+				ChangedFiles:    changed,
+				Conflict:        conflict,
+			})
+		}
+	}
+
+	// Henüz local fetch edilmemiş açık GitHub PR'larını da üst yarımküreye ekle
+	for name, prVal := range ghPRs {
+		if localByName[name] || seenRemote[name] || name == "" || name == defaultBranch {
+			continue
+		}
+		p := prVal
+		startIdx := lastSpine - 1
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		endIdx := lastSpine + 1
+		if endIdx <= startIdx {
+			endIdx = startIdx + 1
+		}
+		branches = append(branches, model.BranchArc{
+			ID:              "remote-" + sanitizeID(name),
+			Name:            name,
+			Hemisphere:      "upper",
+			State:           "open",
+			StartSpineIndex: startIdx,
+			EndSpineIndex:   endIdx,
+			BaseSHA:         nodes[startIdx].ShortSHA,
+			HasRemote:       true,
+			RemoteRef:       remoteName + "/" + name,
+			HasLocal:        false,
+			PR:              &p,
+			AheadMain:       1,
+			LastCommitMsg:   p.Title,
+		})
+	}
+
 	return branches
 }
 

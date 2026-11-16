@@ -994,6 +994,8 @@
     const isFailed = b.pr?.ci?.state === 'FAILURE';
     const hasConflict = Boolean(b.conflict?.hasConflict && !b.conflict.resolved);
     const isLive = state.snapshot?.repo?.mode === 'live';
+    const isRemoteOnly = !b.hasLocal && b.hasRemote && b.state === 'open';
+    const delTitle = isRemoteOnly ? 'PR Kapat &amp; Uzak Dalı Sil' : 'Dalı Sil';
 
     let badgeTone = 'sky';
     let badgeText = b.pr ? `PR #${b.pr.number} · ${b.pr.reviewState}` : 'Remote Ray';
@@ -1019,6 +1021,9 @@
     card.className = `cap-card ${tone} ${isSelected ? 'selected' : ''}`;
 
     let alertsHtml = '';
+    if (isRemoteOnly) {
+      alertsHtml += '<span class="cap-alert-pill cross">☁ Sadece Origin</span>';
+    }
     if (hasConflict) {
       alertsHtml += `<span class="cap-alert-pill conflict">${b.conflict.isChangelogOrLock ? '⚠ CHANGELOG / Lock' : '⚠ Conflict'}</span>`;
     }
@@ -1027,8 +1032,9 @@
     }
 
     const isWorkingTreeWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
+    const checkoutTitle = isRemoteOnly ? 'Yerelde İndir &amp; Geç (git switch --track)' : 'Bu dala geç (git switch)';
     const checkoutBtn = (!b.isHead && !isWorkingTreeWip)
-      ? `<button type="button" class="cap-btn-ico" data-act="checkout" title="Bu dala geç (git switch)">🎯</button>`
+      ? `<button type="button" class="cap-btn-ico" data-act="checkout" title="${checkoutTitle}">🎯</button>`
       : '';
 
     let actionRowHtml = '';
@@ -1036,13 +1042,13 @@
       actionRowHtml = `
         <button type="button" class="cap-btn danger" data-act="inspect">🔍 Hatayı Gör</button>
         ${checkoutBtn}
-        <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+        <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
       `;
     } else if (hasConflict && !isLive) {
       actionRowHtml = `
         <button type="button" class="cap-btn amber" data-act="resolve">✦ Auto-Resolve</button>
         ${checkoutBtn}
-        <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+        <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
       `;
     } else if (isLower) {
       if (isWorkingTreeWip) {
@@ -1052,14 +1058,14 @@
           <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
           <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>
           ${checkoutBtn}
-          <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+          <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
         `;
       }
     } else {
       actionRowHtml = `
         <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge (Parabolü Kapat)</button>
         ${checkoutBtn}
-        <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+        <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
       `;
     }
 
@@ -1239,6 +1245,7 @@
     const isLive = snap.repo.mode === 'live';
     const hasConflict = b.conflict?.hasConflict && !b.conflict.resolved;
     const isOpen = b.state === 'open';
+    const isRemoteOnly = !b.hasLocal && b.hasRemote;
     const isVirtualWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
     const ciState = b.pr?.ci?.state;
     const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip;
@@ -1258,10 +1265,11 @@
           ${b.pr ? `<span class="chip accent">PR #${b.pr.number}</span>` : ''}
           ${ciChip}
           ${b.isHead ? '<span class="chip ok">HEAD</span>' : ''}
+          ${isRemoteOnly ? '<span class="chip warn">☁ Yerelde Yok (Sadece Origin)</span>' : ''}
           ${b.originGone ? '<span class="chip warn">origin: gone</span>' : ''}
         </div>
         <div class="det-actions">
-          ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout">🎯 Dala Geç</button>` : ''}
+          ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout">${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
           ${canPromote ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
           ${isOpen && !isVirtualWip ? `
             <div class="merge-group">
@@ -1274,7 +1282,7 @@
             </div>
           ` : ''}
           ${!isLive && hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">✦ Auto-Resolve</button>` : ''}
-          ${!isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-delete">🧹 Sil / Temizle</button>` : ''}
+          ${!isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
         </div>
       </div>
 
@@ -1286,15 +1294,21 @@
             <div class="layer-line">${esc(truncate(b.pr.title, 48))}</div>
             <div class="layer-line">CI: ${esc(b.pr.ci?.workflow || 'ci.yml')} (${esc(b.pr.ci?.duration || '—')})</div>
           ` : `
-            <div class="layer-line">${b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok'}</div>
-            <div class="layer-line">Alt rayda yerel çalışma</div>
+            <div class="layer-line">${isRemoteOnly ? `Remote aktif: origin/${esc(b.name)}` : (b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok')}</div>
+            <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Alt rayda yerel çalışma'}</div>
           `}
         </div>
         <div class="layer-box">
           <h3>Alt Ray · Local</h3>
-          <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
-          <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
-          <div class="layer-line">Uncommitted: ${b.uncommittedCount || 0} dosya</div>
+          ${!b.hasLocal ? `
+            <div class="layer-line">Yerelde dal yok (origin/${esc(b.name)})</div>
+            <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
+            <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
+          ` : `
+            <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
+            <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
+            <div class="layer-line">Uncommitted: ${b.uncommittedCount || 0} dosya</div>
+          `}
         </div>
       </div>
     `;
