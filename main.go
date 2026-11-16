@@ -176,6 +176,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/commit/amend", a.guard(a.handleAmendCommit))
 	mux.HandleFunc("/api/spine/sync", a.guard(a.handleSyncSpine))
 	mux.HandleFunc("/api/logs/clear", a.guard(a.handleClearLogs))
+	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
+	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/test/run", a.guard(a.handleRunLocalTest))
 	return mux
@@ -414,6 +416,32 @@ func (a *App) handleClearLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
+func (a *App) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "POST bekleniyor")
+		return
+	}
+	res, err := a.mgr.CheckForUpdates()
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (a *App) handleProtectBranch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "POST bekleniyor")
+		return
+	}
+	snap, err := a.mgr.ProtectDefaultBranch()
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
 func (a *App) handleResetSimulation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "POST bekleniyor")
@@ -489,6 +517,8 @@ func openBrowser(url string) {
 		cmd = exec.Command("open", url)
 	case "linux":
 		cmd = exec.Command("xdg-open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
 	}
 	if cmd != nil {
 		_ = cmd.Start()
@@ -500,6 +530,7 @@ func main() {
 	repoPath := flag.String("repo", ".", "doğrudan açılacak yerel git deposu yolu ('sim' = demo simülasyon)")
 	openUI := flag.Bool("open", true, "başlatınca varsayılan tarayıcıda aç")
 	mcpMode := flag.Bool("mcp", false, "stdio üzerinden MCP JSON-RPC 2.0 sunucusu olarak çalıştır")
+	teamMode := flag.Bool("team", false, "paylaşılan ekip sunucusu modu (sunucudaki HEAD dalı korur)")
 	flag.Parse()
 
 	targetRepo := *repoPath
@@ -507,6 +538,9 @@ func main() {
 		targetRepo = ""
 	}
 	mgr := gitengine.NewManager(targetRepo)
+	if *teamMode {
+		mgr.SetTeamMode(true)
+	}
 
 	if *mcpMode {
 		if err := mcp.ServeStdio(os.Stdin, os.Stdout, mgr); err != nil {

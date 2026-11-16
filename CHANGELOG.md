@@ -2,6 +2,14 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
+## [0.7.0] - 2026-11-16
+
+### Eklenenler
+- **Mega-Repo (10K Geliştirici) Ölçekleme Altyapısı:** SHA-bazlı dal değerlendirme önbelleği (`branchEvalCache` + `CacheHits`), `--sort=-committerdate --count=40` dal sınırı, ters indeksli (`O(N * F)`) Cross-PR çarpışma motoru, **`👤 Benim Dallarım (@me)`** ve anlık **`📂 Klasör/Dosya Merceği`**.
+- **Çapraz Platform Masaüstü & CI Doğrulaması:** `openBrowser` içine Windows (`rundll32`) desteği eklendi ve `.github/workflows/ci.yml` içine `linux`/`darwin`/`windows` çapraz derleme adımları eklendi.
+- **Team Server Modu (`-team`):** Paylaşılan çalışma dizini `HEAD`'ini değiştiren `Checkout` / `Amend` işlemlerini kilitler; izole `git worktree` çakışma çözümü, PR merge ve uzak dal yaşam döngüsünü çoklu ekip kullanımına güvenli şekilde açar.
+- **Merge Queue (`Auto-Merge`), GitHub Branch Protection & Self-Update Merkezi:** Merge stratejisine `--auto` (Merge Queue) eklendi; `main` dalı koruma kontrolcüsü (`/api/repo/protect`) ve uzak Git tag denetimli güncelleme merkezi (`/api/system/update-check`) eklendi.
+
 ## [0.6.0] - 2026-11-16
 
 ### Eklenenler

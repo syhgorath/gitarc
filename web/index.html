@@ -42,6 +42,8 @@
           <span>Birleşmiş Parabolleri Göster</span>
         </label>
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
+        <button type="button" class="btn ghost" id="btn-protect-branch" title="GitHub main dal koruma ve güvenlik durumu">🛡️ Koruma</button>
+        <button type="button" class="btn ghost mono" id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v0.7.0</button>
         <button type="button" class="btn ghost" id="btn-logs-modal" title="Sistem ve hata kayıtlarını görüntüle">📜 Loglar <span class="badge-count" id="log-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP Bağla</button>
         <button type="button" class="btn ghost" id="btn-sync-spine" title="main ile origin/main arasındaki farkı eşitle">Sync ↑↓</button>
@@ -53,6 +55,10 @@
 
     <section class="kpi-strip" aria-label="Kokpit durumu">
       <div class="kpi-pills" id="kpi-pills"></div>
+      <div class="lens-tools">
+        <input type="search" id="lens-path-input" class="input-control sm mono" placeholder="📂 Klasör/dosya merceği (örn: internal/mcp)" aria-label="Klasör veya dosya merceği">
+        <span class="kpi-pill mono" id="perf-cache-badge" title="Mega-repo SHA önbellek isabet sayısı">⚡ 0 cache</span>
+      </div>
       <div class="drag-hint" id="drag-hint">💡 Açık bir dal kapsülünü ortadaki <strong>main</strong> hattına sürükleyip bırakarak parabolü kapatabilirsin</div>
     </section>
 
@@ -265,6 +271,45 @@
             <div class="studio-foot-right">
               <button type="button" class="btn ghost sm" id="logs-close-btn">Kapat</button>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: BRANCH PROTECTION & SELF-UPDATE MERKEZİ -->
+    <div class="modal-backdrop" id="security-update-modal" hidden>
+      <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="sec-modal-title">
+        <div class="modal-head">
+          <h3 id="sec-modal-title"><span class="modal-dot"></span>🛡️ Dal Koruması, Team Modu &amp; Güncelleme Merkezi</h3>
+          <button type="button" class="icon-close" id="sec-close" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="diag-card">
+            <h4>
+              <span>GitHub Branch Protection (Ana Dal Koruması)</span>
+              <span class="chip" id="sec-prot-badge">Kontrol ediliyor...</span>
+            </h4>
+            <div class="layer-line" id="sec-prot-summary">—</div>
+            <div class="det-actions">
+              <button type="button" class="btn warn sm" id="btn-enable-protection">🛡️ main Dal Korumasını Etkinleştir</button>
+            </div>
+          </div>
+
+          <div class="diag-card">
+            <h4>
+              <span>Self-Update &amp; Team Server Durumu</span>
+              <span class="chip accent mono" id="sec-team-chip">Bireysel Masaüstü</span>
+            </h4>
+            <div class="layer-line" id="sec-update-status">Mevcut sürüm: v0.7.0</div>
+            <div class="cmd-box"><code class="cmd-code" id="sec-update-cmd">git pull --ff-only origin main &amp;&amp; go build -o gitarc .</code></div>
+            <div class="det-actions">
+              <button type="button" class="btn primary sm" id="btn-run-update-check">🔄 Uzak Etiketleri Denetle</button>
+              <button type="button" class="btn sm" id="sec-copy-update-cmd">📋 Güncelleme Komutunu Kopyala</button>
+            </div>
+          </div>
+
+          <div class="modal-foot">
+            <button type="button" class="btn ghost sm" id="sec-close-btn">Kapat</button>
           </div>
         </div>
       </div>

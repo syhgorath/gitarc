@@ -16,18 +16,35 @@ import (
 	"gitarc/internal/model"
 )
 
-const ghCacheTTL = 10 * time.Second
+const (
+	// AppVersion identifies the current GitArc release embedded at build time.
+	AppVersion        = "0.7.0"
+	ghCacheTTL        = 10 * time.Second
+	maxActiveBranches = 40
+)
 
 type ghCacheEntry struct {
-	fetchedAt    time.Time
-	openPRs      map[string]model.PRStatus
-	mergedPRs    map[string]model.PRStatus
-	mergedArches []model.BranchArc
+	fetchedAt         time.Time
+	openPRs           map[string]model.PRStatus
+	mergedPRs         map[string]model.PRStatus
+	mergedArches      []model.BranchArc
+	branchProtected   bool
+	protectionSummary string
+}
+
+type cachedBranchEval struct {
+	mergeBaseSHA string
+	aheadMain    int
+	behindMain   int
+	changedFiles []string
+	conflict     *model.ConflictDetail
 }
 
 var (
-	ghCacheMu sync.Mutex
-	ghCache   = map[string]ghCacheEntry{}
+	ghCacheMu   sync.Mutex
+	ghCache     = map[string]ghCacheEntry{}
+	evalCacheMu sync.RWMutex
+	evalCache   = map[string]cachedBranchEval{}
 )
 
 // InvalidateGHCache clears cached GitHub PR / Actions metadata for repoPath.
@@ -179,6 +196,21 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 		}
 	}
 
+	currentUser := ""
+	if out, _, err := runCmd(ctx, repoPath, "git", "config", "user.name"); err == nil {
+		currentUser = strings.TrimSpace(out)
+	}
+
+	baseTipSHA := ""
+	if out, _, err := runCmd(ctx, repoPath, "git", "rev-parse", "--short", baseRef); err == nil {
+		baseTipSHA = strings.TrimSpace(out)
+	}
+
+	curBranchName := ""
+	if out, _, err := runCmd(ctx, repoPath, "git", "branch", "--show-current"); err == nil {
+		curBranchName = strings.TrimSpace(out)
+	}
+
 	headSHA := ""
 	if out, _, err := runCmd(ctx, repoPath, "git", "rev-parse", "HEAD"); err == nil {
 		headSHA = strings.TrimSpace(out)
@@ -205,13 +237,16 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	mergedArches := extractMergedArchesFromSpine(ctx, repoPath, spineRef, nodes, shaToIdx)
 	ghPRs := map[string]model.PRStatus{}
 	mergedPRs := map[string]model.PRStatus{}
+	branchProtected := false
+	protectionSummary := "Yerel depo (koruma yok)"
 	if remoteName != "" {
 		var ghMergedArches []model.BranchArc
-		ghPRs, mergedPRs, ghMergedArches = fetchGHMetadataCached(ctx, repoPath, nodes, shaToIdx, mergedArches)
+		ghPRs, mergedPRs, ghMergedArches, branchProtected, protectionSummary = fetchGHMetadataCached(ctx, repoPath, remoteName, defaultBranch, nodes, shaToIdx, mergedArches)
 		mergedArches = append(mergedArches, ghMergedArches...)
 	}
-	branches := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, nodes, shaToIdx, dirtyCount, ghPRs, mergedPRs, mergedArches)
-	remoteBranches := collectRemoteOnlyBranches(ctx, repoPath, remoteName, defaultBranch, baseRef, nodes, shaToIdx, branches, ghPRs, mergedPRs, mergedArches)
+	branches, localHits := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser, nodes, shaToIdx, dirtyCount, ghPRs, mergedPRs, mergedArches)
+	remoteBranches, remoteHits := collectRemoteOnlyBranches(ctx, repoPath, remoteName, defaultBranch, baseRef, baseTipSHA, nodes, shaToIdx, branches, ghPRs, mergedPRs, mergedArches)
+	cacheHits := localHits + remoteHits
 	branches = append(branches, remoteBranches...)
 	branches = append(mergedArches, branches...)
 
@@ -235,16 +270,21 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 
 	return model.CockpitSnapshot{
 		Repo: model.RepoMeta{
-			ID:            repoID,
-			Name:          repoName,
-			Path:          repoPath,
-			DefaultBranch: defaultBranch,
-			RemoteName:    remoteName,
-			Ahead:         ahead,
-			Behind:        behind,
-			DirtyCount:    dirtyCount,
-			Mode:          "live",
-			VersionTag:    versionTag,
+			ID:                repoID,
+			Name:              repoName,
+			Path:              repoPath,
+			DefaultBranch:     defaultBranch,
+			RemoteName:        remoteName,
+			Ahead:             ahead,
+			Behind:            behind,
+			DirtyCount:        dirtyCount,
+			Mode:              "live",
+			VersionTag:        versionTag,
+			CurrentUser:       currentUser,
+			BranchProtected:   branchProtected,
+			ProtectionSummary: protectionSummary,
+			AppVersion:        AppVersion,
+			CacheHits:         cacheHits,
 		},
 		Repos:       repos,
 		Nodes:       nodes,
@@ -409,7 +449,7 @@ type ghPRPayload struct {
 	} `json:"statusCheckRollup"`
 }
 
-func fetchGHMetadataCached(ctx context.Context, repoPath string, nodes []model.CommitNode, shaToIdx map[string]int, existing []model.BranchArc) (map[string]model.PRStatus, map[string]model.PRStatus, []model.BranchArc) {
+func fetchGHMetadataCached(ctx context.Context, repoPath, remoteName, defaultBranch string, nodes []model.CommitNode, shaToIdx map[string]int, existing []model.BranchArc) (map[string]model.PRStatus, map[string]model.PRStatus, []model.BranchArc, bool, string) {
 	key := filepath.Clean(repoPath)
 	ghCacheMu.Lock()
 	cached, ok := ghCache[key]
@@ -425,23 +465,56 @@ func fetchGHMetadataCached(ctx context.Context, repoPath string, nodes []model.C
 		archesCopy := make([]model.BranchArc, len(cached.mergedArches))
 		copy(archesCopy, cached.mergedArches)
 		ghCacheMu.Unlock()
-		return openCopy, mergedCopy, archesCopy
+		return openCopy, mergedCopy, archesCopy, cached.branchProtected, cached.protectionSummary
 	}
 	ghCacheMu.Unlock()
+
+	if urlOut, _, err := runCmd(ctx, repoPath, "git", "remote", "get-url", remoteName); err != nil || !strings.Contains(strings.ToLower(urlOut), "github.com") {
+		summary := "GitHub dışı uzak depo (Saf Git modu)"
+		ghCacheMu.Lock()
+		ghCache[key] = ghCacheEntry{
+			fetchedAt:         time.Now(),
+			openPRs:           map[string]model.PRStatus{},
+			mergedPRs:         map[string]model.PRStatus{},
+			protectionSummary: summary,
+		}
+		ghCacheMu.Unlock()
+		return map[string]model.PRStatus{}, map[string]model.PRStatus{}, nil, false, summary
+	}
 
 	openPRs := fetchGHPRs(ctx, repoPath)
 	mergedPRs, mergedArches := fetchGHMergedPRs(ctx, repoPath, nodes, shaToIdx, existing)
+	branchProtected, protectionSummary := fetchGHBranchProtection(ctx, repoPath, defaultBranch)
 
 	ghCacheMu.Lock()
 	ghCache[key] = ghCacheEntry{
-		fetchedAt:    time.Now(),
-		openPRs:      openPRs,
-		mergedPRs:    mergedPRs,
-		mergedArches: mergedArches,
+		fetchedAt:         time.Now(),
+		openPRs:           openPRs,
+		mergedPRs:         mergedPRs,
+		mergedArches:      mergedArches,
+		branchProtected:   branchProtected,
+		protectionSummary: protectionSummary,
 	}
 	ghCacheMu.Unlock()
 
-	return openPRs, mergedPRs, mergedArches
+	return openPRs, mergedPRs, mergedArches, branchProtected, protectionSummary
+}
+
+func fetchGHBranchProtection(ctx context.Context, repoPath, defaultBranch string) (bool, string) {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return false, "gh CLI yok; koruma okunamadı"
+	}
+	ghCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	out, _, err := runCmd(ghCtx, repoPath, "gh", "api", fmt.Sprintf("repos/:owner/:repo/branches/%s/protection", defaultBranch), "--jq", ".required_status_checks.strict")
+	if err != nil {
+		low := strings.ToLower(out)
+		if strings.Contains(low, "upgrade to github pro") {
+			return false, "Korumasız (GitHub Free özel repo / Pro gerekli)"
+		}
+		return false, "Korumasız (Doğrudan push/force-push açık)"
+	}
+	return true, fmt.Sprintf("Aktif (strict checks: %s)", strings.TrimSpace(out))
 }
 
 type ghMergedPRPayload struct {
@@ -650,12 +723,101 @@ func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 	return fmt.Sprintf("git switch %s", b.Name)
 }
 
-func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef string, nodes []model.CommitNode, shaToIdx map[string]int, dirtyCount int, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) []model.BranchArc {
+func cloneConflict(c *model.ConflictDetail) *model.ConflictDetail {
+	if c == nil {
+		return nil
+	}
+	cp := *c
+	if len(c.Files) > 0 {
+		cp.Files = append([]string(nil), c.Files...)
+	}
+	return &cp
+}
+
+func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, branchRef, branchSHA string, nodes []model.CommitNode, shaToIdx map[string]int, lastSpine int) (startIdx int, baseSHA string, aheadMain, behindMain int, changed []string, conflict *model.ConflictDetail, cacheHit bool) {
+	startIdx = lastSpine - 1
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	baseSHA = nodes[startIdx].ShortSHA
+
+	cacheKey := ""
+	if baseTipSHA != "" && branchSHA != "" {
+		cacheKey = fmt.Sprintf("%s|%s|%s|%s", filepath.Clean(repoPath), baseRef, baseTipSHA, branchSHA)
+		evalCacheMu.RLock()
+		cached, ok := evalCache[cacheKey]
+		evalCacheMu.RUnlock()
+		if ok {
+			if cached.mergeBaseSHA != "" {
+				if idx, exists := shaToIdx[cached.mergeBaseSHA]; exists {
+					startIdx = idx
+					baseSHA = nodes[idx].ShortSHA
+				}
+			}
+			var changedCopy []string
+			if len(cached.changedFiles) > 0 {
+				changedCopy = append([]string(nil), cached.changedFiles...)
+			}
+			return startIdx, baseSHA, cached.aheadMain, cached.behindMain, changedCopy, cloneConflict(cached.conflict), true
+		}
+	}
+
+	mb := ""
+	if mbOut, _, err := runCmd(ctx, repoPath, "git", "merge-base", baseRef, branchRef); err == nil {
+		mb = strings.TrimSpace(mbOut)
+		if idx, ok := shaToIdx[mb]; ok {
+			startIdx = idx
+			baseSHA = nodes[idx].ShortSHA
+		}
+	}
+
+	if cntOut, _, err := runCmd(ctx, repoPath, "git", "rev-list", "--left-right", "--count", baseRef+"..."+branchRef); err == nil {
+		fields := strings.Fields(cntOut)
+		if len(fields) == 2 {
+			behindMain, _ = strconv.Atoi(fields[0])
+			aheadMain, _ = strconv.Atoi(fields[1])
+		}
+	}
+
+	if diffOut, _, err := runCmd(ctx, repoPath, "git", "diff", "--name-only", baseRef+"..."+branchRef); err == nil {
+		for _, f := range strings.Split(strings.TrimSpace(diffOut), "\n") {
+			if strings.TrimSpace(f) != "" {
+				changed = append(changed, strings.TrimSpace(f))
+			}
+		}
+	}
+
+	if aheadMain > 0 {
+		mtOut, mtCode, _ := runCmd(ctx, repoPath, "git", "merge-tree", "--write-tree", baseRef, branchRef)
+		conflict = ParseMergeTreeOutput(mtCode, mtOut)
+	}
+
+	if cacheKey != "" {
+		evalCacheMu.Lock()
+		if len(evalCache) > 2000 {
+			evalCache = map[string]cachedBranchEval{}
+		}
+		evalCache[cacheKey] = cachedBranchEval{
+			mergeBaseSHA: mb,
+			aheadMain:    aheadMain,
+			behindMain:   behindMain,
+			changedFiles: append([]string(nil), changed...),
+			conflict:     cloneConflict(conflict),
+		}
+		evalCacheMu.Unlock()
+	}
+
+	return startIdx, baseSHA, aheadMain, behindMain, changed, conflict, false
+}
+
+func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser string, nodes []model.CommitNode, shaToIdx map[string]int, dirtyCount int, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) ([]model.BranchArc, int) {
 	out, _, err := runCmd(ctx, repoPath, "git", "for-each-ref",
-		"--format=%(refname:short)\x1f%(objectname:short)\x1f%(upstream:short)\x1f%(upstream:track)\x1f%(HEAD)\x1f%(contents:subject)",
+		"--sort=-committerdate",
+		fmt.Sprintf("--count=%d", maxActiveBranches),
+		"--format=%(refname:short)\x1f%(objectname:short)\x1f%(upstream:short)\x1f%(upstream:track)\x1f%(HEAD)\x1f%(contents:subject)\x1f%(authorname)",
 		"refs/heads")
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 
 	mergedArchByName := map[string]int{}
@@ -666,14 +828,15 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 	}
 
 	var branches []model.BranchArc
+	cacheHits := 0
 	lastSpine := len(nodes) - 1
-	headOnDefault := false
+	headOnDefault := curBranchName == defaultBranch
 	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		parts := strings.Split(line, "\x1f")
-		if len(parts) < 6 {
+		if len(parts) < 7 {
 			continue
 		}
 		name := parts[0]
@@ -682,6 +845,10 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 		track := parts[3]
 		isHead := strings.TrimSpace(parts[4]) == "*"
 		subject := parts[5]
+		author := strings.TrimSpace(parts[6])
+		if author == "" {
+			author = currentUser
+		}
 		if name == defaultBranch {
 			if isHead {
 				headOnDefault = true
@@ -689,35 +856,11 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 			continue
 		}
 
-		startIdx := lastSpine - 1
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		baseSHA := nodes[startIdx].ShortSHA
-		if mbOut, _, err := runCmd(ctx, repoPath, "git", "merge-base", baseRef, name); err == nil {
-			mb := strings.TrimSpace(mbOut)
-			if idx, ok := shaToIdx[mb]; ok {
-				startIdx = idx
-				baseSHA = nodes[idx].ShortSHA
-			}
-		}
-
-		aheadMain, behindMain := 0, 0
-		if cntOut, _, err := runCmd(ctx, repoPath, "git", "rev-list", "--left-right", "--count", baseRef+"..."+name); err == nil {
-			fields := strings.Fields(cntOut)
-			if len(fields) == 2 {
-				behindMain, _ = strconv.Atoi(fields[0])
-				aheadMain, _ = strconv.Atoi(fields[1])
-			}
-		}
-
-		var changed []string
-		if diffOut, _, err := runCmd(ctx, repoPath, "git", "diff", "--name-only", baseRef+"..."+name); err == nil {
-			for _, f := range strings.Split(strings.TrimSpace(diffOut), "\n") {
-				if strings.TrimSpace(f) != "" {
-					changed = append(changed, strings.TrimSpace(f))
-				}
-			}
+		startIdx, baseSHA, aheadMain, behindMain, changed, conflict, hit := evaluateBranchVsBase(
+			ctx, repoPath, baseRef, baseTipSHA, name, localSHA, nodes, shaToIdx, lastSpine,
+		)
+		if hit {
+			cacheHits++
 		}
 
 		remoteAhead, remoteBehind, originGone := parseUpstreamTrack(track)
@@ -727,6 +870,9 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 			p := prVal
 			prPtr = &p
 			hasRemote = true
+			if p.Author != "" {
+				author = p.Author
+			}
 		}
 
 		uncommitted := 0
@@ -741,6 +887,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 			if archIdx, exists := mergedArchByName[name]; exists {
 				mergedArches[archIdx].HasLocal = true
 				mergedArches[archIdx].LocalSHA = localSHA
+				mergedArches[archIdx].Author = author
 				mergedArches[archIdx].IsHEAD = isHead
 				mergedArches[archIdx].OriginGone = true
 				mergedArches[archIdx].ID = "local-" + sanitizeID(name)
@@ -766,6 +913,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 				PR:               mp,
 				HasLocal:         true,
 				LocalSHA:         localSHA,
+				Author:           author,
 				IsHEAD:           isHead,
 				AheadMain:        aheadMain,
 				BehindMain:       behindMain,
@@ -785,13 +933,6 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 		state := "open"
 		if originGone {
 			state = "gone"
-		}
-
-		// Working-tree-free conflict check via git merge-tree --write-tree against origin/main
-		var conflict *model.ConflictDetail
-		if aheadMain > 0 {
-			mtOut, mtCode, _ := runCmd(ctx, repoPath, "git", "merge-tree", "--write-tree", baseRef, name)
-			conflict = ParseMergeTreeOutput(mtCode, mtOut)
 		}
 
 		endIdx := startIdx + 2
@@ -818,6 +959,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 			PR:               prPtr,
 			HasLocal:         true,
 			LocalSHA:         localSHA,
+			Author:           author,
 			IsHEAD:           isHead,
 			AheadMain:        aheadMain,
 			BehindMain:       behindMain,
@@ -844,6 +986,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 				HasRemote:        false,
 				HasLocal:         true,
 				LocalSHA:         localSHA,
+				Author:           author,
 				IsHEAD:           isHead,
 				AheadMain:        remoteAhead,
 				BehindMain:       remoteBehind,
@@ -867,6 +1010,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 			HasRemote:        false,
 			HasLocal:         true,
 			LocalSHA:         nodes[lastSpine].ShortSHA,
+			Author:           currentUser,
 			IsHEAD:           true,
 			AheadMain:        0,
 			BehindMain:       0,
@@ -874,12 +1018,12 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef 
 			LastCommitMsg:    fmt.Sprintf("%s üzerinde %d uncommitted değişiklik", defaultBranch, dirtyCount),
 		})
 	}
-	return branches
+	return branches, cacheHits
 }
 
-func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaultBranch, baseRef string, nodes []model.CommitNode, shaToIdx map[string]int, localBranches []model.BranchArc, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) []model.BranchArc {
+func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaultBranch, baseRef, baseTipSHA string, nodes []model.CommitNode, shaToIdx map[string]int, localBranches []model.BranchArc, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) ([]model.BranchArc, int) {
 	if remoteName == "" {
-		return nil
+		return nil, 0
 	}
 
 	localByName := map[string]bool{
@@ -900,10 +1044,13 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 	}
 
 	out, _, err := runCmd(ctx, repoPath, "git", "for-each-ref",
-		"--format=%(refname:short)\x1f%(objectname:short)\x1f%(contents:subject)",
+		"--sort=-committerdate",
+		fmt.Sprintf("--count=%d", maxActiveBranches),
+		"--format=%(refname:short)\x1f%(objectname:short)\x1f%(contents:subject)\x1f%(authorname)",
 		"refs/remotes/"+remoteName)
 
 	var branches []model.BranchArc
+	cacheHits := 0
 	lastSpine := len(nodes) - 1
 	seenRemote := map[string]bool{}
 	prefix := remoteName + "/"
@@ -914,12 +1061,13 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				continue
 			}
 			parts := strings.Split(line, "\x1f")
-			if len(parts) < 3 {
+			if len(parts) < 4 {
 				continue
 			}
 			remoteRef := parts[0]
 			remoteSHA := parts[1]
 			subject := parts[2]
+			author := strings.TrimSpace(parts[3])
 			if !strings.HasPrefix(remoteRef, prefix) {
 				continue
 			}
@@ -939,32 +1087,20 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				continue
 			}
 
-			startIdx := lastSpine - 1
-			if startIdx < 0 {
-				startIdx = 0
-			}
-			baseSHA := nodes[startIdx].ShortSHA
-			if mbOut, _, err := runCmd(ctx, repoPath, "git", "merge-base", baseRef, remoteRef); err == nil {
-				mb := strings.TrimSpace(mbOut)
-				if idx, ok := shaToIdx[mb]; ok {
-					startIdx = idx
-					baseSHA = nodes[idx].ShortSHA
-				}
-			}
-
-			aheadMain, behindMain := 0, 0
-			if cntOut, _, err := runCmd(ctx, repoPath, "git", "rev-list", "--left-right", "--count", baseRef+"..."+remoteRef); err == nil {
-				fields := strings.Fields(cntOut)
-				if len(fields) == 2 {
-					behindMain, _ = strconv.Atoi(fields[0])
-					aheadMain, _ = strconv.Atoi(fields[1])
-				}
+			startIdx, baseSHA, aheadMain, behindMain, changed, conflict, hit := evaluateBranchVsBase(
+				ctx, repoPath, baseRef, baseTipSHA, remoteRef, remoteSHA, nodes, shaToIdx, lastSpine,
+			)
+			if hit {
+				cacheHits++
 			}
 
 			var prPtr *model.PRStatus
 			if prVal, ok := ghPRs[name]; ok {
 				p := prVal
 				prPtr = &p
+				if p.Author != "" {
+					author = p.Author
+				}
 			}
 			mergedPR, isGHMerged := mergedPRs[name]
 
@@ -993,6 +1129,7 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 					PR:              mp,
 					HasLocal:        false,
 					LocalSHA:        remoteSHA,
+					Author:          author,
 					AheadMain:       aheadMain,
 					BehindMain:      behindMain,
 					LastCommitMsg:   subject,
@@ -1001,21 +1138,6 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 			}
 
 			// Kural B: Açık remote-only dal veya açık PR
-			var changed []string
-			if diffOut, _, err := runCmd(ctx, repoPath, "git", "diff", "--name-only", baseRef+"..."+remoteRef); err == nil {
-				for _, f := range strings.Split(strings.TrimSpace(diffOut), "\n") {
-					if strings.TrimSpace(f) != "" {
-						changed = append(changed, strings.TrimSpace(f))
-					}
-				}
-			}
-
-			var conflict *model.ConflictDetail
-			if aheadMain > 0 {
-				mtOut, mtCode, _ := runCmd(ctx, repoPath, "git", "merge-tree", "--write-tree", baseRef, remoteRef)
-				conflict = ParseMergeTreeOutput(mtCode, mtOut)
-			}
-
 			endIdx := startIdx + 2
 			if endIdx > lastSpine {
 				endIdx = lastSpine
@@ -1037,6 +1159,7 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				PR:              prPtr,
 				HasLocal:        false,
 				LocalSHA:        remoteSHA,
+				Author:          author,
 				AheadMain:       aheadMain,
 				BehindMain:      behindMain,
 				LastCommitMsg:   subject,
@@ -1071,13 +1194,14 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 			HasRemote:       true,
 			RemoteRef:       remoteName + "/" + name,
 			HasLocal:        false,
+			Author:          p.Author,
 			PR:              &p,
 			AheadMain:       1,
 			LastCommitMsg:   p.Title,
 		})
 	}
 
-	return branches
+	return branches, cacheHits
 }
 
 func sanitizeID(name string) string {

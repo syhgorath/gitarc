@@ -99,7 +99,7 @@ func handleRequest(req rpcRequest, mgr *gitengine.Manager) rpcResponse {
 				},
 				"serverInfo": map[string]any{
 					"name":    "gitarc",
-					"version": "0.6.0",
+					"version": gitengine.AppVersion,
 				},
 			},
 		}

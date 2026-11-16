@@ -696,3 +696,127 @@ func TestConflictStudioAndLiveWorktreeResolution(t *testing.T) {
 		t.Fatalf("expected feat/conflict-studio conflict to be cleared after worktree resolution, got %+v", resolvedBranch.Conflict)
 	}
 }
+
+func TestMegaRepoCacheTeamModeAndProtection(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not installed")
+	}
+
+	originDir := t.TempDir()
+	workDir := t.TempDir()
+
+	runGitIn := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Tester",
+			"GIT_AUTHOR_EMAIL=tester@example.com",
+			"GIT_COMMITTER_NAME=Tester",
+			"GIT_COMMITTER_EMAIL=tester@example.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v in %s failed: %v\n%s", args, dir, err, string(out))
+		}
+	}
+
+	runGitIn(originDir, "init", "--bare", "-b", "main")
+	runGitIn(workDir, "init", "-b", "main")
+	runGitIn(workDir, "config", "user.name", "Tester")
+	runGitIn(workDir, "config", "user.email", "tester@example.com")
+	runGitIn(workDir, "remote", "add", "origin", originDir)
+
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- init\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "add", "CHANGELOG.md")
+	runGitIn(workDir, "commit", "-m", "chore: init")
+	runGitIn(workDir, "push", "-u", "origin", "main")
+
+	// Yerel dal
+	runGitIn(workDir, "checkout", "-b", "feat/alpha")
+	if err := os.WriteFile(filepath.Join(workDir, "alpha.txt"), []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "add", "alpha.txt")
+	runGitIn(workDir, "commit", "-m", "feat: alpha")
+
+	// Remote-only çakışmalı dal
+	runGitIn(workDir, "checkout", "main")
+	runGitIn(workDir, "checkout", "-b", "feat/team-conflict")
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- team branch change\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "feat: team branch change")
+	runGitIn(workDir, "push", "-u", "origin", "feat/team-conflict")
+	runGitIn(workDir, "checkout", "main")
+	runGitIn(workDir, "branch", "-D", "feat/team-conflict")
+
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- main line\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "chore: main update")
+	runGitIn(workDir, "push", "origin", "main")
+
+	// 1. SHA bazlı evalCache doğrulaması (1. çağrı doldurur, 2. çağrı hit döndürür)
+	snap1, err := CollectLiveRepo("live-cache", "cache-repo", workDir, nil)
+	if err != nil {
+		t.Fatalf("first CollectLiveRepo failed: %v", err)
+	}
+	if snap1.Repo.CurrentUser != "Tester" {
+		t.Fatalf("expected CurrentUser=Tester, got %q", snap1.Repo.CurrentUser)
+	}
+	snap2, err := CollectLiveRepo("live-cache", "cache-repo", workDir, nil)
+	if err != nil {
+		t.Fatalf("second CollectLiveRepo failed: %v", err)
+	}
+	if snap2.Repo.CacheHits == 0 {
+		t.Fatalf("expected CacheHits > 0 on repeated snapshot when branch/base SHAs are unchanged")
+	}
+
+	// 2. Team Server Modu: checkout/amend kilitli ama izole worktree çözümü + delete açık olmalı
+	mgr := NewManager(workDir)
+	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
+		t.Fatalf("SwitchRepo failed: %v", err)
+	}
+	mgr.SetTeamMode(true)
+	if !mgr.IsTeamMode() {
+		t.Fatalf("expected IsTeamMode() == true")
+	}
+	if _, err := mgr.CheckoutBranch("local-feat-alpha"); err == nil || !strings.Contains(err.Error(), "Team Server") {
+		t.Fatalf("expected CheckoutBranch to be blocked in TeamMode, got err=%v", err)
+	}
+	if _, err := mgr.AmendLastCommit("local-feat-alpha", "blocked"); err == nil || !strings.Contains(err.Error(), "Team Server") {
+		t.Fatalf("expected AmendLastCommit to be blocked in TeamMode, got err=%v", err)
+	}
+	if _, err := mgr.ResolveBranchConflict("remote-feat-team-conflict", "ours", nil, true); err != nil {
+		t.Fatalf("expected isolated worktree ResolveBranchConflict to succeed in TeamMode, got %v", err)
+	}
+	if _, err := mgr.DeleteBranch("remote-feat-team-conflict"); err != nil {
+		t.Fatalf("expected remote DeleteBranch to succeed in TeamMode, got %v", err)
+	}
+
+	// 3. Branch Protection ve Update kontrolcüsü (Simülasyon)
+	simMgr := NewManager("")
+	simSnap, err := simMgr.Snapshot()
+	if err != nil {
+		t.Fatalf("sim Snapshot failed: %v", err)
+	}
+	if simSnap.Repo.BranchProtected {
+		t.Fatalf("expected simulation initial BranchProtected == false")
+	}
+	protSnap, err := simMgr.ProtectDefaultBranch()
+	if err != nil {
+		t.Fatalf("ProtectDefaultBranch failed: %v", err)
+	}
+	if !protSnap.Repo.BranchProtected {
+		t.Fatalf("expected BranchProtected == true after ProtectDefaultBranch")
+	}
+	updRes, err := simMgr.CheckForUpdates()
+	if err != nil {
+		t.Fatalf("CheckForUpdates failed: %v", err)
+	}
+	if updRes["currentVersion"] != AppVersion {
+		t.Fatalf("expected CheckForUpdates currentVersion=%q, got %v", AppVersion, updRes["currentVersion"])
+	}
+}
