@@ -923,3 +923,158 @@ func TestCommitWorkingTreeAndPromoteWithCustomPRMeta(t *testing.T) {
 		t.Fatalf("expected custom PR title/body preserved, got PR=%+v", *promoted.PR)
 	}
 }
+
+func TestPruneAndDeleteAutoSwitchFromMergedHEAD(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not installed")
+	}
+
+	originDir := t.TempDir()
+	workDir := t.TempDir()
+
+	runGitIn := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Tester",
+			"GIT_AUTHOR_EMAIL=tester@example.com",
+			"GIT_COMMITTER_NAME=Tester",
+			"GIT_COMMITTER_EMAIL=tester@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v in %s failed: %v\n%s", args, dir, err, string(out))
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	runGitIn(originDir, "init", "--bare", "-b", "main")
+	runGitIn(workDir, "init", "-b", "main")
+	runGitIn(workDir, "config", "user.name", "Tester")
+	runGitIn(workDir, "config", "user.email", "tester@example.com")
+	runGitIn(workDir, "remote", "add", "origin", originDir)
+
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# GitArc\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "add", "README.md")
+	runGitIn(workDir, "commit", "-m", "chore: init")
+	runGitIn(workDir, "push", "-u", "origin", "main")
+
+	createAndMergeGoneBranch := func(name, file string) {
+		runGitIn(workDir, "checkout", "-b", name)
+		if err := os.WriteFile(filepath.Join(workDir, file), []byte(name+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		runGitIn(workDir, "add", file)
+		runGitIn(workDir, "commit", "-m", "feat: "+name)
+		runGitIn(workDir, "push", "-u", "origin", name)
+
+		runGitIn(workDir, "checkout", "main")
+		runGitIn(workDir, "merge", "--no-ff", name, "-m", "Merge pull request #99 from "+name)
+		runGitIn(workDir, "push", "origin", "main")
+		runGitIn(workDir, "push", "origin", "--delete", name)
+		runGitIn(workDir, "fetch", "--prune", "origin")
+		// Kullanıcı bu birleşmiş dalın üstünde kalmış olsun (HEAD = name)
+		runGitIn(workDir, "checkout", name)
+	}
+
+	mgr := NewManager(workDir)
+	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
+		t.Fatalf("SwitchRepo failed: %v", err)
+	}
+
+	// 1. DeleteBranch tek harekette HEAD -> main geçişi yapıp dalı silmeli
+	createAndMergeGoneBranch("feat/single-delete-head", "a.txt")
+	snap1, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	var targetID string
+	for _, b := range snap1.Branches {
+		if b.Name == "feat/single-delete-head" {
+			targetID = b.ID
+			break
+		}
+	}
+	if targetID == "" {
+		t.Fatalf("expected feat/single-delete-head in snapshot")
+	}
+	if _, err := mgr.DeleteBranch(targetID); err != nil {
+		t.Fatalf("DeleteBranch on merged HEAD branch failed: %v", err)
+	}
+	if cur := runGitIn(workDir, "branch", "--show-current"); cur != "main" {
+		t.Fatalf("expected HEAD auto-switched to main, got %q", cur)
+	}
+	if listed := runGitIn(workDir, "branch", "--list", "feat/single-delete-head"); listed != "" {
+		t.Fatalf("expected feat/single-delete-head to be deleted, still got %q", listed)
+	}
+
+	// 2. PruneGone da HEAD üzerindeki birleşmiş dalı main'e geçip temizlemeli
+	createAndMergeGoneBranch("feat/prune-head", "b.txt")
+	_, removed, err := mgr.PruneGone()
+	if err != nil {
+		t.Fatalf("PruneGone on merged HEAD branch failed: %v", err)
+	}
+	if removed < 1 {
+		t.Fatalf("expected at least 1 removed branch, got %d", removed)
+	}
+	if cur := runGitIn(workDir, "branch", "--show-current"); cur != "main" {
+		t.Fatalf("expected HEAD auto-switched to main after PruneGone, got %q", cur)
+	}
+	if listed := runGitIn(workDir, "branch", "--list", "feat/prune-head"); listed != "" {
+		t.Fatalf("expected feat/prune-head to be deleted after PruneGone, still got %q", listed)
+	}
+
+	// 3. Simülasyonda PruneGone yeşil birleşmiş yayları koruyup yalnızca yerel kalıntıyı temizlemeli
+	simMgr := NewManager("")
+	simSnap, simRemoved, err := simMgr.PruneGone()
+	if err != nil {
+		t.Fatalf("sim PruneGone failed: %v", err)
+	}
+	if simRemoved == 0 {
+		t.Fatalf("expected simulation PruneGone removed > 0")
+	}
+	foundMerged415 := false
+	for _, b := range simSnap.Branches {
+		if b.ID == "br-merged-415" {
+			foundMerged415 = true
+			if b.HasLocal || b.OriginGone || b.IsHEAD {
+				t.Fatalf("expected br-merged-415 local remnants cleared, got %+v", b)
+			}
+		}
+	}
+	if !foundMerged415 {
+		t.Fatalf("expected br-merged-415 merged arch to remain visible as clean green arch")
+	}
+
+	// 4. Henüz birleşmemiş boş açık dal (feat/open-empty-head) HEAD iken Push&PR uyarı vermeli, DeleteBranch main'e geçip silebilmeli
+	runGitIn(workDir, "checkout", "-b", "feat/open-empty-head")
+	snapOpen, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	var openEmptyID string
+	for _, b := range snapOpen.Branches {
+		if b.Name == "feat/open-empty-head" {
+			openEmptyID = b.ID
+			break
+		}
+	}
+	if openEmptyID == "" {
+		t.Fatalf("expected feat/open-empty-head in snapshot")
+	}
+	if _, err := mgr.PromoteBranchWithMeta(openEmptyID, "Empty", ""); err == nil || !strings.Contains(err.Error(), "henüz yeni bir commit") {
+		t.Fatalf("expected empty branch PromoteBranchWithMeta to fail cleanly before push, got %v", err)
+	}
+	if _, err := mgr.DeleteBranch(openEmptyID); err != nil {
+		t.Fatalf("DeleteBranch on open clean HEAD branch failed: %v", err)
+	}
+	if cur := runGitIn(workDir, "branch", "--show-current"); cur != "main" {
+		t.Fatalf("expected HEAD auto-switched to main after deleting open HEAD branch, got %q", cur)
+	}
+	if listed := runGitIn(workDir, "branch", "--list", "feat/open-empty-head"); listed != "" {
+		t.Fatalf("expected feat/open-empty-head to be deleted, still got %q", listed)
+	}
+}

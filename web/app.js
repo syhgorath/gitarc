@@ -546,13 +546,40 @@
         return recompute();
       },
       deleteBranch(branchId) {
-        sim.branches = sim.branches.filter((b) => b.id !== branchId);
+        const next = [];
+        sim.branches.forEach((b) => {
+          if (b.id === branchId) {
+            if (b.state === 'merged' && (b.hasLocal || b.originGone)) {
+              next.push({ ...b, hasLocal: false, originGone: false, isHead: false });
+            }
+            return;
+          }
+          next.push(b);
+        });
+        sim.branches = next;
         return recompute();
       },
       pruneGone() {
-        const before = sim.branches.length;
-        sim.branches = sim.branches.filter((b) => !b.originGone && b.state !== 'gone' && b.state !== 'merged');
-        return { snapshot: recompute(), removed: before - sim.branches.length };
+        let removed = 0;
+        const next = [];
+        sim.branches.forEach((b) => {
+          if (b.state === 'merged') {
+            if (b.hasLocal || b.originGone) {
+              next.push({ ...b, hasLocal: false, originGone: false, isHead: false });
+              removed++;
+            } else {
+              next.push(b);
+            }
+            return;
+          }
+          if (b.originGone || b.state === 'gone') {
+            removed++;
+            return;
+          }
+          next.push(b);
+        });
+        sim.branches = next;
+        return { snapshot: recompute(), removed };
       },
       protectBranch() {
         sim.repo.branchProtected = true;
@@ -690,7 +717,7 @@
     const r = snap.repo || {};
     const lastNode = snap.nodes?.[snap.nodes.length - 1]?.shortSha || '';
     const bSig = (snap.branches || []).map((b) => [
-      b.id, b.state, b.hemisphere, b.isHead ? 1 : 0, b.aheadMain, b.behindMain,
+      b.id, b.state, b.hemisphere, b.isHead ? 1 : 0, b.hasLocal ? 1 : 0, b.aheadMain, b.behindMain,
       b.uncommittedCount, b.lastCommitMsg, b.draftPrTitle || '', b.draftPrBody || '',
       (b.changedFiles || []).length, b.originGone ? 1 : 0,
       b.pr?.title || '', b.pr?.body || '', b.pr?.ci?.state || '', b.pr?.ci?.duration || '',
@@ -810,7 +837,7 @@
       el.repoSelect.appendChild(opt);
     });
 
-    const cleanableCount = (snap.branches || []).filter((b) => b.originGone || b.state === 'gone' || (snap.repo.mode !== 'live' && b.state === 'merged')).length;
+    const cleanableCount = (snap.branches || []).filter((b) => b.originGone || b.state === 'gone' || (b.state === 'merged' && b.hasLocal)).length;
     el.pruneCount.textContent = String(cleanableCount);
     document.getElementById('btn-prune-gone').disabled = cleanableCount === 0 && snap.repo.mode !== 'live';
     document.getElementById('btn-new-branch').disabled = false;
@@ -858,7 +885,7 @@
   function renderKPIs() {
     const branches = state.snapshot?.branches || [];
     const upperCount = branches.filter((b) => b.hemisphere === 'upper' && b.state !== 'merged').length;
-    const lowerCount = branches.filter((b) => b.hemisphere === 'lower' && b.state !== 'merged').length;
+    const lowerCount = branches.filter((b) => (b.hemisphere === 'lower' && b.state !== 'merged') || (b.state === 'merged' && (b.hasLocal || b.originGone))).length;
     const mineCount = branches.filter((b) => b.state !== 'merged' && isMyBranch(b)).length;
     const conflictCount = branches.filter((b) => (b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length > 0)).length;
     const failCount = branches.filter((b) => b.pr?.ci?.state === 'FAILURE').length;
@@ -904,7 +931,7 @@
       case 'mine':
         return isMyBranch(b);
       case 'lower':
-        return b.hemisphere === 'lower';
+        return b.hemisphere === 'lower' || (b.state === 'merged' && Boolean(b.hasLocal || b.originGone));
       case 'issues':
         return Boolean((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length));
       case 'ci_fail':
@@ -1111,6 +1138,48 @@
           selectBranch(b.id);
         });
         arcLayer.appendChild(closePath);
+
+        if (b.hasLocal || b.originGone) {
+          const mergeX = geom.endX || xOfSpine(b.endSpineIndex || b.startSpineIndex || 0);
+          const remY = MAIN_Y + 56 + (((b.endSpineIndex || 0) % 2) * 30);
+          const remX = mergeX + 18;
+          const remPath = svgEl('path', {
+            d: `M ${mergeX} ${MAIN_Y} C ${mergeX} ${MAIN_Y + 30}, ${remX - 16} ${remY}, ${remX} ${remY}`,
+            class: `svg-local-remnant-path ${isSelected ? 'selected' : ''} ${visible ? '' : 'dimmed'}`,
+          });
+          remPath.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            selectBranch(b.id);
+          });
+          arcLayer.appendChild(remPath);
+
+          const remFo = svgEl('foreignObject', {
+            x: remX,
+            y: remY - 12,
+            width: 150,
+            height: 26,
+            class: `fo-capsule ${visible ? '' : 'dimmed'}`,
+            'data-remnant-branch-id': b.id,
+          });
+          const remPill = document.createElementNS(XHTML_NS, 'div');
+          remPill.className = `cap-local-remnant ${isSelected ? 'selected' : ''}`;
+          remPill.innerHTML = `
+            <span class="remnant-txt" title="${esc(b.name)}">💻 ${b.isHead ? 'HEAD·' : ''}${esc(truncate(b.name, 13))}</span>
+            <button type="button" class="cap-merged-del" data-act="delete" title="Kalıntı yerel dalı temizle">🧹</button>
+          `;
+          remPill.querySelector('button[data-act="delete"]')?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+          remPill.querySelector('button[data-act="delete"]')?.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            handleDeleteBranch(b.id);
+          });
+          remPill.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+          remPill.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            selectBranch(b.id);
+          });
+          remFo.appendChild(remPill);
+          capsuleLayer.appendChild(remFo);
+        }
       } else {
         // Open half-parabola dashed tail extending past the apex
         arcLayer.appendChild(svgEl('line', {
@@ -1242,12 +1311,19 @@
 
     if (isMerged) {
       const pill = document.createElementNS(XHTML_NS, 'div');
-      const gone = Boolean(b.originGone || b.hasLocal);
-      pill.className = `cap-merged-pill ${isSelected ? 'selected' : ''} ${gone ? 'gone' : ''}`;
+      const hasLocalLeftover = Boolean(b.originGone || b.hasLocal);
+      pill.className = `cap-merged-pill ${isSelected ? 'selected' : ''} ${hasLocalLeftover ? 'gone' : ''}`;
       const prTxt = b.pr ? `#${b.pr.number} ` : '';
+      const localTagHtml = hasLocalLeftover
+        ? `<span class="cap-merged-local-tag" title="Yerelde dal kopyası duruyor">${b.isHead ? 'HEAD·Local' : '💻 Local'}</span>`
+        : '';
+      const delBtnHtml = hasLocalLeftover
+        ? '<button type="button" class="cap-merged-del" data-act="delete" title="Kalıntı yerel dalı temizle">🧹</button>'
+        : '';
       pill.innerHTML = `
-        <span class="cap-merged-txt">✓ ${esc(prTxt + truncate(b.name, 18))}</span>
-        <button type="button" class="cap-merged-del" data-act="delete" title="Kalıntı yerel dalı temizle">🧹</button>
+        <span class="cap-merged-txt">✓ ${esc(prTxt + truncate(b.name, hasLocalLeftover ? 11 : 19))}</span>
+        ${localTagHtml}
+        ${delBtnHtml}
       `;
       pill.querySelector('button[data-act="delete"]')?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
       pill.querySelector('button[data-act="delete"]')?.addEventListener('click', (ev) => {
@@ -1492,6 +1568,40 @@
     renderInspector();
   }
 
+  function suggestUniqueBranchName(b, snap) {
+    const files = b.changedFiles || [];
+    let prefix = 'feat';
+    let slug = 'cockpit-update';
+    if (files.length > 0) {
+      const first = files[0].toLowerCase();
+      if (first.endsWith('.md') || first.startsWith('docs/')) {
+        prefix = 'docs';
+      } else if (first.includes('test')) {
+        prefix = 'test';
+      } else if (first.endsWith('.css') || first.endsWith('.html')) {
+        prefix = 'style';
+      }
+      const base = first.split('/').pop().replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (base && base !== 'index' && base !== 'main') {
+        slug = `${base}-update`;
+      }
+    }
+    const candidateBase = `${prefix}/${slug}`.slice(0, 40);
+    const existing = new Set((snap.branches || []).map((x) => (x.name || '').toLowerCase()));
+    if (!existing.has(candidateBase)) {
+      return candidateBase;
+    }
+    const shortSha = (snap.nodes?.[snap.nodes.length - 1]?.shortSha || '').slice(0, 5);
+    if (shortSha && !existing.has(`${candidateBase}-${shortSha}`.toLowerCase())) {
+      return `${candidateBase}-${shortSha}`;
+    }
+    let n = 2;
+    while (existing.has(`${candidateBase}-${n}`)) {
+      n++;
+    }
+    return `${candidateBase}-${n}`;
+  }
+
   function renderInspector() {
     const snap = state.snapshot;
     if (!snap) return;
@@ -1576,7 +1686,7 @@
             </div>
           ` : ''}
           ${hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">⚡ Çakışma Stüdyosunu Aç</button>` : ''}
-          ${!isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
+          ${!isVirtualWip && (b.state !== 'merged' || b.hasLocal || b.originGone || b.hasRemote) ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
         </div>
       </div>
 
@@ -1595,10 +1705,11 @@
         <div class="layer-box">
           <h3>Alt Ray · Local</h3>
           ${!b.hasLocal ? `
-            <div class="layer-line">Yerelde dal yok (origin/${esc(b.name)})</div>
+            <div class="layer-line">${b.state === 'merged' && !b.originGone ? '✓ Yerel kalıntı dal temizlendi' : `Yerelde dal yok (origin/${esc(b.name)})`}</div>
             <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
             <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
           ` : `
+            ${b.state === 'merged' ? '<div class="layer-line">⚠ Birleşmiş yerel kalıntı (tek tıkla temizlenebilir)</div>' : ''}
             <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
             <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
             <div class="layer-line">Uncommitted: ${b.uncommittedCount || 0} dosya</div>
@@ -1665,7 +1776,7 @@
     }
 
     if (canCommitWorkingTree) {
-      const defaultWtBranch = isVirtualWip ? 'feat/local-changes' : b.name;
+      const defaultWtBranch = isVirtualWip ? suggestUniqueBranchName(b, snap) : b.name;
       const defaultCommitMsg = b.lastCommitMsg || b.draftPrTitle || 'feat: cockpit workflow updates';
       const defaultPrTitle = b.draftPrTitle || b.lastCommitMsg || defaultCommitMsg;
       const defaultPrBody = b.draftPrBody || '';
