@@ -223,7 +223,12 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 		if err != nil {
 			return errResult(err.Error())
 		}
+		mode := snap.Repo.Mode
+		if mode == "" {
+			mode = "live"
+		}
 		return jsonTextResult(map[string]any{
+			"mode":          mode,
 			"repo":          snap.Repo.Name,
 			"defaultBranch": snap.Repo.DefaultBranch,
 			"ahead":         snap.Repo.Ahead,
@@ -250,7 +255,12 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 		if err != nil {
 			return errResult(err.Error())
 		}
+		mode := snap.Repo.Mode
+		if mode == "" {
+			mode = "live"
+		}
 		return jsonTextResult(map[string]any{
+			"mode":     mode,
 			"resolved": true,
 			"branchId": branchID,
 			"strategy": strategy,
@@ -277,6 +287,10 @@ func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 		SuggestedCmd string `json:"suggestedCmd,omitempty"`
 	}
 	var briefs []branchBrief
+	openPRCount := 0
+	localBranchCount := 0
+	mergedCount := 0
+
 	for _, b := range snap.Branches {
 		br := branchBrief{
 			Name:         b.Name,
@@ -293,14 +307,32 @@ func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 			if b.PR.CI != nil {
 				br.CIState = b.PR.CI.State
 			}
+			if b.State == "open" && b.PR.Number > 0 && b.PR.ReviewState != "MERGED" {
+				openPRCount++
+			}
+		}
+		if b.HasLocal && !strings.HasPrefix(b.ID, "gh-merged-") {
+			localBranchCount++
+		}
+		if b.State == "merged" || b.OriginGone {
+			mergedCount++
 		}
 		briefs = append(briefs, br)
 	}
+	mode := snap.Repo.Mode
+	if mode == "" {
+		mode = "live"
+	}
 	return map[string]any{
-		"repo":        snap.Repo,
-		"branches":    briefs,
-		"diagnostics": snap.Diagnostics,
-		"logs":        snap.Logs,
+		"mode":              mode,
+		"openPRCount":      openPRCount,
+		"localBranchCount": localBranchCount,
+		"mergedCount":      mergedCount,
+		"summary":          fmt.Sprintf("%s (%s): %d açık PR, %d yerel dal, %d birleşmiş/temizleme adayı", snap.Repo.Name, mode, openPRCount, localBranchCount, mergedCount),
+		"repo":             snap.Repo,
+		"branches":         briefs,
+		"diagnostics":      snap.Diagnostics,
+		"logs":             snap.Logs,
 	}
 }
 
@@ -341,7 +373,12 @@ func buildConflictsPayload(snap model.CockpitSnapshot, mgr *gitengine.Manager) m
 		}
 		reports = append(reports, r)
 	}
+	mode := snap.Repo.Mode
+	if mode == "" {
+		mode = "live"
+	}
 	return map[string]any{
+		"mode":          mode,
 		"repo":          snap.Repo.Name,
 		"conflictCount": len(reports),
 		"items":         reports,
@@ -369,7 +406,12 @@ func buildCIDigestPayload(snap model.CockpitSnapshot) map[string]any {
 			Extracts:   b.PR.CI.Extracts,
 		})
 	}
+	mode := snap.Repo.Mode
+	if mode == "" {
+		mode = "live"
+	}
 	return map[string]any{
+		"mode":     mode,
 		"repo":     snap.Repo.Name,
 		"failures": items,
 	}

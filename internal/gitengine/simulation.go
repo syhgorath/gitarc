@@ -64,8 +64,10 @@ type simWorkspace struct {
 	branches []model.BranchArc
 }
 
-// NewManager initializes the GitArc engine with the KeyLab ecosystem simulation
-// and auto-discovers local git repositories (such as sshpocket and custom -repo).
+// NewManager initializes the GitArc engine.
+// Canlı mod için bir depo yolu (örn. "." veya mutlak yol) verilir.
+// extraRepoPath == "sim" veya GITARC_MODE=simulation ise simülasyon moduna geçer.
+// extraRepoPath == "" ise geriye dönük test uyumluluğu için varsayılan simülasyon modunda başlar.
 func NewManager(extraRepoPath string) *Manager {
 	m := &Manager{
 		activeRepoID: "sim-keylab",
@@ -74,10 +76,14 @@ func NewManager(extraRepoPath string) *Manager {
 	}
 	m.simRepo = buildInitialKeyLabSimulation()
 
+	explicitSimulation := os.Getenv("GITARC_MODE") == "simulation" || extraRepoPath == "sim"
+	forceLive := os.Getenv("GITARC_MODE") == "live"
+	shouldBeLive := !explicitSimulation && (extraRepoPath != "" || forceLive)
+
 	candidates := []repoEntry{}
-	if extraRepoPath != "" {
+	if extraRepoPath != "" && extraRepoPath != "sim" {
 		abs, err := filepath.Abs(extraRepoPath)
-		if err == nil {
+		if err == nil && isGitDir(abs) {
 			candidates = append(candidates, repoEntry{
 				id:   "live-custom",
 				name: filepath.Base(abs) + " (Canlı)",
@@ -85,11 +91,30 @@ func NewManager(extraRepoPath string) *Manager {
 			})
 		}
 	}
+	if envRepo := os.Getenv("GITARC_REPO"); envRepo != "" && envRepo != "sim" {
+		if abs, err := filepath.Abs(envRepo); err == nil && isGitDir(abs) {
+			already := false
+			for _, c := range candidates {
+				if filepath.Clean(c.path) == filepath.Clean(abs) {
+					already = true
+					break
+				}
+			}
+			if !already {
+				candidates = append(candidates, repoEntry{
+					id:   "live-env",
+					name: filepath.Base(abs) + " (Canlı)",
+					path: abs,
+				})
+			}
+		}
+	}
 	if wd, err := os.Getwd(); err == nil && isGitDir(wd) {
 		already := false
 		for _, c := range candidates {
 			if filepath.Clean(c.path) == filepath.Clean(wd) {
 				already = true
+				break
 			}
 		}
 		if !already {
@@ -106,6 +131,7 @@ func NewManager(extraRepoPath string) *Manager {
 		for _, c := range candidates {
 			if filepath.Clean(c.path) == filepath.Clean(defaultKeyLab) {
 				already = true
+				break
 			}
 		}
 		if !already {
@@ -117,8 +143,17 @@ func NewManager(extraRepoPath string) *Manager {
 		}
 	}
 	m.liveRepos = candidates
-	if extraRepoPath != "" && len(candidates) > 0 && isGitDir(candidates[0].path) {
-		m.activeRepoID = candidates[0].id
+
+	// Canlı mod hedeflenmişse ve geçerli bir canlı git deposu varsa ona bağlan.
+	// extraRepoPath geçersiz/silinmiş olsa bile (örn. keylab) doğrudan simülasyona düşmek yerine
+	// mevcut geçerli canlı depoya (cwd veya sshpocket) bağlanır.
+	if shouldBeLive && len(candidates) > 0 {
+		for _, c := range candidates {
+			if isGitDir(c.path) {
+				m.activeRepoID = c.id
+				break
+			}
+		}
 	}
 	return m
 }

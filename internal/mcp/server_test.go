@@ -10,7 +10,7 @@ import (
 )
 
 func TestMCPServeStdioTools(t *testing.T) {
-	mgr := gitengine.NewManager("")
+	mgr := gitengine.NewManager("sim")
 
 	input := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
@@ -75,5 +75,52 @@ func TestMCPServeStdioTools(t *testing.T) {
 	// Verify gitarc_resolve_conflict resolved br-open-421
 	if !strings.Contains(lines[6], `\"resolved\": true`) || strings.Contains(lines[6], `"isError":true`) {
 		t.Fatalf("expected gitarc_resolve_conflict to resolve cleanly, got: %s", lines[6])
+	}
+}
+
+func TestMCPServeStdioLiveModeAndSimulationToggle(t *testing.T) {
+	// 1. Live mode: Pass a real git repo path
+	liveMgr := gitengine.NewManager("../..")
+	snap, err := liveMgr.Snapshot()
+	if err != nil {
+		t.Fatalf("live manager snapshot failed: %v", err)
+	}
+	if snap.Repo.Mode != "live" {
+		t.Fatalf("expected mode=live for real git repo, got %q", snap.Repo.Mode)
+	}
+
+	input := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"gitarc_status","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"gitarc_check_conflicts","arguments":{}}}`,
+	}, "\n") + "\n"
+
+	var out bytes.Buffer
+	if err := ServeStdio(strings.NewReader(input), &out, liveMgr); err != nil {
+		t.Fatalf("ServeStdio failed: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 responses, got %d", len(lines))
+	}
+
+	if !strings.Contains(lines[0], `\"mode\": \"live\"`) {
+		t.Fatalf("expected mode: live in status output, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[0], `\"openPRCount\"`) {
+		t.Fatalf("expected openPRCount in status output, got: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], `\"mode\": \"live\"`) {
+		t.Fatalf("expected mode: live in conflicts output, got: %s", lines[1])
+	}
+
+	// 2. Explicit simulation mode via GITARC_MODE=simulation
+	t.Setenv("GITARC_MODE", "simulation")
+	simMgr := gitengine.NewManager("")
+	simSnap, err := simMgr.Snapshot()
+	if err != nil {
+		t.Fatalf("sim snapshot failed: %v", err)
+	}
+	if simSnap.Repo.Mode != "simulation" {
+		t.Fatalf("expected mode=simulation when GITARC_MODE=simulation, got %q", simSnap.Repo.Mode)
 	}
 }
