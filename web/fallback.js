@@ -441,12 +441,33 @@
             theirsPreview: 'audit-exporter 0.1.0 sha256:44a1e8b2',
           };
         });
-        const recommended = b.conflict.isChangelogOrLock ? 'union' : 'ours';
-        const strategies = b.conflict.isChangelogOrLock ? [
+        const isOnlyChangelog = (b.conflict.files || []).every((f) => f.toLowerCase().includes('changelog'));
+        const hasLockOrVersion = (b.conflict.files || []).some((f) => {
+          const l = f.toLowerCase();
+          return l.includes('lock') || l.includes('version') || l.endsWith('.sum');
+        });
+
+        let recommended = 'ours';
+        let recommendationReason = 'Çakışan dosya kaynak kodudur. İki bloğu alt alta eklemek derleme hatası üretebilir; origin/main kodu veya özel AI düzenleme önerilir.';
+
+        if (isOnlyChangelog) {
+          recommended = 'union';
+          recommendationReason = "Çakışan dosya değişiklik günlüğüdür (CHANGELOG.md). '1. İkisini Alt Alta Koru (Union)' seçeneği her iki tarafın sürüm notlarını kayıpsız alt alta birleştirir.";
+        } else if (hasLockOrVersion) {
+          recommended = 'custom';
+          recommendationReason = 'Çakışan dosyalarda VERSION veya kilit dosyası (components.lock) bulunmaktadır. Sürüm veya kilit dosyalarına otomatik union uygulanamaz; insan onayı ve manuel/AI seçimi gereklidir.';
+        }
+
+        const strategies = isOnlyChangelog ? [
           { strategy: 'union', badge: '★ ÖNERİLEN · Veri Kaybı Yok', tone: 'ok' },
-          { strategy: 'ours', badge: 'Daldaki Eklemeyi Atlar', tone: 'warn' },
-          { strategy: 'theirs', badge: 'Main Eklemeyi Atlar', tone: 'warn' },
+          { strategy: 'ours', badge: 'Daldaki Notları Atlar', tone: 'warn' },
+          { strategy: 'theirs', badge: 'Main Notlarını Atlar', tone: 'warn' },
           { strategy: 'custom', badge: 'Tam Kontrol', tone: 'accent' },
+        ] : hasLockOrVersion ? [
+          { strategy: 'custom', badge: '★ İNSAN ONAYI GEREKLİ', tone: 'ok' },
+          { strategy: 'ours', badge: 'Main Kilidini Koru', tone: 'warn' },
+          { strategy: 'theirs', badge: 'Dal Kilidini Koru', tone: 'accent' },
+          { strategy: 'union', badge: '⛔ Formatı Bozar', tone: 'danger' },
         ] : [
           { strategy: 'union', badge: '⚠ Kodda Çift Tanım Riski', tone: 'warn' },
           { strategy: 'ours', badge: '★ ÖNERİLEN · Main Güncel Kodu', tone: 'ok' },
@@ -458,9 +479,7 @@
           branchName: b.name,
           baseRef: 'origin/main',
           recommended,
-          recommendationReason: b.conflict.isChangelogOrLock
-            ? "Çakışan dosya değişiklik günlüğü / kilit dosyasıdır. '1. İkisini Alt Alta Koru' seçeneği her iki tarafı da kayıpsız birleştirir."
-            : "Çakışan dosya kaynak kodudur. 'İkisini Alt Alta Koru' derleme hatası üretebilir; '2. Maindeki Güncel Kodu Kullan' önerilir.",
+          recommendationReason,
           strategies,
           aiPrompt: `GitArc Çakışma Çözümü İsteği (${b.name} ↔ origin/main)\n${files.map((x) => `${x.path}:\n${x.conflictHunks}`).join('\n\n')}`,
           files,

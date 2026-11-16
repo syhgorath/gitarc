@@ -1078,3 +1078,90 @@ func TestPruneAndDeleteAutoSwitchFromMergedHEAD(t *testing.T) {
 		t.Fatalf("expected feat/open-empty-head to be deleted, still got %q", listed)
 	}
 }
+
+func TestRealWorldSquashCrossPRAndProtectionAccuracy(t *testing.T) {
+	// 1. Cross-PR hesaplaması YALNIZCA açık PR'lar arasında yapılmalı (Madde 2)
+	branches := []model.BranchArc{
+		{
+			ID:           "b1",
+			Name:         "feat/one",
+			State:        "open",
+			PR:           &model.PRStatus{Number: 101, ReviewState: "OPEN"},
+			ChangedFiles: []string{"main.go", "config.json"},
+		},
+		{
+			ID:           "b2",
+			Name:         "feat/two",
+			State:        "open",
+			PR:           &model.PRStatus{Number: 102, ReviewState: "OPEN"},
+			ChangedFiles: []string{"main.go", "other.go"},
+		},
+		{
+			ID:           "b3-merged-squash",
+			Name:         "feat/three-squash",
+			State:        "merged", // Squash merge ile birleşmiş
+			PR:           &model.PRStatus{Number: 99, ReviewState: "MERGED"},
+			ChangedFiles: []string{"main.go"},
+		},
+		{
+			ID:           "b4-local-no-pr",
+			Name:         "feat/four-local",
+			State:        "open",
+			PR:           nil, // PR açılmamış yerel dal
+			ChangedFiles: []string{"main.go"},
+		},
+	}
+
+	ComputeCrossPRCollisions(branches)
+
+	// b1 ve b2 açık PR olduğu için çarpışmalı
+	if len(branches[0].CrossPR) != 1 || branches[0].CrossPR[0].OtherPRNumber != 102 {
+		t.Fatalf("expected b1 CrossPR with b2 (#102), got %+v", branches[0].CrossPR)
+	}
+	if len(branches[1].CrossPR) != 1 || branches[1].CrossPR[0].OtherPRNumber != 101 {
+		t.Fatalf("expected b2 CrossPR with b1 (#101), got %+v", branches[1].CrossPR)
+	}
+	// b3 (merged) ve b4 (PR'ı yok) asla Cross-PR hesaplarına girmemeli (Madde 2)
+	if len(branches[2].CrossPR) != 0 {
+		t.Fatalf("expected merged branch b3 to have 0 CrossPR, got %+v", branches[2].CrossPR)
+	}
+	if len(branches[3].CrossPR) != 0 {
+		t.Fatalf("expected local branch without PR b4 to have 0 CrossPR, got %+v", branches[3].CrossPR)
+	}
+
+	// 2. Auto-Resolve stratejisi: VERSION ve components.lock için insan onayı istemeli (Madde 4)
+	branchStub := model.BranchArc{Name: "feat/upgrade"}
+	recVer, reasonVer, _ := buildStrategyAdvice(branchStub, []model.ConflictFileDiff{
+		{Path: "VERSION", StartLine: 1, EndLine: 1},
+	})
+	if recVer != "custom" || !strings.Contains(reasonVer, "VERSION") {
+		t.Fatalf("expected VERSION to recommend custom/human review, got rec=%q reason=%q", recVer, reasonVer)
+	}
+
+	recLock, reasonLock, _ := buildStrategyAdvice(branchStub, []model.ConflictFileDiff{
+		{Path: "components.lock", StartLine: 1, EndLine: 5},
+	})
+	if recLock != "custom" || !strings.Contains(reasonLock, "components.lock") {
+		t.Fatalf("expected components.lock to recommend custom/human review, got rec=%q reason=%q", recLock, reasonLock)
+	}
+
+	recCL, _, _ := buildStrategyAdvice(branchStub, []model.ConflictFileDiff{
+		{Path: "CHANGELOG.md", StartLine: 1, EndLine: 10},
+	})
+	if recCL != "union" {
+		t.Fatalf("expected CHANGELOG.md to recommend union, got rec=%q", recCL)
+	}
+
+	// 3. ParseMergeTreeOutput sahte metin (“// main üzerinde ... güncellendi”) içermemeli (Madde 3)
+	fakeTreeOutput := "CONFLICT (content): Merge conflict in go/main.go\nAuto-merging go/main.go"
+	detail := ParseMergeTreeOutput(1, fakeTreeOutput)
+	if detail == nil {
+		t.Fatalf("expected non-nil ConflictDetail")
+	}
+	if strings.Contains(detail.PreviewUnified, "// main üzerinde") {
+		t.Fatalf("forbidden placeholder text found in PreviewUnified: %q", detail.PreviewUnified)
+	}
+	if !strings.Contains(detail.PreviewUnified, "CONFLICT") {
+		t.Fatalf("expected real git merge-tree conflict markers in PreviewUnified, got %q", detail.PreviewUnified)
+	}
+}

@@ -189,49 +189,131 @@ func buildConflictAIPrompt(branchName, baseRef string, files []model.ConflictFil
 }
 
 func buildStrategyAdvice(b model.BranchArc, files []model.ConflictFileDiff) (recommended, reason string, advices []model.StrategyAdvice) {
-	allSpecial := len(files) > 0
-	nonSpecialPath := ""
+	hasChangelog := false
+	hasVersion := false
+	hasLock := false
+	hasSourceCode := false
+	sourcePath := ""
+
 	for _, f := range files {
-		if !IsSpecialAutoMergeFile(f.Path) {
-			allSpecial = false
-			if nonSpecialPath == "" {
-				nonSpecialPath = f.Path
+		base := strings.ToLower(filepath.Base(f.Path))
+		if strings.Contains(base, "changelog") {
+			hasChangelog = true
+		} else if base == "version" {
+			hasVersion = true
+		} else if strings.Contains(base, "lock") || strings.HasSuffix(base, ".sum") {
+			hasLock = true
+		} else {
+			hasSourceCode = true
+			if sourcePath == "" {
+				sourcePath = f.Path
 			}
 		}
 	}
-	if nonSpecialPath == "" && len(files) > 0 {
-		nonSpecialPath = files[0].Path
+
+	// Madde 4: Auto-Resolve "union" YALNIZ CHANGELOG.md için.
+	// VERSION ve components.lock için otomatik çözüm önerme; insan onayı iste ve nedenini yaz.
+	if hasVersion {
+		recommended = "custom"
+		reason = "Çakışan dosyalarda VERSION bulunmaktadır. Sürüm dosyaları tekil sürüm etiketi içerir; iki sürüm numarası alt alta eklenemez. İnsan onayı ile doğru hedef sürüm manuel/AI editöründe seçilmelidir."
+		advices = []model.StrategyAdvice{
+			{
+				Strategy: "custom",
+				Title:    "★ İnsan Onayı & Elle Seçim (VERSION)",
+				Subtitle: "Sürüm dosyasında hedef sürümü manuel veya AI ile belirleyin.",
+				Badge:    "★ İNSAN ONAYI GEREKLİ",
+				Tone:     "ok",
+			},
+			{
+				Strategy: "ours",
+				Title:    "2. 🛡️ Main'deki Sürümü Koru (Ours)",
+				Subtitle: "origin/main üzerindeki mevcut sürüm numarasını korur.",
+				Badge:    "Main Sürümü",
+				Tone:     "warn",
+			},
+			{
+				Strategy: "theirs",
+				Title:    "3. 🚀 Daldaki Yeni Sürümü Kullan (Theirs)",
+				Subtitle: "Bu dalda tanımlanan sürüm numarasını kullanır.",
+				Badge:    "Dal Sürümü",
+				Tone:     "accent",
+			},
+			{
+				Strategy: "union",
+				Title:    "4. ✦ İkisini Alt Alta Koru (Union)",
+				Subtitle: "Geçersiz sürüm formatı üretir (önerilmez).",
+				Badge:    "⛔ Sürüm Formatı Bozulur",
+				Tone:     "danger",
+			},
+		}
+		return recommended, reason, advices
 	}
 
-	if allSpecial {
+	if hasLock {
+		recommended = "custom"
+		reason = "Çakışan dosyalarda kilit dosyası (components.lock / go.sum) bulunmaktadır. Kilit dosyaları paket bağımlılıkları ve SHA256 bütünlük imzaları içerir; union (alt alta ekleme) dosya formatını ve imza doğrulamasını bozar. İnsan onayı ile paket yöneticisi çalıştırılmalı veya doğru blok seçilmelidir."
+		advices = []model.StrategyAdvice{
+			{
+				Strategy: "custom",
+				Title:    "★ İnsan Onayı & Kilit Yenileme",
+				Subtitle: "Kilit dosyasını paket yöneticisiyle veya editörde inceleyerek çözün.",
+				Badge:    "★ İNSAN ONAYI GEREKLİ",
+				Tone:     "ok",
+			},
+			{
+				Strategy: "ours",
+				Title:    "2. 🛡️ Main'deki Kilidi Kullan (Ours)",
+				Subtitle: "origin/main üzerindeki doğrulanmış kilit özetini korur.",
+				Badge:    "Main Kilidi",
+				Tone:     "warn",
+			},
+			{
+				Strategy: "theirs",
+				Title:    "3. 🚀 Daldaki Kilidi Kullan (Theirs)",
+				Subtitle: "Daldaki yeni bağımlılık özetlerini kullanır.",
+				Badge:    "Dal Kilidi",
+				Tone:     "accent",
+			},
+			{
+				Strategy: "union",
+				Title:    "4. ✦ İkisini Alt Alta Koru (Union)",
+				Subtitle: "Bozuk JSON/YAML veya çift kayıt riski taşır.",
+				Badge:    "⚠ İmza / Format Bozulma Riski",
+				Tone:     "danger",
+			},
+		}
+		return recommended, reason, advices
+	}
+
+	if hasChangelog && !hasSourceCode {
 		recommended = "union"
-		reason = "Çakışan dosya bir değişiklik günlüğü / kilit dosyasıdır. '1. İkisini Alt Alta Koru (Union)' seçeneği hem main hem daldaki satırları veri kaybı olmadan birleştirir."
+		reason = "Çakışan dosya değişiklik günlüğüdür (CHANGELOG.md). '1. İkisini Alt Alta Koru (Union)' seçeneği hem main hem daldaki sürüm notlarını veri kaybı olmadan alt alta birleştirir."
 		advices = []model.StrategyAdvice{
 			{
 				Strategy: "union",
 				Title:    "1. ✦ İkisini Alt Alta Koru (Union)",
-				Subtitle: "Hem main hem daldaki satırları alt alta birleştirir.",
+				Subtitle: "Hem main hem daldaki değişiklik notlarını korur.",
 				Badge:    "★ ÖNERİLEN · Veri Kaybı Yok",
 				Tone:     "ok",
 			},
 			{
 				Strategy: "ours",
-				Title:    "2. 🛡️ Main'deki Güncel Kodu Kullan (Ours)",
-				Subtitle: "Çakışan kısımda yalnızca origin/main kodunu korur.",
-				Badge:    "Daldaki Eklemeyi Atlar",
+				Title:    "2. 🛡️ Main'deki Güncel Notları Koru (Ours)",
+				Subtitle: "Çakışan kısımda yalnızca origin/main notlarını tutar.",
+				Badge:    "Daldaki Notları Atlar",
 				Tone:     "warn",
 			},
 			{
 				Strategy: "theirs",
-				Title:    "3. 🚀 Sadece Bu Dalın Kodunu Kullan (Theirs)",
-				Subtitle: "Çakışan kısımda yalnızca bu dalın satırlarını bırakır.",
-				Badge:    "Main'deki Eklemeyi Atlar",
+				Title:    "3. 🚀 Sadece Bu Dalın Notlarını Kullan (Theirs)",
+				Subtitle: "Çakışan kısımda yalnızca bu dalın notlarını bırakır.",
+				Badge:    "Main'deki Notları Atlar",
 				Tone:     "warn",
 			},
 			{
 				Strategy: "custom",
 				Title:    "4. 🤖 AI / Elle Düzenle",
-				Subtitle: "Sağdaki editörde veya MCP üzerinden AI ile düzenle.",
+				Subtitle: "Sağdaki editörde veya MCP üzerinden düzenleyin.",
 				Badge:    "Tam Kontrol",
 				Tone:     "accent",
 			},
@@ -240,7 +322,7 @@ func buildStrategyAdvice(b model.BranchArc, files []model.ConflictFileDiff) (rec
 	}
 
 	recommended = "ours"
-	reason = fmt.Sprintf("Çakışan dosya kaynak kodudur (%s). Kaynak kodda 'İkisini Alt Alta Koru (Union)' seçilirse aynı değişken/fonksiyon iki kez yazılıp derleme hatası (go vet) üretebilir. '2. Maindeki Güncel Kodu Kullan (Ours)' en güvenli otomatik çözümdür.", nonSpecialPath)
+	reason = fmt.Sprintf("Çakışan dosya kaynak kodudur (%s). Kaynak kodda 'İkisini Alt Alta Koru (Union)' seçilirse aynı değişken/fonksiyon iki kez yazılıp derleme hatası (go vet) üretebilir. '2. Main'deki Güncel Kodu Kullan (Ours)' veya '4. AI / Elle Düzenle' önerilir.", sourcePath)
 	advices = []model.StrategyAdvice{
 		{
 			Strategy: "union",

@@ -97,6 +97,8 @@ func ParseMergeTreeOutput(exitCode int, output string) *model.ConflictDetail {
 	seen := map[string]bool{}
 	hasSpecial := false
 	hasChangelog := false
+	hasVersion := false
+	hasComponentsLock := false
 	hasLock := false
 
 	for _, raw := range strings.Split(output, "\n") {
@@ -106,14 +108,19 @@ func ParseMergeTreeOutput(exitCode int, output string) *model.ConflictDetail {
 			if !seen[f] {
 				seen[f] = true
 				files = append(files, f)
-				if IsSpecialAutoMergeFile(f) {
+				low := strings.ToLower(filepath.Base(f))
+				if strings.Contains(low, "changelog") {
+					hasChangelog = true
 					hasSpecial = true
-					low := strings.ToLower(filepath.Base(f))
-					if strings.Contains(low, "changelog") {
-						hasChangelog = true
-					} else {
-						hasLock = true
-					}
+				} else if low == "version" {
+					hasVersion = true
+					hasSpecial = true
+				} else if low == "components.lock" {
+					hasComponentsLock = true
+					hasSpecial = true
+				} else if strings.Contains(low, "lock") || strings.HasSuffix(low, ".sum") || low == "go.mod" {
+					hasLock = true
+					hasSpecial = true
 				}
 			}
 		}
@@ -125,8 +132,12 @@ func ParseMergeTreeOutput(exitCode int, output string) *model.ConflictDetail {
 		return nil
 	}
 
+	// Madde 4: Auto-Resolve "union" yalnız CHANGELOG.md için.
+	// VERSION ve components.lock için otomatik çözüm önerme; insan onayı iste.
 	strategy := "manual"
-	if hasChangelog && !hasLock {
+	if hasVersion || hasComponentsLock {
+		strategy = "manual"
+	} else if hasChangelog && !hasLock && len(files) == 1 {
 		strategy = "union-changelog"
 	} else if hasLock {
 		strategy = "lock-tidy"
@@ -137,22 +148,40 @@ func ParseMergeTreeOutput(exitCode int, output string) *model.ConflictDetail {
 		Files:             files,
 		IsChangelogOrLock: hasSpecial,
 		Strategy:          strategy,
-		PreviewUnified:    buildConflictPreview(files, strategy),
+		PreviewUnified:    buildConflictPreview(files, output, strategy),
 	}
 }
 
-func buildConflictPreview(files []string, strategy string) string {
+// buildConflictPreview shows actual git merge-tree conflict details without placeholder strings (Madde 3).
+func buildConflictPreview(files []string, rawOutput, strategy string) string {
+	var hunks []string
+	for _, raw := range strings.Split(rawOutput, "\n") {
+		line := strings.TrimRight(raw, "\r\n")
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "CONFLICT") || strings.HasPrefix(trimmed, "<<<<<<<") ||
+			strings.HasPrefix(trimmed, "=======") || strings.HasPrefix(trimmed, ">>>>>>>") ||
+			strings.HasPrefix(trimmed, "Auto-merging") {
+			hunks = append(hunks, line)
+		}
+	}
+
 	var b strings.Builder
-	b.WriteString("<<<<<< HEAD (main)\n")
-	b.WriteString(fmt.Sprintf("// main üzerinde %s güncellendi\n", strings.Join(files, ", ")))
-	b.WriteString("======\n")
-	b.WriteString("// feature dalındaki yeni girdiler\n")
-	b.WriteString(">>>>>> feature\n")
+	if len(hunks) > 0 {
+		b.WriteString(strings.Join(hunks, "\n"))
+	} else {
+		b.WriteString(fmt.Sprintf("git merge-tree çakışan dosyalar (%d):\n", len(files)))
+		for _, f := range files {
+			b.WriteString(fmt.Sprintf("- %s (3-yollu çakışma)\n", f))
+		}
+	}
+
 	switch strategy {
 	case "union-changelog":
-		b.WriteString("\n[Auto-Resolve Stratejisi: Union Merge]\nHer iki dalın CHANGELOG girdileri kronolojik sırada korunur.")
+		b.WriteString("\n\n[Auto-Resolve Stratejisi: Union Merge]\nCHANGELOG girdileri alt alta güvenle birleştirilebilir.")
 	case "lock-tidy":
-		b.WriteString("\n[Auto-Resolve Stratejisi: Lock/Tidy]\nBağımlılık veya kilit bloğu birleştirilir ve bütünlük özeti yenilenir.")
+		b.WriteString("\n\n[Auto-Resolve Stratejisi: Lock/Tidy]\nBağımlılık veya kilit bloğu birleştirilir ve bütünlük özeti yenilenir.")
+	case "manual":
+		b.WriteString("\n\n[Strateji: İnsan Onayı & Manuel / AI Çözüm]\nKaynak kod, VERSION veya components.lock çakışması; insan onayı gereklidir.")
 	}
 	return b.String()
 }
@@ -243,6 +272,11 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	branchProtected := false
 	protectionSummary := "Yerel depo (koruma yok)"
 	if remoteName != "" {
+		// Madde 6: Uzak dal listesini git fetch --prune sonrası güncel tut
+		fetchCtx, fCancel := context.WithTimeout(ctx, 3*time.Second)
+		_, _, _ = runCmd(fetchCtx, repoPath, "git", "fetch", "--prune", remoteName)
+		fCancel()
+
 		var ghMergedArches []model.BranchArc
 		ghPRs, mergedPRs, ghMergedArches, branchProtected, protectionSummary = fetchGHMetadataCached(ctx, repoPath, remoteName, defaultBranch, nodes, shaToIdx, mergedArches)
 		mergedArches = append(mergedArches, ghMergedArches...)
@@ -509,15 +543,40 @@ func fetchGHBranchProtection(ctx context.Context, repoPath, defaultBranch string
 	}
 	ghCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
+
+	// 1. Klasik branch protection denetimi
 	out, _, err := runCmd(ghCtx, repoPath, "gh", "api", fmt.Sprintf("repos/:owner/:repo/branches/%s/protection", defaultBranch), "--jq", ".required_status_checks.strict")
-	if err != nil {
-		low := strings.ToLower(out)
-		if strings.Contains(low, "upgrade to github pro") {
-			return false, "Korumasız (GitHub Free özel repo / Pro gerekli)"
-		}
-		return false, "Korumasız (Doğrudan push/force-push açık)"
+	if err == nil {
+		return true, fmt.Sprintf("Aktif (strict checks: %s)", strings.TrimSpace(out))
 	}
-	return true, fmt.Sprintf("Aktif (strict checks: %s)", strings.TrimSpace(out))
+
+	// 2. Modern GitHub Ruleset denetimi (Madde 5)
+	rulesetCtx, rCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer rCancel()
+	rOut, _, rErr := runCmd(rulesetCtx, repoPath, "gh", "api", "repos/:owner/:repo/rulesets")
+	if rErr == nil && strings.TrimSpace(rOut) != "" && strings.TrimSpace(rOut) != "[]" {
+		type ghRulesetItem struct {
+			ID          int    `json:"id"`
+			Name        string `json:"name"`
+			Target      string `json:"target"`
+			Enforcement string `json:"enforcement"`
+		}
+		var rItems []ghRulesetItem
+		if json.Unmarshal([]byte(rOut), &rItems) == nil {
+			for _, r := range rItems {
+				enf := strings.ToLower(r.Enforcement)
+				if (enf == "active" || enf == "evaluate") && (r.Target == "" || r.Target == "branch") {
+					return true, fmt.Sprintf("Aktif (GitHub Ruleset: %s)", r.Name)
+				}
+			}
+		}
+	}
+
+	low := strings.ToLower(out)
+	if strings.Contains(low, "upgrade to github pro") {
+		return false, "Korumasız (GitHub Free özel repo / Pro gerekli)"
+	}
+	return false, "Korumasız (Doğrudan push/force-push açık)"
 }
 
 type ghMergedPRPayload struct {
@@ -631,9 +690,9 @@ func fetchGHMergedPRs(ctx context.Context, repoPath string, nodes []model.Commit
 		seenMergeIdx[a.EndSpineIndex] = true
 	}
 
-	ghCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ghCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	out, _, err := runCmd(ghCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--limit", "12",
+	out, _, err := runCmd(ghCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--limit", "60",
 		"--json", "number,headRefName,title,author,mergeCommit,url")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return mergedMap, nil
@@ -927,6 +986,46 @@ func buildSuggestedCommitAndPR(repoPath, branchHint string, files []string) (com
 	return commitMsg, prTitle, prBody
 }
 
+// isSquashMerged checks if a branch was merged into main via squash merge (Madde 1).
+func isSquashMerged(ctx context.Context, repoPath, branchName, defaultBranch, baseRef string) bool {
+	// 1. git cherry: Eğer daldaki commit'ler ana hatta zaten varsa (- ile işaretlenir)
+	if cherryOut, _, err := runCmd(ctx, repoPath, "git", "cherry", baseRef, branchName); err == nil && strings.TrimSpace(cherryOut) != "" {
+		lines := strings.Split(strings.TrimSpace(cherryOut), "\n")
+		hasOnlyMerged := true
+		for _, l := range lines {
+			if strings.HasPrefix(strings.TrimSpace(l), "+") {
+				hasOnlyMerged = false
+				break
+			}
+		}
+		if hasOnlyMerged && len(lines) > 0 {
+			return true
+		}
+	}
+
+	// 2. gh pr list --state merged --head <branchName>
+	if _, err := exec.LookPath("gh"); err == nil {
+		qCtx, qCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer qCancel()
+		if ghOut, _, err := runCmd(qCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--head", branchName, "--limit", "1", "--json", "number"); err == nil {
+			trimmed := strings.TrimSpace(ghOut)
+			if trimmed != "" && trimmed != "[]" {
+				return true
+			}
+		}
+	}
+
+	// 3. main logunda dal adı veya squash PR izi
+	if logOut, _, err := runCmd(ctx, repoPath, "git", "log", "-n", "35", "--oneline", baseRef); err == nil {
+		lowBranch := strings.ToLower(branchName)
+		if strings.Contains(strings.ToLower(logOut), lowBranch) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser string, nodes []model.CommitNode, shaToIdx map[string]int, dirtyCount int, dirtyFiles []string, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) ([]model.BranchArc, int) {
 	out, _, err := runCmd(ctx, repoPath, "git", "for-each-ref",
 		"--sort=-committerdate",
@@ -997,10 +1096,12 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			uncommitted = dirtyCount
 		}
 
-		// Kural 2: GitHub'da PR'ı merge edilmiş veya main ile farkı kalmamış artık dallar
-		// Alt Ray'da açık local dal olarak görünmez; birleşmiş kemer / prune adayı olur.
+		// Kural 1 (Madde 1 & Squash Merge Algılama):
+		// Repo PR'ları squash ile birleştirmişse dalın commit'leri main'de ayrı SHA ile görünse de
+		// (aheadMain > 0 olsa bile) PR 'merged' ise dalı "birleşmiş (squash)" say:
+		// çakışma, Cross-PR ve uyarı hesaplarına katma; yalnız temizleme adayı göster.
 		mergedPR, isGHMerged := mergedPRs[name]
-		if prPtr == nil && ((isGHMerged && remoteAhead == 0 && uncommitted == 0) || (aheadMain == 0 && uncommitted == 0 && !isHead)) {
+		if prPtr == nil && (isGHMerged || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)) || (aheadMain == 0 && uncommitted == 0 && !isHead)) {
 			if archIdx, exists := mergedArchByName[name]; exists {
 				mergedArches[archIdx].HasLocal = true
 				mergedArches[archIdx].LocalSHA = localSHA
@@ -1008,6 +1109,8 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 				mergedArches[archIdx].IsHEAD = isHead
 				mergedArches[archIdx].OriginGone = true
 				mergedArches[archIdx].ID = "local-" + sanitizeID(name)
+				mergedArches[archIdx].Conflict = nil
+				mergedArches[archIdx].CrossPR = nil
 				continue
 			}
 			var mp *model.PRStatus
@@ -1037,13 +1140,15 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 				UncommittedCount: uncommitted,
 				LastCommitMsg:    subject,
 				ChangedFiles:     changed,
+				Conflict:         nil, // Birleşmiş dalda çakışma aranmaz (Madde 1)
 			})
 			continue
 		}
 
-		// Lower hemisphere rule: open branches without an open PR open downwards on the local track.
+		// Lower hemisphere rule: PR'ı olmayan yerel dallar alt raya (lower) yerleşir.
+		// Yalnızca açık PR'ı olan dallar üst raya (upper) geçer (Madde 2).
 		hemisphere := "lower"
-		if prPtr != nil || originGone {
+		if prPtr != nil && prPtr.ReviewState != "MERGED" {
 			hemisphere = "upper"
 		}
 
@@ -1238,9 +1343,10 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				}
 			}
 			mergedPR, isGHMerged := mergedPRs[name]
+			isSquash := isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)
 
-			// Kural A: Merge edilmiş uzak kalıntı dal
-			if prPtr == nil && (isGHMerged || aheadMain == 0) {
+			// Kural A: Merge edilmiş uzak kalıntı dal (Madde 1 & 6)
+			if (prPtr == nil && (isGHMerged || isSquash || aheadMain == 0)) || (prPtr != nil && prPtr.ReviewState == "MERGED") {
 				if _, exists := mergedArchByName[name]; exists {
 					continue
 				}
@@ -1248,6 +1354,8 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				if isGHMerged {
 					p := mergedPR
 					mp = &p
+				} else if prPtr != nil && prPtr.ReviewState == "MERGED" {
+					mp = prPtr
 				}
 				branches = append(branches, model.BranchArc{
 					ID:              "remote-" + sanitizeID(name),
@@ -1268,6 +1376,7 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 					AheadMain:       aheadMain,
 					BehindMain:      behindMain,
 					LastCommitMsg:   subject,
+					Conflict:        nil, // Birleşmiş dalda çakışma aranmaz
 				})
 				continue
 			}
