@@ -136,6 +136,9 @@ func TestSecurityGuardsAndAPIFlow(t *testing.T) {
 	if rec := doPost("/api/branch/merge", `{"branchId":"br-open-421"}`); rec.Code != http.StatusOK {
 		t.Fatalf("merge after resolve failed: %d %s", rec.Code, rec.Body.String())
 	}
+	if rec := doPost("/api/branch/fix-ci", `{"branchId":"br-open-422"}`); rec.Code != http.StatusOK {
+		t.Fatalf("fix-ci failed: %d %s", rec.Code, rec.Body.String())
+	}
 	if rec := doPost("/api/branch/delete", `{"branchId":"br-local-exp"}`); rec.Code != http.StatusOK {
 		t.Fatalf("delete failed: %d %s", rec.Code, rec.Body.String())
 	}

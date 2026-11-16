@@ -166,6 +166,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/branch/merge", a.guard(a.handleMergeBranch))
 	mux.HandleFunc("/api/branch/promote", a.guard(a.handlePromoteBranch))
 	mux.HandleFunc("/api/branch/resolve", a.guard(a.handleResolveConflict))
+	mux.HandleFunc("/api/branch/fix-ci", a.guard(a.handleFixCI))
 	mux.HandleFunc("/api/branch/delete", a.guard(a.handleDeleteBranch))
 	mux.HandleFunc("/api/branch/prune", a.guard(a.handlePruneGone))
 	mux.HandleFunc("/api/spine/sync", a.guard(a.handleSyncSpine))
@@ -257,6 +258,21 @@ func (a *App) handleResolveConflict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap, err := a.mgr.AutoResolveConflict(req.BranchID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleFixCI(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.FixCI(req.BranchID)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

@@ -5,11 +5,12 @@
   const XHTML_NS = 'http://www.w3.org/1999/xhtml';
   const MAIN_Y = 300;
   const SPINE_START_X = 140;
-  const SPINE_STEP_X = 152;
-  const LANE_BASE_OFFSET = 132;
-  const LANE_STEP_Y = 122;
+  const SPINE_STEP_X = 168;
+  const LANE_BASE_OFFSET = 108;
+  const LANE_STEP_Y = 106;
   const FO_W = 244;
   const FO_H = 122;
+  const OPEN_CAPSULE_MIN_GAP_X = 264;
 
   const state = {
     snapshot: null,
@@ -294,6 +295,9 @@
         if (b.conflict?.hasConflict && !b.conflict.resolved) {
           throw new Error(`${b.name} dalında çözülmemiş çakışma var; önce Auto-Resolve çalıştırın`);
         }
+        if (b.pr?.ci?.state === 'FAILURE') {
+          throw new Error(`${b.name} dalında CI testleri başarısız; önce hatayı düzeltin`);
+        }
         seq++;
         const idx = sim.nodes.length;
         const sha = (0xa10f000 + seq * 29).toString(16);
@@ -312,6 +316,21 @@
         b.uncommittedCount = 0;
         if (b.pr) { b.pr.reviewState = 'MERGED'; if (b.pr.ci) b.pr.ci.state = 'SUCCESS'; }
         sim.repo.ahead++;
+        return recompute();
+      },
+      fixCI(branchId) {
+        const b = sim.branches.find((x) => x.id === branchId);
+        if (!b) throw new Error('Dal bulunamadı');
+        if (b.pr?.ci) {
+          b.pr.ci.state = 'SUCCESS';
+          b.pr.ci.failedStep = '';
+          b.pr.ci.rawLog = '';
+          b.pr.ci.extracts = [];
+          b.pr.ci.duration = '0m 52s';
+          b.pr.reviewState = 'APPROVED';
+        }
+        b.lastCommitMsg = 'fix(shellgold): guard slice upper bound & update golden';
+        b.uncommittedCount = 0;
         return recompute();
       },
       promoteBranch(branchId) {
@@ -578,7 +597,33 @@
     return hemisphere === 'lower' ? MAIN_Y + offset : MAIN_Y - offset;
   }
 
-  function computeBranchGeometry(b, tipXOverride = null, tipYOverride = null) {
+  function layoutOpenApexPositions(branches) {
+    const map = new Map();
+    const lastMergedEndX = branches
+      .filter((b) => b.state === 'merged')
+      .reduce((acc, b) => Math.max(acc, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex))), 0);
+
+    ['upper', 'lower'].forEach((hemi) => {
+      const openList = branches
+        .filter((b) => b.state !== 'merged' && b.hemisphere === hemi)
+        .sort((a, b) => a.startSpineIndex - b.startSpineIndex || a.endSpineIndex - b.endSpineIndex || a.name.localeCompare(b.name));
+
+      let prevX = -Infinity;
+      openList.forEach((b) => {
+        const startX = xOfSpine(b.startSpineIndex);
+        const baseX = Math.max(startX + 150, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)) - 10);
+        // Keep open upper capsules clear of merged arch crests when nearby
+        const minClearX = hemi === 'upper' && lastMergedEndX > 0 ? Math.max(baseX, lastMergedEndX + 20) : baseX;
+        const apexX = prevX === -Infinity ? minClearX : Math.max(minClearX, prevX + OPEN_CAPSULE_MIN_GAP_X);
+        const apexY = hemi === 'lower' ? MAIN_Y + LANE_BASE_OFFSET : MAIN_Y - LANE_BASE_OFFSET;
+        prevX = apexX;
+        map.set(b.id, { apexX, apexY });
+      });
+    });
+    return map;
+  }
+
+  function computeBranchGeometry(b, tipXOverride = null, tipYOverride = null, apexLayout = null) {
     const startX = xOfSpine(b.startSpineIndex);
     const laneY = yOfLane(b.hemisphere, b.lane);
 
@@ -594,9 +639,11 @@
       return { startX, endX, apexX, apexY, openD, closeD, areaD };
     }
 
-    const defaultApexX = Math.max(startX + 145, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)) - 12);
+    const laid = apexLayout?.get(b.id);
+    const defaultApexX = laid ? laid.apexX : Math.max(startX + 150, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)) - 10);
+    const defaultApexY = laid ? laid.apexY : laneY;
     const apexX = tipXOverride !== null ? tipXOverride : defaultApexX;
-    const apexY = tipYOverride !== null ? tipYOverride : laneY;
+    const apexY = tipYOverride !== null ? tipYOverride : defaultApexY;
     const cp1X = startX + (apexX - startX) * 0.55;
     const openD = `M ${startX} ${MAIN_Y} C ${cp1X} ${MAIN_Y}, ${cp1X} ${apexY}, ${apexX} ${apexY}`;
     return { startX, endX: null, apexX, apexY, openD, closeD: null, areaD: null };
@@ -625,14 +672,16 @@
     const nodes = snap.nodes || [];
     const branches = snap.branches || [];
     const visibleBranches = branches.filter((b) => state.showMergedArches || b.state !== 'merged');
+    const apexLayout = layoutOpenApexPositions(visibleBranches);
+    state.apexLayout = apexLayout;
 
     const maxSpineIdx = Math.max(nodes.length - 1, ...visibleBranches.map((b) => b.endSpineIndex || 0), 6);
-    const maxUpperLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'upper').map((b) => b.lane || 1));
-    const maxLowerLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'lower').map((b) => b.lane || 1));
+    const maxMergedUpperLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'upper' && b.state === 'merged').map((b) => b.lane || 1));
+    const maxApexX = Math.max(0, ...Array.from(apexLayout.values()).map((v) => v.apexX));
 
-    const minY = Math.min(0, MAIN_Y - LANE_BASE_OFFSET - (maxUpperLane - 1) * LANE_STEP_Y - 140);
-    const maxY = Math.max(620, MAIN_Y + LANE_BASE_OFFSET + (maxLowerLane - 1) * LANE_STEP_Y + 150);
-    const sceneW = Math.max(1260, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140);
+    const minY = Math.min(0, MAIN_Y - LANE_BASE_OFFSET - (maxMergedUpperLane - 1) * LANE_STEP_Y - 130);
+    const maxY = Math.max(600, MAIN_Y + LANE_BASE_OFFSET + 155);
+    const sceneW = Math.max(1280, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140, maxApexX + 200);
     const sceneH = maxY - minY;
 
     const viewW = sceneW / state.zoom;
@@ -672,7 +721,7 @@
 
     const ordered = [...visibleBranches].sort((a, b) => (a.state === 'merged' ? 0 : 1) - (b.state === 'merged' ? 0 : 1));
     ordered.forEach((b) => {
-      const geom = computeBranchGeometry(b);
+      const geom = computeBranchGeometry(b, null, null, apexLayout);
       const visible = matchesFilter(b);
       const isSelected = state.selectedBranchId === b.id;
       const tone = branchToneClass(b);
@@ -796,7 +845,7 @@
         x: cx,
         y: MAIN_Y + 23,
         class: 'svg-node-label',
-      }, truncate(n.subject, 22)));
+      }, truncate(n.subject, 19)));
 
       if (n.tag) {
         const tw = n.tag.length * 6.8 + 14;
@@ -944,9 +993,9 @@
 
   function startCapsulePointer(ev, branch, foEl, cardEl) {
     const startPt = clientToSvg(ev.clientX, ev.clientY);
-    const geom = computeBranchGeometry(branch);
+    const geom = computeBranchGeometry(branch, null, null, state.apexLayout);
     const isVirtualWip = branch.id === 'local-wip-working-tree' || branch.id.startsWith('local-wip-');
-    const canDragMerge = branch.state === 'open' && !isVirtualWip;
+    const canDragMerge = branch.state === 'open' && !isVirtualWip && branch.pr?.ci?.state !== 'FAILURE';
 
     state.drag = {
       branch,
@@ -1074,10 +1123,10 @@
     const hasConflict = b.conflict?.hasConflict && !b.conflict.resolved;
     const isOpen = b.state === 'open';
     const isVirtualWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
-    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip;
-    const canMerge = isOpen && !hasConflict && !isVirtualWip;
-
     const ciState = b.pr?.ci?.state;
+    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip;
+    const canMerge = isOpen && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
+
     const ciChip = ciState === 'FAILURE' ? '<span class="chip danger">CI: FAILURE</span>'
       : ciState === 'RUNNING' ? '<span class="chip accent">CI: RUNNING</span>'
         : ciState === 'SUCCESS' ? '<span class="chip ok">CI: PASS</span>' : '';
@@ -1171,6 +1220,7 @@
             `).join('')}
           </div>
           <div class="det-actions">
+            ${!isLive ? '<button type="button" class="btn emerald sm" id="act-fix-ci">🛠️ Hatayı Düzelt &amp; CI Yeniden Çalıştır</button>' : ''}
             <button type="button" class="btn sm" id="act-copy-log">Logu Kopyala</button>
             <button type="button" class="btn primary sm" id="act-run-local">▶ Yerelde Testi Çalıştır</button>
           </div>
@@ -1199,6 +1249,7 @@
     document.getElementById('act-merge')?.addEventListener('click', () => handleMergeBranch(b.id));
     document.getElementById('act-resolve')?.addEventListener('click', () => handleResolveConflict(b.id));
     document.getElementById('act-resolve-card')?.addEventListener('click', () => handleResolveConflict(b.id));
+    document.getElementById('act-fix-ci')?.addEventListener('click', () => handleFixCI(b.id));
     document.getElementById('act-delete')?.addEventListener('click', () => handleDeleteBranch(b.id));
     document.getElementById('act-copy-log')?.addEventListener('click', async () => {
       try {
@@ -1258,6 +1309,19 @@
         : await apiCall('/api/branch/resolve', 'POST', { branchId });
       applySnapshot(snap);
       showToast('CHANGELOG / Lockfile çakışması otomatik çözüldü; artık merge edilebilir', 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  }
+
+  async function handleFixCI(branchId) {
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.fixCI(branchId)
+        : await apiCall('/api/branch/fix-ci', 'POST', { branchId });
+      delete state.localRunOutput[branchId];
+      applySnapshot(snap);
+      showToast('CI testleri yeşile döndü — PR artık merge edilebilir!', 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }
