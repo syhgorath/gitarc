@@ -52,7 +52,10 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
   - `CollectLiveRepo`: Varsayılan dal tespiti (`main`/`master`), `main` omurga commit düğümleri, `gh` CLI önbellekli PR/CI/BranchProtection sorgusu, çalışma ağacı kirli dosya analizi (`parsePorcelainFiles` + `buildSuggestedCommitAndPR`), `collectLocalBranches`, `collectRemoteOnlyBranches`, `evalCache` (SHA değişmemiş dallarda `merge-tree`/`rev-list` tekrar koşmaz).
 - **`internal/gitengine/simulation.go`:**
   - `Manager`: Hem canlı git deposunu hem bellek-içi `simRepo` simülasyonunu yöneten tek giriş noktası.
-  - Her dışarı açılan metot önce `m.IsTeamMode()` veya girdi kurallarını (`validateBranchName`) denetler, sonra canlı veya simülasyon dalını çalıştırır ve `recordLog` / `logLiveOutcome` ile `Logs` geçmişine kayıt düşer.
+  - In-memory simülasyon yaşam döngüsü (`simWorkspace`, `reset`, sanal adımlar) ve kalıcı `actionLogs`.
+- **`internal/gitengine/live_mutations.go`:**
+  - Canlı Git ve GitHub mutasyonlarının tamamı (`commitWorkingTreeLive`, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive`, `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`, `createBranchLive`, `checkoutBranchLive`).
+  - Her mutasyon öncesi `IsTeamMode()` ve güvenlik kontrolleri yapılır, sonuç `m.recordLog` / `m.logLiveOutcome` ile geçmişe yazılır.
 - **`internal/gitengine/conflict_studio.go`:** `InspectBranchConflict` ve `ResolveBranchConflict`. Çakışan dosyaları geçici `git worktree add --detach` üzerinde 3-yollu `git merge-file -p` ile inceler; çözümden sonra `go.mod` mevcutsa `go vet ./...` çalıştırır, hata alırsa `worktree`'yi temizleyip pushlamadan hatayı döner.
 - **`internal/mcp/server.go`:** MCP JSON-RPC 2.0 `stdio` sunucusu (`protocolVersion = "2024-11-05"`). Sunulan 5 araç: `gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`.
 
