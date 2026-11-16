@@ -765,6 +765,12 @@ func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 		return fmt.Sprintf("git push origin --delete %s", b.Name)
 	}
 	if b.State == "merged" || b.OriginGone || b.State == "gone" {
+		if b.IsHEAD {
+			if b.UncommittedCount > 0 {
+				return fmt.Sprintf("# ⚠️ DİKKAT: Aktif dalda (%s) kaydedilmemiş %d dosya var! Silmeden önce commit veya stash yapın.\ngit switch %s && git branch -D %s && git fetch --prune origin", b.Name, b.UncommittedCount, defBranch, b.Name)
+			}
+			return fmt.Sprintf("git switch %s && git branch -D %s && git fetch --prune origin", defBranch, b.Name)
+		}
 		return fmt.Sprintf("git branch -D %s && git fetch --prune origin", b.Name)
 	}
 	if b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved {
@@ -1111,12 +1117,20 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 				mergedArches[archIdx].ID = "local-" + sanitizeID(name)
 				mergedArches[archIdx].Conflict = nil
 				mergedArches[archIdx].CrossPR = nil
+				mergedArches[archIdx].UncommittedCount = uncommitted
+				if uncommitted > 0 && len(dirtyFiles) > 0 {
+					mergedArches[archIdx].ChangedFiles = mergeUniqueFiles(mergedArches[archIdx].ChangedFiles, dirtyFiles)
+				}
 				continue
 			}
 			var mp *model.PRStatus
 			if isGHMerged {
 				p := mergedPR
 				mp = &p
+			}
+			branchChanged := changed
+			if uncommitted > 0 && len(dirtyFiles) > 0 {
+				branchChanged = mergeUniqueFiles(branchChanged, dirtyFiles)
 			}
 			branches = append(branches, model.BranchArc{
 				ID:               "local-" + sanitizeID(name),
@@ -1139,7 +1153,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 				BehindMain:       behindMain,
 				UncommittedCount: uncommitted,
 				LastCommitMsg:    subject,
-				ChangedFiles:     changed,
+				ChangedFiles:     branchChanged,
 				Conflict:         nil, // Birleşmiş dalda çakışma aranmaz (Madde 1)
 			})
 			continue

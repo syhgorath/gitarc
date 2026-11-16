@@ -382,6 +382,11 @@
 
   function renderKPIs() {
     const branches = state.snapshot?.branches || [];
+    const localBranches = branches.filter((b) => b.hasLocal && !b.id.startsWith('gh-merged-') && b.id !== 'local-wip-working-tree');
+    const localCount = localBranches.length;
+    const mergedPRCount = branches.filter((b) => b.id.startsWith('gh-merged-') || (b.state === 'merged' && !b.hasLocal)).length;
+    const dirtyCount = state.snapshot?.repo?.dirtyCount || branches.find((b) => b.isHead)?.uncommittedCount || 0;
+
     const upperCount = branches.filter(isOpenPR).length;
     const lowerCount = branches.filter(isLocalOpen).length;
     const mineCount = branches.filter((b) => b.state === 'open' && !isMergedOrGone(b) && isMyBranch(b)).length;
@@ -389,13 +394,16 @@
     const failCount = branches.filter((b) => b.state === 'open' && b.pr?.ci?.state === 'FAILURE').length;
     const goneCount = branches.filter(isMergedOrGone).length;
 
+    const allTitle = `Tümü (${branches.length} düğüm):\n• ${localCount} yerel dal (klasik 'git branch' sayısı)\n• ${mergedPRCount} GitHub birleşmiş PR parabolü\n• ${branches.length - localCount - mergedPRCount} diğer uzak/sanal dal.\n\nNot: Klasik 'git branch' komutu yalnızca ${localCount} yerel dalı listeler; GitArc topolojideki birleşmiş PR kemerlerini de gösterir.`;
+
     const defs = [
-      { key: 'all', label: 'Tümü', val: branches.length, tone: '' },
-      { key: 'mine', label: '👤 Benim Dallarım (@me)', val: mineCount, tone: mineCount ? 'accent' : '' },
-      { key: 'lower', label: 'Alt Ray (Local)', val: lowerCount, tone: lowerCount ? 'purple' : '' },
-      { key: 'issues', label: 'Çakışma / Cross-PR', val: conflictCount, tone: conflictCount ? 'warn' : '' },
-      { key: 'ci_fail', label: 'CI Hatası', val: failCount, tone: failCount ? 'danger' : '' },
-      { key: 'gone', label: 'Birleşmiş / Gone', val: goneCount, tone: goneCount ? 'ok' : '' },
+      { key: 'all', label: 'Tümü', val: branches.length, tone: '', title: allTitle },
+      { key: 'mine', label: '👤 Benim Dallarım (@me)', val: mineCount, tone: mineCount ? 'accent' : '', title: 'Giriş yapan kullanıcıya ait açık dallar' },
+      { key: 'lower', label: 'Alt Ray (Local)', val: lowerCount, tone: lowerCount ? 'purple' : '', title: 'PR açılmamış açık yerel dallar' },
+      { key: 'dirty', label: 'Değişiklik (Dirty)', val: dirtyCount, tone: dirtyCount ? 'warn' : '', title: `Çalışma ağacında ${dirtyCount} adet kaydedilmemiş (staged/indekslenmiş veya untracked/takipsiz) dosya var.` },
+      { key: 'issues', label: 'Çakışma / Cross-PR', val: conflictCount, tone: conflictCount ? 'warn' : '', title: 'Çakışan veya aynı dosyaları değiştiren açık dallar' },
+      { key: 'ci_fail', label: 'CI Hatası', val: failCount, tone: failCount ? 'danger' : '', title: 'CI testleri başarısız olan dallar' },
+      { key: 'gone', label: 'Birleşmiş / Gone', val: goneCount, tone: goneCount ? 'ok' : '', title: 'Main ile birleşmiş veya uzaktaki dalı silinmiş temizleme adayları' },
     ];
 
     el.kpiPills.innerHTML = '';
@@ -403,6 +411,7 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `kpi-pill ${d.tone} ${state.filter === d.key ? 'active' : ''}`;
+      if (d.title) btn.title = d.title;
       btn.innerHTML = `<span>${esc(d.label)}</span><strong>${d.val}</strong>`;
       btn.addEventListener('click', () => {
         state.filter = d.key;
@@ -414,8 +423,13 @@
 
     const prBadge = document.createElement('span');
     prBadge.className = `kpi-pill ${upperCount ? 'accent' : ''}`;
+    prBadge.title = "GitHub üzerinde açık olan Pull Request'ler";
     prBadge.innerHTML = `<span>Üst Ray (PR)</span><strong>${upperCount}</strong>`;
     el.kpiPills.appendChild(prBadge);
+
+    if (el.dragHint) {
+      el.dragHint.innerHTML = `💡 <strong>Tümü Sayacı (${branches.length}):</strong> ${localCount} yerel dal + ${mergedPRCount} birleşmiş PR parabolüdür (<code>git branch</code> yalnızca ${localCount} yerel dalı listeler).`;
+    }
   }
 
   function matchesFilter(b) {
@@ -430,6 +444,8 @@
         return Boolean(b.state === 'open' && !isMergedOrGone(b) && isMyBranch(b));
       case 'lower':
         return isLocalOpen(b);
+      case 'dirty':
+        return Boolean(b.isHead && ((b.uncommittedCount || 0) > 0 || (state.snapshot?.repo?.dirtyCount || 0) > 0));
       case 'issues':
         return Boolean(b.state === 'open' && !isMergedOrGone(b) && ((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length)));
       case 'ci_fail':
@@ -1143,7 +1159,7 @@
     const ciState = b.pr?.ci?.state;
     const isRunning = ciState === 'RUNNING';
     const isQueued = Boolean(state.pendingAutoMerge[b.id]);
-    const canCommitWorkingTree = isOpen && (isVirtualWip || (b.uncommittedCount || 0) > 0);
+    const canCommitWorkingTree = isVirtualWip || (b.uncommittedCount || 0) > 0 || (b.isHead && (state.snapshot?.repo?.dirtyCount || 0) > 0);
     const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip;
     const canMerge = isOpen && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
 
@@ -1210,7 +1226,7 @@
             ${b.state === 'merged' ? '<div class="layer-line">⚠ Birleşmiş yerel kalıntı (tek tıkla temizlenebilir)</div>' : ''}
             <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
             <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
-            <div class="layer-line">Uncommitted: ${b.uncommittedCount || 0} dosya</div>
+            <div class="layer-line">Uncommitted (Staged + Untracked): ${b.uncommittedCount || (b.isHead ? state.snapshot?.repo?.dirtyCount : 0) || 0} dosya</div>
           `}
         </div>
       </div>
@@ -1962,18 +1978,37 @@
     const branchName = b ? b.name : branchId;
     const isRemote = b && !b.hasLocal && b.hasRemote;
     const isBoth = b && b.hasLocal && b.hasRemote;
+    const defBranch = state.snapshot?.repo?.defaultBranch || 'main';
+    const isHead = Boolean(b?.isHead);
+    const dirty = (b?.uncommittedCount || 0) > 0 || (isHead && (state.snapshot?.repo?.dirtyCount || 0) > 0);
+    const dirtyCount = b?.uncommittedCount || state.snapshot?.repo?.dirtyCount || 0;
 
     let cmd = '';
     if (isRemote) {
       cmd = `git push origin --delete ${branchName}`;
     } else if (isBoth) {
-      cmd = `git branch -D ${branchName} && git push origin --delete ${branchName}`;
+      if (isHead) {
+        cmd = `git switch ${defBranch} && git branch -D ${branchName} && git push origin --delete ${branchName}`;
+      } else {
+        cmd = `git branch -D ${branchName} && git push origin --delete ${branchName}`;
+      }
     } else {
-      cmd = `git branch -D ${branchName}`;
+      if (isHead) {
+        cmd = `git switch ${defBranch} && git branch -D ${branchName}`;
+      } else {
+        cmd = `git branch -D ${branchName}`;
+      }
+    }
+
+    let warningText = '';
+    if (isHead && dirty) {
+      warningText = `\n\n🚨 DİKKAT: "${branchName}" şu an aktif dal (HEAD) ve çalışma ağacında ${dirtyCount} adet kaydedilmemiş (staged / takipsiz) dosya var!\nDalı silmeden önce değişikliklerinizi commitlemeniz veya saklamanız (stash) gerekir, aksi takdirde veriler kaybolur.`;
+    } else if (isHead) {
+      warningText = `\n\nℹ️ Bu dal şu an aktif (HEAD) olduğu için doğrudan silinemez. Komut önce "git switch ${defBranch}" ile ana omurgaya geçecek, ardından dalı silecektir.`;
     }
 
     const confirmed = window.confirm(
-      `⚠️ DAL SİLME ONAYI:\n"${branchName}" dalı silinecektir.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu silme işlemini onaylıyor musunuz?`,
+      `⚠️ DAL SİLME ONAYI:\n"${branchName}" dalı silinecektir.${warningText}\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu silme işlemini onaylıyor musunuz?`,
     );
     if (!confirmed) return;
 
