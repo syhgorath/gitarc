@@ -26,17 +26,22 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 5. **Team Server Modu (`-team`):** `m.IsTeamMode()` aktifken paylaşılan `HEAD`'i değiştiren işlemler (`CheckoutBranch`, `AmendLastCommit`, `CommitWorkingTree`) engellenir; izole `worktree` çözümü, uzak dal silme/merge işlemleri çalışmaya devam eder.
 6. **Güvenlik Kalkanları (`main.go`):** `Host` (DNS Rebinding), `gitarc_session` (`HttpOnly`, `SameSite=Strict`), `POST` isteklerinde `X-Requested-With: gitarc` + `Origin` kontrolü ve `validateBranchName`/`sanitizeID` girdi doğrulamaları korunmalıdır.
 7. **Binary Yeniden Derleme:** `web/` dosyaları `//go:embed web` ile ikiliye gömülür; her UI veya Go değişikliği sonrası `go build -o gitarc .` çalıştırılmalıdır.
+8. **Hata Geçirmezlik Prensibi (Foolproof UX & Otomatik Ön Koşul Çözümü):**
+   - **Kullanıcıyı Çıkmaz Sokağa Sokma:** Bir aksiyon öncesinde Git ön koşulu gerekiyorsa (örn. silinecek dalın aktif `HEAD` olması, PR açılacak dalda kaydedilmemiş kirli dosyaların bulunması) çalışma ağacı temiz/güvenli olduğu sürece kullanıcıya *"önce başka dala geçin"* veya *"önce commit atın"* hatası döndürme; arka planda güvenli ön adımı (`git switch main`, `git add -A && git commit`) otomatik uygula.
+   - **Benzersiz Varsayılan Öneriler:** Kullanıcıya dal veya etiket adı önerirken açık ve birleşmiş (`merged`/`gone`) tüm dalları denetle (`suggestUniqueBranchName`); daha önce birleşmiş veya mevcut bir dal adını asla tekrar varsayılan olarak önerme.
+   - **Uzak Sunucuya Boş/Bozuk İstek Gönderme:** `gh pr create` veya `git push` öncesi `AheadMain == 0` ya da `go vet ./...` doğrulamasını yerelde çalıştır; ham GraphQL/CLI hatası sızdırmak yerine ne yapılması gerektiğini açıklayan net Türkçe uyarı döndür.
+   - **Görsel Dürüstlük:** Eylemi olmayan öğede gereksiz buton gösterme; yalnızca yerel kalıntısı duran birleşmiş parabollerde `💻 Local` / `HEAD·Local` rozeti, alt ray kalıntı kuyruğu ve `🧹` butonu göster, tamamen temiz yeşil kapsüllerde `🧹` butonunu gizle.
 
 ## 3. Mimari ve Dosya Haritası (`v0.8.0`)
 
 - `main.go` / `main_test.go`: HTTP sunucusu, güvenlik middleware (`root`, `guard`), 20 `/api/*` uç noktası, `-addr`, `-repo`, `-open`, `-mcp`, `-team` bayrakları, CSP & API güvenlik testleri.
 - `internal/model/model.go`: `CockpitSnapshot`, `RepoMeta`, `CommitNode`, `BranchArc`, `PRStatus`, `CIStatus`, `ConflictDetail`, `ConflictStudioPayload`, `ActionLogEntry`.
 - `internal/gitengine/collector.go`: `AppVersion` (`0.8.0`), `CollectLiveRepo`, SHA-bazlı `evalCache`, 40-dal sıralı penceresi, `collectLocalBranches`, `collectRemoteOnlyBranches`, `ParseMergeTreeOutput`, `BuildSuggestedCommand`.
-- `internal/gitengine/simulation.go`: `Manager`, `CommitWorkingTree`, `PromoteBranchWithMeta`, `MergeBranch`, `CheckoutBranch`, `AmendLastCommit`, `UpdatePRMeta`, `FixCI`, `DeleteBranch`, `PruneGone`, `SyncSpine`, `ProtectDefaultBranch`, `CheckForUpdates`, kalıcı `actionLogs`.
+- `internal/gitengine/simulation.go`: `Manager`, `CommitWorkingTree`, `PromoteBranchWithMeta`, `MergeBranch`, `CheckoutBranch`, `AmendLastCommit`, `UpdatePRMeta`, `FixCI`, `DeleteBranch` & `PruneGone` (otomatik `HEAD → main` geçişli temizlik), `SyncSpine`, `ProtectDefaultBranch`, `CheckForUpdates`, kalıcı `actionLogs`.
 - `internal/gitengine/conflict_studio.go`, `diagnostics.go`, `lanes.go`: İzole 3-yollu `git merge-file` stüdyosu ve akıllı öneri, ters indeks Cross-PR çarpışma ve CI log ayıklama, interval packing şerit yerleşimi.
-- `internal/gitengine/engine_test.go`: Gerçek geçici bare/clone Git depolarıyla mutasyon ve iş akışı doğrulamaları dahil 16 test.
+- `internal/gitengine/engine_test.go`: Gerçek geçici bare/clone Git depolarıyla mutasyon, boş dal / otomatik `HEAD` temizliği ve iş akışı doğrulamaları dahil 17 test.
 - `internal/mcp/server.go` & `server_test.go`: Sıfır bağımlılıklı `stdio` JSON-RPC 2.0 MCP sunucusu (`gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`).
-- `web/index.html`, `web/tasarim.css`, `web/app.js`: Parabolik SVG kokpit, Sağ Inspector, `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve `LocalFallbackEngine`.
+- `web/index.html`, `web/tasarim.css`, `web/app.js`: Parabolik SVG kokpit, alt ray yerel kalıntı kuyruğu (`.svg-local-remnant-path` / `.cap-local-remnant`), Sağ Inspector (`suggestUniqueBranchName`), `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve `LocalFallbackEngine`.
 
 ## 4. Zorunlu Doğrulama Adımları (Her Görev Sonu)
 

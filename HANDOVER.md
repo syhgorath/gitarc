@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.8.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -v ./... && go build -o gitarc .` → **19/19 test geçti** (`gitarc`: 2, `gitarc/internal/gitengine`: 16, `gitarc/internal/mcp`: 1, `gitarc/internal/model`: test dosyası yok), `node --check web/app.js` → **0 hata**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -v ./... && go build -o gitarc .` → **20/20 test geçti** (`gitarc`: 2, `gitarc/internal/gitengine`: 17, `gitarc/internal/mcp`: 1, `gitarc/internal/model`: test dosyası yok), `node --check web/app.js` → **0 hata**.
 
 ---
 
@@ -28,7 +28,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 | **v0.5.0** | **Çakışma Çözüm Stüdyosu** (`/api/conflict/inspect`): Sol (Olan 3-yollu diff hunks) / Sağ (Olacak canlı önizleme), 4 strateji (`union`, `ours`, `theirs`, `custom`), izole geçici `git worktree` içinde çözüm + `go vet ./...` güvenlik kilidi, Antigravity MCP bağlantısı (`gitarc_resolve_conflict`, `.agents/plugins/gitarc/`). |
 | **v0.6.0** | Kalıcı `📜 Loglar` modalı (`CockpitSnapshot.Logs` + `/api/logs/clear`), stüdyo içi kalıcı kopyalanabilir hata kutusu (`#studio-error-banner`), dosya türüne göre `★ ÖNERİLEN` strateji danışmanı. |
 | **v0.7.0** | **Mega-Repo (10K Geliştirici) Ölçekleme:** SHA-bazlı `evalCache` (`CacheHits`), `--sort=-committerdate --count=40` dal penceresi, $O(N \cdot F)$ ters indeks Cross-PR motoru, `👤 Benim Dallarım (@me)` ve `📂 Klasör/Dosya Merceği`, `-team` ekip sunucusu modu, Windows `rundll32` tarayıcı açılışı, Branch Protection (`/api/repo/protect`) ve Update Checker (`/api/system/update-check`). |
-| **v0.8.0** | **Konsolsuz Commit & PR Stüdyosu** (`/api/working-tree/commit`, `CommitWorkingTree`), alt ray yerel dallar için **Push Öncesi PR Başlık & Açıklama** formu (`PromoteBranchWithMeta` + `/api/branch/promote`), **`CI: RUNNING` Nabız Efekti** (`.ci-running` / `.running-pulse`) ve polling tabanlı **Otomatik Merge Kuyruğu** (`state.pendingAutoMerge`). |
+| **v0.8.0** | **Konsolsuz Commit & PR Stüdyosu** (`/api/working-tree/commit`, `CommitWorkingTree`), alt ray yerel dallar için **Push Öncesi PR Başlık & Açıklama** formu (`PromoteBranchWithMeta` + `/api/branch/promote`), **`CI: RUNNING` Nabız Efekti** (`.ci-running` / `.running-pulse`), polling tabanlı **Otomatik Merge Kuyruğu** (`state.pendingAutoMerge`), **Alt Ray Yerel Kalıntı Kuyruğu** + `💻 Local` rozeti, otomatik `HEAD → main` geçişli `DeleteBranch`/`PruneGone` ve **Hata Geçirmezlik (Foolproof UX)** korumaları (`suggestUniqueBranchName`, boş dal PR koruması). |
 
 ---
 
@@ -65,10 +65,11 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
   5. `#security-update-modal`
 - **`web/tasarim.css`:** Tüm tema renkleri (`--sky`, `--purple`, `--emerald`, `--danger`, `--warn`, `--warn-orange`), SVG yay animasyonları (`ciStrokePulse`, `ciRunningPulse`), kart nabız halkaları (`pulseRedRing`, `pulseRunningRing`, `dotBlink`) ve modal/form düzenleri.
 - **`web/app.js`:**
-  - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti eksiksiz çalıştıran tarayıcı motoru.
+  - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti eksiksiz çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur).
   - `apiCall(path, method, body)`: Tüm POST isteklerine `X-Requested-With: gitarc` başlığı ekler.
   - 4 saniyelik sessiz canlı polling (`setInterval`, `snapshotSignature(snap)` değişirse `applySnapshot` çağırır; kullanıcı `INPUT`/`TEXTAREA`/`SELECT` odaklıyken veya modal/drag açıkken DOM'u ezmez).
   - `state.pendingAutoMerge`: `CI: RUNNING` iken Merge tetiklendiğinde dalı kuyruğa alır; polling `CI: SUCCESS` gördüğünde `executeMergeNow` çağırır, `FAILURE` veya çakışma görürse iptal eder.
+  - **Yerel Kalıntı & Hata Geçirmezlik Katmanı:** `renderSVG()` yerelde kopyası duran birleşmiş dallar için alt raya kesikli `.svg-local-remnant-path` + `.cap-local-remnant` rozeti çizer; `suggestUniqueBranchName(b, snap)` değişen dosyalardan geçmiş dallarla çakışmayan benzersiz varsayılan dal adı üretir.
 
 ---
 
@@ -94,7 +95,25 @@ Ekonomik modeller bir katmanı atlayıp tutarsızlık üretmemesi için her yeni
 
 ---
 
-## 5. Bilinen Tuzaklar (Pitfalls) ve Dikkat Edilecekler
+## 5. Hata Geçirmezlik Prensibi (Foolproof UX & Savunmacı Mühendislik Standartları)
+
+GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zorunda kalmayacağı şekilde **"yanlış tıklamayı önleyen ve ön koşulları kendi tamamlayan"** bir arayüz prensibiyle geliştirilir:
+
+1. **Ön Koşulları Kullanıcıya Yükleme, Güvenli Şekilde Otomatik Çöz:**
+   - Kullanıcı üzerinde aktif olduğu (`HEAD`) bir dalı silmek veya temizlemek istediğinde (`deleteBranchLive` / `pruneGoneLive`), çalışma ağacı temizse (`DirtyCount == 0` ve `!IsTeamMode()`) *"önce main'e geçin"* hatası vermek yerine arka planda `git switch <defaultBranch>` yapıp silmeyi tek harekette tamamla.
+   - Yeni açılan bir dalda değişiklikler henüz commitlenmeden `Push & PR Aç` basıldıysa (`promoteBranchLive`, `AheadMain == 0 && DirtyCount > 0`), otomatik `git add -A && git commit` atıp push + PR aç.
+2. **Tekrarlayan veya Geçmişle Çakışan Varsayılan İsim Üretme:**
+   - Sabit `'feat/local-changes'` gibi isimler kullanmak, az önce birleşen/silinen dalların üzerine yanlışlıkla commit atılmasına yol açar. UI formunda varsayılan ad üreten her yardımcı (`suggestUniqueBranchName`), değişen dosyalardan anlamlı bir dal adı türetmeli ve `snap.branches` (açık/birleşmiş tüm dallar) içinde aynı isim varsa kısa SHA / sayaç ekleyerek benzersizleştirmelidir.
+3. **Uzak Sunucuya Boş veya Bozuk Kod Gönderme (Fail-Fast Kapıları):**
+   - `main` ile farkı olmayan (`AheadMain == 0` ve kirli dosyası da olmayan) boş bir dalı GitHub'a pushlayıp `GraphQL: No commits between ...` hatası üretme; push öncesi yerelde durdur ve net Türkçe uyarı ver.
+   - Çakışma çözümünü (`ResolveBranchConflict`) izole `git worktree` içinde yaptıktan sonra `go.mod` varsa mutlaka `go vet ./...` doğrulamasından geçir; hata varsa asla commit/push yapma.
+4. **Görsel Durum ile Gerçek Git Durumu Birebir Örtüşmeli (Görsel Dürüstlük):**
+   - İşlemi kalmamış temiz yeşil parabollerde `🧹` gibi yanıltıcı aksiyon ikonlarını kaldır.
+   - Bilgisayarda hâlâ yer tutan birleşmiş dalları ise hem üst sarı kapsülde (`💻 Local` / `HEAD·Local`) hem alt raydaki kesikli kuyrukta (`.cap-local-remnant`) görünür kıl; hem sunucu simülasyonunda hem `LocalFallbackEngine`'de silme sonrası parabolü kaybetmeden yeşile çevir.
+
+---
+
+## 6. Bilinen Tuzaklar (Pitfalls) ve Dikkat Edilecekler
 
 1. **CSP Kırılması (`TestWebAssetsStrictCSPCompliance`):**
    - JS şablon dizgelerinde `style="..."` veya DOM düğümünde `el.style.display = 'none'` gibi kullanımlar (`style="` / `style='`) CSP ihlalidir ve `main_test.go` testini kırar. Bunun yerine `el.hidden = true` veya CSS sınıfı kullan.
@@ -111,7 +130,7 @@ Ekonomik modeller bir katmanı atlayıp tutarsızlık üretmemesi için her yeni
 
 ---
 
-## 6. Sıradaki Geliştirme Fikirleri (Backlog)
+## 7. Sıradaki Geliştirme Fikirleri (Backlog)
 
 Kullanıcıyla konuşulan ama henüz başlanmamış iki başlık:
 1. Kullanıcının sonradan ileteceği ek **UI geliştirme fikirleri** (kullanıcı tarif ettiğinde ele alınacak).
