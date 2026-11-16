@@ -46,6 +46,20 @@
     kpiPills: document.getElementById('kpi-pills'),
     radarList: document.getElementById('radar-list'),
     radarCount: document.getElementById('radar-count'),
+    dock: document.getElementById('bottom-dock'),
+    dockTabRadar: document.getElementById('dock-tab-radar'),
+    dockTabLogs: document.getElementById('dock-tab-logs'),
+    dockTabActions: document.getElementById('dock-tab-actions'),
+    dockRadarCount: document.getElementById('dock-radar-count'),
+    dockLogCount: document.getElementById('dock-log-count'),
+    dockActionCount: document.getElementById('dock-action-count'),
+    dockToggleBtn: document.getElementById('dock-toggle-btn'),
+    dockClearBtn: document.getElementById('dock-clear-btn'),
+    dockPaneRadar: document.getElementById('dock-pane-radar'),
+    dockPaneLogs: document.getElementById('dock-pane-logs'),
+    dockPaneActions: document.getElementById('dock-pane-actions'),
+    dockLogsStream: document.getElementById('dock-logs-stream'),
+    dockActionsStream: document.getElementById('dock-actions-stream'),
     detail: document.getElementById('inspector-detail'),
     pruneCount: document.getElementById('prune-count'),
     dragHint: document.getElementById('drag-hint'),
@@ -214,6 +228,7 @@
   }
 
   async function bootstrap() {
+    setupBottomDock();
     try {
       let snap = await apiCall('/api/snapshot');
       const savedId = localStorage.getItem(REPO_STORAGE_KEY);
@@ -504,7 +519,9 @@
 
   function renderRadar() {
     const diags = state.snapshot?.diagnostics || [];
-    el.radarCount.textContent = `${diags.length} uyarı`;
+    if (el.dockRadarCount) el.dockRadarCount.textContent = diags.length;
+    if (el.radarCount) el.radarCount.textContent = `${diags.length} uyarı`;
+    if (!el.radarList) return;
     el.radarList.innerHTML = '';
 
     if (diags.length === 0) {
@@ -512,18 +529,213 @@
       clean.className = 'empty-detail';
       clean.textContent = 'Radar temiz — çakışma, Cross-PR veya CI hatası yok.';
       el.radarList.appendChild(clean);
+      renderDockStreams();
       return;
     }
 
+    const branches = state.snapshot?.branches || [];
+
     diags.forEach((d) => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = `radar-item ${d.severity}`;
-      item.innerHTML = `<span class="radar-title">${esc(d.title)}</span><span class="radar-sub">${esc(d.branchName)} · ${esc(d.detail)}</span>`;
-      item.addEventListener('click', () => {
-        selectBranch(d.branchId);
+      const b = branches.find((x) => x.id === d.branchId || x.name === d.branchName);
+      const card = document.createElement('div');
+      const sev = d.severity || 'warning';
+      card.className = `radar-card ${sev}`;
+
+      let badgeClass = 'warn';
+      let badgeLabel = '⚠️ UYARI';
+      if (sev === 'critical') {
+        badgeClass = 'danger';
+        badgeLabel = '🚨 KRİTİK';
+      } else if (sev === 'info') {
+        badgeClass = 'sky';
+        badgeLabel = 'ℹ️ BİLGİ';
+      }
+
+      let kindLabel = '';
+      if (d.kind === 'ci_failure') kindLabel = 'CI Test Hatası';
+      else if (d.kind === 'conflict') kindLabel = 'Merge Çakışması';
+      else if (d.kind === 'cross_pr') kindLabel = 'Cross-PR Çarpışması';
+      else if (d.kind === 'prune_candidate') kindLabel = 'Silinmiş/Kalıntı Dal';
+
+      // Files list
+      const files = d.files || b?.conflict?.files || [];
+      let filesHtml = '';
+      if (files.length > 0) {
+        filesHtml = files.map((f) => `<span class="rc-file-tag">${esc(f)}</span>`).join('');
+      }
+
+      // CI error snippet if any
+      let ciSnippet = '';
+      if (b?.pr?.ci?.failureSummary) {
+        ciSnippet = b.pr.ci.failureSummary;
+      } else if (b?.pr?.ci?.rawLog && (b?.pr?.ci?.state === 'FAILURE' || b?.pr?.ci?.status === 'failure')) {
+        ciSnippet = b.pr.ci.rawLog.split('\n').filter(Boolean).slice(0, 3).join('\n');
+      }
+
+      // Action button text and handler
+      let actBtnText = '🎯 Odaklan & İncele';
+      let actAction = 'select';
+      if (d.kind === 'conflict') {
+        actBtnText = '⚡ Çakışma Stüdyosu';
+        actAction = 'studio';
+      } else if (d.kind === 'ci_failure') {
+        actBtnText = '🔍 CI Hatasını Gör';
+        actAction = 'select';
+      } else if (d.kind === 'prune_candidate') {
+        actBtnText = '🧹 Dalı Temizle';
+        actAction = 'prune';
+      }
+
+      // Suggested CLI command
+      const suggestedCmd = b?.suggestedCmd || d.actionHint || '';
+
+      card.innerHTML = `
+        <div class="rc-header">
+          <div class="rc-title-group">
+            <span class="rc-badge ${badgeClass}">${badgeLabel}${kindLabel ? ' · ' + kindLabel : ''}</span>
+            <span class="rc-branch-badge">${esc(d.branchName || 'Genel')}</span>
+            <strong class="rc-title">${esc(d.title)}</strong>
+          </div>
+          <div class="rc-actions">
+            <button type="button" class="rc-action-btn" data-act="${actAction}" data-branch="${esc(d.branchId || '')}">${actBtnText}</button>
+          </div>
+        </div>
+        <div class="rc-body">
+          <div class="rc-detail-text">${esc(d.detail)}</div>
+          ${filesHtml ? `<div class="rc-files-row"><span class="rc-files-label">Etkilenen Dosyalar:</span> ${filesHtml}</div>` : ''}
+          ${ciSnippet ? `<div class="rc-ci-snippet">${esc(ciSnippet)}</div>` : ''}
+          ${suggestedCmd ? `
+            <div class="rc-cmd-row">
+              <code class="rc-cmd-code">${esc(suggestedCmd)}</code>
+              <button type="button" class="rc-action-btn copy-cmd-btn" data-cmd="${esc(suggestedCmd)}" title="Komutu panoya kopyala">📋</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      card.querySelector('button[data-act]')?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const act = ev.currentTarget.dataset.act;
+        const brId = ev.currentTarget.dataset.branch;
+        if (act === 'studio' && brId) {
+          openConflictStudio(brId);
+        } else if (act === 'prune') {
+          handlePruneGone();
+        } else if (brId) {
+          selectBranch(brId);
+        }
       });
-      el.radarList.appendChild(item);
+
+      card.querySelector('.copy-cmd-btn')?.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const cmd = ev.currentTarget.dataset.cmd;
+        if (!cmd) return;
+        try {
+          await navigator.clipboard.writeText(cmd);
+          showToast('Komut panoya kopyalandı', 'ok');
+        } catch {
+          showToast('Pano izni verilemedi', 'warn');
+        }
+      });
+
+      card.addEventListener('click', () => {
+        if (d.branchId) selectBranch(d.branchId);
+      });
+
+      el.radarList.appendChild(card);
+    });
+
+    renderDockStreams();
+  }
+
+  function renderDockStreams() {
+    const logs = getMergedLogs();
+    const actionLogs = state.snapshot?.actionLogs || [];
+
+    if (el.dockLogCount) el.dockLogCount.textContent = logs.length;
+    if (el.dockActionCount) el.dockActionCount.textContent = actionLogs.length;
+
+    if (el.dockLogsStream) {
+      el.dockLogsStream.innerHTML = '';
+      if (logs.length === 0) {
+        el.dockLogsStream.innerHTML = '<div class="empty-detail">Henüz sistem veya Git logu yok.</div>';
+      } else {
+        logs.slice(0, 50).forEach((l) => {
+          const item = document.createElement('div');
+          item.className = `dock-log-item ${l.level || 'info'}`;
+          item.innerHTML = `
+            <span class="dock-log-time">${esc(l.timestamp || '')}</span>
+            <span class="dock-log-act">${esc(l.action || '')}</span>
+            <span class="dock-log-msg">${esc(l.message || '')}</span>
+            ${l.detail ? `<span class="dock-log-detail">${esc(truncate(l.detail, 60))}</span>` : ''}
+          `;
+          el.dockLogsStream.appendChild(item);
+        });
+      }
+    }
+
+    if (el.dockActionsStream) {
+      el.dockActionsStream.innerHTML = '';
+      if (actionLogs.length === 0) {
+        el.dockActionsStream.innerHTML = '<div class="empty-detail">Henüz kaydedilmiş işlem yok.</div>';
+      } else {
+        actionLogs.slice(0, 50).forEach((a) => {
+          const item = document.createElement('div');
+          item.className = `dock-log-item ${a.level === 'error' ? 'danger' : (a.level === 'warn' ? 'warn' : 'ok')}`;
+          item.innerHTML = `
+            <span class="dock-log-time">${esc(a.timestamp || '')}</span>
+            <span class="dock-log-act">${esc(a.action || '')}</span>
+            <span class="dock-log-msg">${esc(a.branch ? a.branch + ' · ' : '')}${esc(a.message || '')}</span>
+            ${a.detail ? `<span class="dock-log-detail">${esc(truncate(a.detail, 60))}</span>` : ''}
+          `;
+          el.dockActionsStream.appendChild(item);
+        });
+      }
+    }
+  }
+
+  function setupBottomDock() {
+    const tabs = [
+      { tab: el.dockTabRadar, pane: el.dockPaneRadar },
+      { tab: el.dockTabLogs, pane: el.dockPaneLogs },
+      { tab: el.dockTabActions, pane: el.dockPaneActions },
+    ];
+
+    tabs.forEach(({ tab, pane }) => {
+      tab?.addEventListener('click', () => {
+        tabs.forEach((t) => {
+          t.tab?.classList.remove('active');
+          t.tab?.setAttribute('aria-selected', 'false');
+          t.pane?.classList.add('hidden');
+          t.pane?.classList.remove('active');
+        });
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+        pane?.classList.remove('hidden');
+        pane?.classList.add('active');
+      });
+    });
+
+    el.dockToggleBtn?.addEventListener('click', () => {
+      const isCollapsed = el.dock?.classList.toggle('dock-collapsed');
+      if (el.dockToggleBtn) {
+        el.dockToggleBtn.textContent = isCollapsed ? '▲' : '▼';
+      }
+    });
+
+    el.dockClearBtn?.addEventListener('click', async () => {
+      state.clientLogs = [];
+      if (!state.offlineMode) {
+        try {
+          const snap = await apiCall('/api/logs/clear', 'POST', {});
+          applySnapshot(snap);
+        } catch (err) {
+          showToast(err.message, 'danger');
+        }
+      }
+      renderLogBadge();
+      renderDockStreams();
+      showToast('Loglar temizlendi', 'info');
     });
   }
 
