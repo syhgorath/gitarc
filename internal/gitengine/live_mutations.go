@@ -54,6 +54,17 @@ func (m *Manager) findLiveBranch(live *repoEntry, branchID string) (model.Branch
 }
 
 func (m *Manager) createBranchLive(live *repoEntry, name, hemisphere, fromSHA string) (model.CockpitSnapshot, error) {
+	snap, _ := m.Snapshot()
+	for _, b := range snap.Branches {
+		if strings.EqualFold(b.Name, name) {
+			statusTxt := "açık"
+			if b.State == "merged" || b.OriginGone {
+				statusTxt = "birleşmiş/kalıntı"
+			}
+			return model.CockpitSnapshot{}, fmt.Errorf("'%s' dalı depoda zaten mevcut (%s); lütfen benzersiz bir dal adı belirleyin", name, statusTxt)
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

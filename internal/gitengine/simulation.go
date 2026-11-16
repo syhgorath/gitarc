@@ -358,8 +358,12 @@ func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitS
 	defer m.mu.Unlock()
 
 	for _, b := range m.simRepo.branches {
-		if b.Name == name && b.State != "merged" {
-			err := fmt.Errorf("%s dalı zaten açık", name)
+		if strings.EqualFold(b.Name, name) {
+			statusTxt := "açık"
+			if b.State == "merged" {
+				statusTxt = "birleşmiş/kalıntı"
+			}
+			err := fmt.Errorf("'%s' dalı depoda zaten mevcut (%s); lütfen benzersiz bir dal adı belirleyin", name, statusTxt)
 			m.recordLogLocked("error", "Dal Oluştur", name, err.Error(), "")
 			return model.CockpitSnapshot{}, err
 		}
