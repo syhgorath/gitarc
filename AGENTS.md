@@ -42,13 +42,13 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 - `internal/gitengine/conflict_studio.go`, `diagnostics.go`, `lanes.go`: İzole 3-yollu `git merge-file` stüdyosu ve akıllı öneri, ters indeks Cross-PR çarpışma ve CI log ayıklama, interval packing şerit yerleşimi.
 - `internal/gitengine/engine_test.go`: Gerçek geçici bare/clone Git depolarıyla mutasyon, boş dal / otomatik `HEAD` temizliği ve iş akışı doğrulamaları dahil 17 test.
 - `internal/mcp/server.go` & `server_test.go`: Sıfır bağımlılıklı `stdio` JSON-RPC 2.0 MCP sunucusu (`gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`).
-- `web/index.html`, `web/tasarim.css`, `web/app.js`: Parabolik SVG kokpit, alt ray yerel kalıntı kuyruğu (`.svg-local-remnant-path` / `.cap-local-remnant`), Sağ Inspector (`suggestUniqueBranchName`), `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve `LocalFallbackEngine`.
+- `web/index.html`, `web/tasarim.css`, `web/fallback.js`, `web/app.js`: Parabolik SVG kokpit, alt ray yerel kalıntı kuyruğu (`.svg-local-remnant-path` / `.cap-local-remnant`), Sağ Inspector (`suggestUniqueBranchName`), `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve modüler `LocalFallbackEngine` (`fallback.js`).
 
 ## 4. Zorunlu Doğrulama Adımları (Her Görev Sonu)
 
 Değişiklik yaptıktan sonra yanıt vermeden önce mutlaka şu iki komutu çalıştırıp tüm testlerin sıfır hatayla geçtiğini gör:
 ```bash
 go vet ./... && go test -count=1 -v ./... && go build -o gitarc .
-node --check web/app.js
+node --check web/fallback.js && node --check web/app.js
 ```
 Ayrıca yeni eklediğin her Go iş mantığı veya bugfix için `engine_test.go`, `main_test.go` veya `server_test.go` içinde otomatik test yaz.
