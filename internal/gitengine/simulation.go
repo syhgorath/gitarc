@@ -996,7 +996,15 @@ func (m *Manager) checkoutBranchLive(live *repoEntry, branchID string) (model.Co
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if out, _, err := runCmd(ctx, live.path, "git", "switch", b.Name); err != nil {
+	args := []string{"switch", b.Name}
+	if !b.HasLocal && b.HasRemote {
+		remoteRef := b.RemoteRef
+		if remoteRef == "" {
+			remoteRef = "origin/" + b.Name
+		}
+		args = []string{"switch", "--track", remoteRef}
+	}
+	if out, _, err := runCmd(ctx, live.path, "git", args...); err != nil {
 		return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi (uncommitted çakışma olabilir): %s", b.Name, strings.TrimSpace(out))
 	}
 	return m.Snapshot()
@@ -1170,6 +1178,28 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 			}
 		}
 	}
+
+	remoteName := snapBefore.Repo.RemoteName
+	if remoteName == "" {
+		remoteName = "origin"
+	}
+	for _, b := range snapBefore.Branches {
+		if b.HasLocal || !b.HasRemote || b.Name == currentBranch || b.Name == defBranch {
+			continue
+		}
+		if (b.State != "merged" && !b.OriginGone) || b.AheadMain != 0 {
+			continue
+		}
+		if err := validateBranchName(b.Name); err != nil {
+			continue
+		}
+		if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/remotes/"+remoteName+"/"+b.Name); err == nil {
+			if _, _, err := runCmd(ctx, live.path, "git", "push", remoteName, "--delete", b.Name); err == nil {
+				removed++
+			}
+		}
+	}
+
 	InvalidateGHCache(live.path)
 	snap, err := m.Snapshot()
 	return snap, removed, err
@@ -1206,26 +1236,48 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 	if err != nil {
 		return model.CockpitSnapshot{}, err
 	}
-	if !b.HasLocal || b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
-		return model.CockpitSnapshot{}, fmt.Errorf("yalnızca gerçek yerel dallar silinebilir")
+	if b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
+		return model.CockpitSnapshot{}, fmt.Errorf("sanal çalışma dalı doğrudan silinemez")
+	}
+	if !b.HasLocal && !b.HasRemote {
+		return model.CockpitSnapshot{}, fmt.Errorf("silinebilecek yerel veya uzak dal bulunamadı: %s", b.Name)
 	}
 	if b.IsHEAD || b.Name == snap.Repo.DefaultBranch {
 		return model.CockpitSnapshot{}, fmt.Errorf("aktif çalışma dalı (%s) silinemez; önce başka dala geçin", b.Name)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if out, _, err := runCmd(ctx, live.path, "git", "branch", "-d", b.Name); err != nil {
-		isSafeForce := (b.State == "merged" || b.OriginGone || (b.PR != nil && b.PR.ReviewState == "MERGED")) && b.RemoteAhead == 0
-		if isSafeForce {
-			if outD, _, errD := runCmd(ctx, live.path, "git", "branch", "-D", b.Name); errD == nil {
-				InvalidateGHCache(live.path)
-				return m.Snapshot()
-			} else {
-				return model.CockpitSnapshot{}, fmt.Errorf("dal silinemedi: %s", strings.TrimSpace(outD))
+
+	if b.State == "open" && b.PR != nil && b.PR.Number > 0 {
+		if _, err := exec.LookPath("gh"); err == nil {
+			if prOut, _, prErr := runCmd(ctx, live.path, "gh", "pr", "close", strconv.Itoa(b.PR.Number), "--delete-branch"); prErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("PR #%d kapatılamadı: %s", b.PR.Number, strings.TrimSpace(prOut))
 			}
 		}
-		return model.CockpitSnapshot{}, fmt.Errorf("dal silinemedi (henüz merge edilmemiş olabilir): %s", strings.TrimSpace(out))
 	}
+
+	if b.HasLocal {
+		if _, _, err := runCmd(ctx, live.path, "git", "branch", "-d", b.Name); err != nil {
+			if outD, _, errD := runCmd(ctx, live.path, "git", "branch", "-D", b.Name); errD != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("yerel dal silinemedi: %s", strings.TrimSpace(outD))
+			}
+		}
+	}
+
+	if b.HasRemote {
+		remoteName := snap.Repo.RemoteName
+		if remoteName == "" {
+			remoteName = "origin"
+		}
+		refPath := "refs/remotes/" + remoteName + "/" + b.Name
+		if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", refPath); err == nil {
+			if _, _, errR := runCmd(ctx, live.path, "git", "push", remoteName, "--delete", b.Name); errR != nil {
+				_, _, _ = runCmd(ctx, live.path, "git", "update-ref", "-d", refPath)
+			}
+		}
+	}
+
 	InvalidateGHCache(live.path)
 	return m.Snapshot()
 }
