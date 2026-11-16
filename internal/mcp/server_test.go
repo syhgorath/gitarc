@@ -58,8 +58,8 @@ func TestMCPServeStdioTools(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &r2); err != nil {
 		t.Fatal(err)
 	}
-	if len(r2.Result.Tools) != 5 {
-		t.Fatalf("expected 5 MCP tools (including gitarc_resolve_conflict), got %d", len(r2.Result.Tools))
+	if len(r2.Result.Tools) != 6 {
+		t.Fatalf("expected 6 MCP tools (including gitarc_resolve_conflict and gitarc_propose_commit), got %d", len(r2.Result.Tools))
 	}
 
 	// Verify gitarc_check_conflicts mentions CHANGELOG.md and conflictHunks
@@ -124,3 +124,50 @@ func TestMCPServeStdioLiveModeAndSimulationToggle(t *testing.T) {
 		t.Fatalf("expected mode=simulation when GITARC_MODE=simulation, got %q", simSnap.Repo.Mode)
 	}
 }
+
+func TestMCPProposeCommit(t *testing.T) {
+	t.Setenv("GITARC_MODE", "simulation")
+	mgr := gitengine.NewManager("")
+
+	// 1. Temiz bir dal ve dosya ile öneri oluşturma
+	reqProposal := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"gitarc_propose_commit","arguments":{"branch_name":"feat/safe-ai-flow","message":"feat: ai flow test","files":["CHANGELOG.md"]}}}` + "\n"
+	var out bytes.Buffer
+	if err := ServeStdio(strings.NewReader(reqProposal), &out, mgr); err != nil {
+		t.Fatalf("ServeStdio error: %v", err)
+	}
+	respStr := out.String()
+	if !strings.Contains(respStr, "proposed") || !strings.Contains(respStr, "feat/safe-ai-flow") {
+		t.Fatalf("expected proposed status in response, got: %s", respStr)
+	}
+
+	snap, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot failed: %v", err)
+	}
+	if snap.PendingProposal == nil {
+		t.Fatalf("expected pendingProposal in snapshot, got nil")
+	}
+	if snap.PendingProposal.BranchName != "feat/safe-ai-flow" {
+		t.Errorf("expected branchName feat/safe-ai-flow, got %s", snap.PendingProposal.BranchName)
+	}
+
+	// 2. Gizli dosya içeren öneri reddedilmeli
+	reqSecret := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gitarc_propose_commit","arguments":{"branch_name":"feat/secret-leak","message":"feat: leak","files":[".mcp.json"]}}}` + "\n"
+	out.Reset()
+	if err := ServeStdio(strings.NewReader(reqSecret), &out, mgr); err != nil {
+		t.Fatalf("ServeStdio error: %v", err)
+	}
+	if !strings.Contains(out.String(), "GÜVENLİK ENGELİ") {
+		t.Fatalf("expected GÜVENLİK ENGELİ for secret file .mcp.json, got: %s", out.String())
+	}
+
+	// 3. Dismiss öneriyi temizlemeli
+	dismissSnap, errDismiss := mgr.DismissProposal()
+	if errDismiss != nil {
+		t.Fatalf("dismiss failed: %v", errDismiss)
+	}
+	if dismissSnap.PendingProposal != nil {
+		t.Fatalf("expected pendingProposal to be nil after dismiss")
+	}
+}
+

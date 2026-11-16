@@ -1,0 +1,25 @@
+{
+  "noGitAddAll": true,
+  "secretPatterns": [
+    "img/logoyeni.jpg",
+    "referans/**",
+    "referans/*",
+    "referans",
+    ".mcp.json",
+    ".env*",
+    "*.env",
+    "*.pem",
+    "*.key",
+    "id_*",
+    "id_rsa*",
+    "id_ed25519*"
+  ],
+  "contentPatterns": [
+    "BEGIN OPENSSH PRIVATE KEY",
+    "BEGIN RSA PRIVATE KEY",
+    "BEGIN EC PRIVATE KEY",
+    "BEGIN PRIVATE KEY",
+    "BEGIN DSA PRIVATE KEY",
+    "PRIVATE KEY-----"
+  ]
+}

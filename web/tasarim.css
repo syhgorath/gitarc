@@ -1445,6 +1445,26 @@ body {
   background: var(--danger-weak);
 }
 
+.diag-card.proposal-card {
+  border-color: rgba(88, 166, 255, 0.6);
+  background: rgba(88, 166, 255, 0.08);
+  box-shadow: 0 0 12px rgba(88, 166, 255, 0.15);
+  margin-bottom: 12px;
+}
+
+.proposal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.proposal-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
 .diag-card h4 {
   margin: 0 0 4px;
   font-size: 11px;

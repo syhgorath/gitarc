@@ -5,13 +5,31 @@ import "time"
 // CockpitSnapshot is the primary JSON contract returned by /api/snapshot
 // and consumed by the parabolic SVG cockpit frontend.
 type CockpitSnapshot struct {
-	Repo        RepoMeta         `json:"repo"`
-	Repos       []RepoOption     `json:"repos"`
-	Nodes       []CommitNode     `json:"nodes"`
-	Branches    []BranchArc      `json:"branches"`
-	Diagnostics []DiagnosticItem `json:"diagnostics"`
-	Logs        []ActionLogEntry `json:"logs,omitempty"`
-	GeneratedAt time.Time        `json:"generatedAt"`
+	Repo            RepoMeta         `json:"repo"`
+	Repos           []RepoOption     `json:"repos"`
+	Nodes           []CommitNode     `json:"nodes"`
+	Branches        []BranchArc      `json:"branches"`
+	Diagnostics     []DiagnosticItem `json:"diagnostics"`
+	Logs            []ActionLogEntry `json:"logs,omitempty"`
+	PendingProposal *CommitProposal  `json:"pendingProposal,omitempty"`
+	GeneratedAt     time.Time        `json:"generatedAt"`
+}
+
+// CommitProposal represents a staged proposal created by an AI agent (e.g. via MCP).
+// It does NOT perform any commit/push until the user explicitly reviews and confirms in the UI.
+type CommitProposal struct {
+	ID           string   `json:"id"`
+	BranchName   string   `json:"branchName"`
+	BaseBranch   string   `json:"baseBranch"`
+	Message      string   `json:"message"`
+	Files        []string `json:"files"`
+	PRTitle      string   `json:"prTitle"`
+	PRBody       string   `json:"prBody"`
+	DiffStat     string   `json:"diffStat,omitempty"`
+	FilesChanged int      `json:"filesChanged"`
+	TotalLines   int      `json:"totalLines"`
+	IsLargeDiff  bool     `json:"isLargeDiff"`
+	CreatedAt    string   `json:"createdAt"`
 }
 
 // RepoOption describes a selectable workspace repository (live or simulated).
@@ -45,7 +63,19 @@ type RepoMeta struct {
 	AppVersion        string `json:"appVersion,omitempty"`
 	LatestVersion     string `json:"latestVersion,omitempty"`
 	UpdateAvailable   bool   `json:"updateAvailable,omitempty"`
-	CacheHits         int    `json:"cacheHits,omitempty"`
+	CacheHits         int      `json:"cacheHits,omitempty"`
+	SecretPatterns    []string `json:"secretPatterns,omitempty"`
+	NoGitAddAll       bool     `json:"noGitAddAll,omitempty"`
+}
+
+// DiffStat represents a summary of working tree changes (e.g. from git diff --stat).
+type DiffStat struct {
+	Stat         string `json:"stat"`
+	FilesChanged int    `json:"filesChanged"`
+	Insertions   int    `json:"insertions"`
+	Deletions    int    `json:"deletions"`
+	TotalLines   int    `json:"totalLines"`
+	IsLargeDiff  bool   `json:"isLargeDiff"`
 }
 
 // CommitNode represents a commit along the central main/develop spine.

@@ -192,11 +192,47 @@ func listTools() []toolDefinition {
 				"required": []string{"branchId", "strategy"},
 			},
 		},
+		{
+			Name:        "gitarc_propose_commit",
+			Description: "Hiçbir şeyi doğrudan commit/push etmez; GitArc arayüzünde kullanıcının tek tıkla inceleyip onaylayabileceği güvenli bir 'Commit & PR Öneri Kartı' oluşturur. .gitignore, özel anahtarlar ve secret kalkanları otomatik işletilir.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"branch_name": map[string]any{
+						"type":        "string",
+						"description": "origin/main tabanlı açılacak yeni özellik dalının adı (örn. feat/safe-storage).",
+					},
+					"message": map[string]any{
+						"type":        "string",
+						"description": "Önerilen commit mesajı.",
+					},
+					"files": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "string",
+						},
+						"description": "Açıkça commitlenecek dosyaların göreceli yolları listesi (opsiyonel, boşsa çalışma ağacındaki güvenli değişmiş dosyalar kullanılır).",
+					},
+					"pr_title": map[string]any{
+						"type":        "string",
+						"description": "Önerilen GitHub PR başlığı (opsiyonel).",
+					},
+					"pr_body": map[string]any{
+						"type":        "string",
+						"description": "Önerilen GitHub PR gövde açıklaması (opsiyonel).",
+					},
+				},
+				"required": []string{"branch_name", "message"},
+			},
+		},
 	}
 }
 
 func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 	switch params.Name {
+	case "gitarc_propose_commit":
+		return callProposeCommit(params.Arguments, mgr)
+
 	case "gitarc_status":
 		snap, err := mgr.Snapshot()
 		if err != nil {
@@ -415,6 +451,54 @@ func buildCIDigestPayload(snap model.CockpitSnapshot) map[string]any {
 		"repo":     snap.Repo.Name,
 		"failures": items,
 	}
+}
+
+func callProposeCommit(args map[string]any, mgr *gitengine.Manager) toolResult {
+	branchName, _ := args["branch_name"].(string)
+	if branchName == "" {
+		branchName, _ = args["branchName"].(string)
+	}
+	message, _ := args["message"].(string)
+	if message == "" {
+		message, _ = args["commitMsg"].(string)
+	}
+	prTitle, _ := args["pr_title"].(string)
+	if prTitle == "" {
+		prTitle, _ = args["prTitle"].(string)
+	}
+	prBody, _ := args["pr_body"].(string)
+	if prBody == "" {
+		prBody, _ = args["prBody"].(string)
+	}
+
+	var files []string
+	if rawFiles, ok := args["files"].([]any); ok {
+		for _, f := range rawFiles {
+			if s, ok := f.(string); ok && strings.TrimSpace(s) != "" {
+				files = append(files, strings.TrimSpace(s))
+			}
+		}
+	} else if strFiles, ok := args["files"].([]string); ok {
+		files = strFiles
+	}
+
+	prop, err := mgr.ProposeCommit(branchName, message, files, prTitle, prBody)
+	if err != nil {
+		return errResult(err.Error())
+	}
+
+	snap, _ := mgr.Snapshot()
+	mode := snap.Repo.Mode
+	if mode == "" {
+		mode = "live"
+	}
+
+	return jsonTextResult(map[string]any{
+		"mode":     mode,
+		"status":   "proposed",
+		"proposal": prop,
+		"summary":  fmt.Sprintf("Öneri GitArc kokpitine iletildi (%s dalı, %d dosya). Kullanıcının arayüzdeki 'Öneri Kartı' üzerinden inceleyip onaylaması bekleniyor.", prop.BranchName, prop.FilesChanged),
+	})
 }
 
 func jsonTextResult(v any) toolResult {

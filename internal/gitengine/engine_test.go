@@ -1255,3 +1255,108 @@ func TestCommitWorkingTreeMergedBranchProtectionAndSwitchOriginMain(t *testing.T
 	}
 }
 
+func TestGuardConfigAndSecretBlockingRules(t *testing.T) {
+	cfg := LoadGuardConfig(".")
+
+	if !cfg.NoGitAddAll {
+		t.Errorf("expected NoGitAddAll to be true")
+	}
+
+	// 1. IsSecretPath denetimi: .mcp.json, img/logoyeni.jpg, referans/*, .env, id_*
+	secretTests := []struct {
+		path   string
+		expect bool
+	}{
+		{".mcp.json", true},
+		{"sub/.mcp.json", true},
+		{"img/logoyeni.jpg", true},
+		{"referans/lab_key.pem", true},
+		{"referans/sub/private.key", true},
+		{"referans", true},
+		{".env", true},
+		{".env.production", true},
+		{"id_rsa", true},
+		{"id_ed25519", true},
+		{"secrets/cert.pem", true},
+		{"keys/api.key", true},
+		{"main.go", false},
+		{"web/app.js", false},
+		{"docs/README.md", false},
+	}
+
+	for _, tc := range secretTests {
+		isSec, pat := IsSecretPath(tc.path, cfg.SecretPatterns)
+		if isSec != tc.expect {
+			t.Errorf("IsSecretPath(%q) = %v (pat: %s), expected %v", tc.path, isSec, pat, tc.expect)
+		}
+	}
+
+	// 2. Özel anahtar içerik denetimi
+	tmpDir := t.TempDir()
+	keyFile := filepath.Join(tmpDir, "dummy_key.txt")
+	if err := os.WriteFile(keyFile, []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nMIIE...\n-----END OPENSSH PRIVATE KEY-----"), 0600); err != nil {
+		t.Fatalf("write key file error: %v", err)
+	}
+	hasSec, pat := CheckFileContentForSecrets(tmpDir, "dummy_key.txt", cfg.ContentPatterns)
+	if !hasSec || !strings.Contains(pat, "BEGIN OPENSSH PRIVATE KEY") {
+		t.Fatalf("expected secret content detection for OPENSSH PRIVATE KEY, got %v (%s)", hasSec, pat)
+	}
+
+	rsaFile := filepath.Join(tmpDir, "dummy_rsa.txt")
+	if err := os.WriteFile(rsaFile, []byte("-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----"), 0600); err != nil {
+		t.Fatalf("write rsa file error: %v", err)
+	}
+	hasSecRSA, patRSA := CheckFileContentForSecrets(tmpDir, "dummy_rsa.txt", cfg.ContentPatterns)
+	if !hasSecRSA || !strings.Contains(patRSA, "BEGIN RSA PRIVATE KEY") {
+		t.Fatalf("expected secret content detection for RSA PRIVATE KEY, got %v (%s)", hasSecRSA, patRSA)
+	}
+
+	cleanFile := filepath.Join(tmpDir, "clean.txt")
+	if err := os.WriteFile(cleanFile, []byte("hello clean world"), 0600); err != nil {
+		t.Fatalf("write clean file error: %v", err)
+	}
+	hasSecClean, _ := CheckFileContentForSecrets(tmpDir, "clean.txt", cfg.ContentPatterns)
+	if hasSecClean {
+		t.Fatalf("clean.txt should not be flagged as secret")
+	}
+
+	// 3. ParseDiffStat ve büyük diff tespiti (Madde 5)
+	statSampleNormal := `
+ internal/gitengine/guard_config.go | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+`
+	resNormal := ParseDiffStat(statSampleNormal)
+	if resNormal.FilesChanged != 1 || resNormal.Insertions != 25 || resNormal.IsLargeDiff {
+		t.Fatalf("unexpected normal diff stat: %+v", resNormal)
+	}
+
+	statSampleLargeFiles := `
+ file1.go | 1 +
+ file2.go | 1 +
+ file3.go | 1 +
+ file4.go | 1 +
+ file5.go | 1 +
+ file6.go | 1 +
+ file7.go | 1 +
+ file8.go | 1 +
+ file9.go | 1 +
+ file10.go | 1 +
+ file11.go | 1 +
+ 11 files changed, 11 insertions(+)
+`
+	resLargeFiles := ParseDiffStat(statSampleLargeFiles)
+	if !resLargeFiles.IsLargeDiff || resLargeFiles.FilesChanged != 11 {
+		t.Fatalf("expected IsLargeDiff=true for 11 files, got %+v", resLargeFiles)
+	}
+
+	statSampleLargeLines := `
+ big.go | 1005 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 1005 insertions(+)
+`
+	resLargeLines := ParseDiffStat(statSampleLargeLines)
+	if !resLargeLines.IsLargeDiff || resLargeLines.TotalLines != 1005 {
+		t.Fatalf("expected IsLargeDiff=true for 1005 lines, got %+v", resLargeLines)
+	}
+}
+
+
