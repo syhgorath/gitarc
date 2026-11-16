@@ -10,7 +10,10 @@
   const LANE_STEP_Y = 106;
   const FO_W = 244;
   const FO_H = 122;
+  const MERGED_FO_W = 204;
+  const MERGED_FO_H = 38;
   const OPEN_CAPSULE_MIN_GAP_X = 264;
+  const REPO_STORAGE_KEY = 'gitarc_repo_id';
 
   const state = {
     snapshot: null,
@@ -18,7 +21,9 @@
     selectedNodeSha: null,
     filter: 'all', // 'all' | 'issues' | 'ci_fail' | 'lower' | 'gone'
     showMergedArches: true,
+    mergeStrategy: 'merge',
     offlineMode: false,
+    lastSig: '',
     zoom: 1,
     panX: 0,
     panY: 0,
@@ -247,6 +252,18 @@
 
       const diags = [];
       branches.forEach((b) => {
+        b.canAmendCommit = Boolean(b.isHead && b.state === 'open' && (b.aheadMain || 0) > 0);
+        if (b.state === 'merged' || b.originGone || b.state === 'gone') {
+          b.suggestedCmd = `git branch -D ${b.name} && git fetch --prune origin`;
+        } else if (b.conflict?.hasConflict && !b.conflict.resolved) {
+          b.suggestedCmd = `git switch ${b.name} && git merge origin/main`;
+        } else if (b.pr?.ci?.state === 'FAILURE') {
+          b.suggestedCmd = `git switch ${b.name} && ${b.pr.ci.extracts?.[0]?.reproCmd || 'go test -v ./...'}`;
+        } else if (b.pr?.number) {
+          b.suggestedCmd = `gh pr merge ${b.pr.number} --merge --delete-branch`;
+        } else {
+          b.suggestedCmd = `git push -u origin ${b.name} && gh pr create --fill`;
+        }
         if (b.pr?.ci?.state === 'FAILURE') {
           diags.push({ id: 'ci-' + b.id, severity: 'critical', kind: 'ci_failure', branchId: b.id, branchName: b.name, title: `PR #${b.pr.number} CI Hatası: ${b.name}`, detail: b.pr.ci.extracts?.[0]?.symbol || b.pr.ci.failedStep });
         }
@@ -289,7 +306,34 @@
         });
         return recompute();
       },
-      mergeBranch(branchId) {
+      checkoutBranch(branchId) {
+        let found = false;
+        sim.branches.forEach((b) => {
+          if (b.id === branchId) {
+            if (b.state !== 'open') throw new Error('Yalnızca açık dallara geçilebilir');
+            b.isHead = true;
+            found = true;
+          } else {
+            b.isHead = false;
+          }
+        });
+        if (!found) throw new Error('Dal bulunamadı');
+        return recompute();
+      },
+      updatePRMeta(branchId, title, body) {
+        const b = sim.branches.find((x) => x.id === branchId);
+        if (!b || !b.pr) throw new Error('Açık PR bulunamadı');
+        b.pr.title = title;
+        b.pr.body = body;
+        return recompute();
+      },
+      amendLastCommit(branchId, message) {
+        const b = sim.branches.find((x) => x.id === branchId);
+        if (!b || !b.isHead || b.state !== 'open') throw new Error('Yalnızca aktif çalışma dalının (HEAD) son commit mesajı değiştirilebilir');
+        b.lastCommitMsg = message;
+        return recompute();
+      },
+      mergeBranch(branchId, strategy = 'merge') {
         const b = sim.branches.find((x) => x.id === branchId);
         if (!b) throw new Error('Dal bulunamadı');
         if (b.conflict?.hasConflict && !b.conflict.resolved) {
@@ -437,9 +481,31 @@
     return str.length > max ? str.slice(0, max - 1) + '…' : str;
   }
 
+  function snapshotSignature(snap) {
+    if (!snap) return '';
+    const r = snap.repo || {};
+    const lastNode = snap.nodes?.[snap.nodes.length - 1]?.shortSha || '';
+    const bSig = (snap.branches || []).map((b) => [
+      b.id, b.state, b.hemisphere, b.isHead ? 1 : 0, b.aheadMain, b.behindMain,
+      b.uncommittedCount, b.lastCommitMsg, b.originGone ? 1 : 0,
+      b.pr?.title || '', b.pr?.body || '', b.pr?.ci?.state || '',
+      b.conflict?.hasConflict ? 1 : 0,
+    ].join('|')).join(';');
+    return `${r.id}:${r.ahead}:${r.behind}:${r.dirtyCount}:${snap.nodes?.length || 0}:${lastNode}:${bSig}`;
+  }
+
   async function bootstrap() {
     try {
-      const snap = await apiCall('/api/snapshot');
+      let snap = await apiCall('/api/snapshot');
+      const savedId = localStorage.getItem(REPO_STORAGE_KEY);
+      if (savedId && savedId !== snap.repo.id && (snap.repos || []).some((r) => r.id === savedId)) {
+        try {
+          snap = await apiCall('/api/repo/switch', 'POST', { repoId: savedId });
+        } catch {
+          // Keep initial snapshot if switch fails
+        }
+      }
+      localStorage.setItem(REPO_STORAGE_KEY, snap.repo.id);
       applySnapshot(snap);
     } catch {
       state.offlineMode = true;
@@ -449,8 +515,25 @@
     }
   }
 
+  // 4-second silent live polling when user is idle (not dragging or typing)
+  setInterval(async () => {
+    if (state.offlineMode || state.drag || state.panning || !el.modal.hidden) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    try {
+      const nextSnap = await apiCall('/api/snapshot');
+      const sig = snapshotSignature(nextSnap);
+      if (sig && sig !== state.lastSig) {
+        applySnapshot(nextSnap);
+      }
+    } catch {
+      // Ignore transient polling errors
+    }
+  }, 4000);
+
   function applySnapshot(snap) {
     state.snapshot = snap;
+    state.lastSig = snapshotSignature(snap);
     if (!state.selectedBranchId && snap.branches?.length) {
       const priority = snap.branches.find((b) => b.pr?.ci?.state === 'FAILURE')
         || snap.branches.find((b) => b.conflict?.hasConflict)
@@ -591,9 +674,9 @@
     return SPINE_START_X + idx * SPINE_STEP_X;
   }
 
-  function yOfLane(hemisphere, lane) {
+  function yOfLane(hemisphere, lane, isMerged = false) {
     const l = Math.max(1, lane || 1);
-    const offset = LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y;
+    const offset = isMerged ? (84 + (l - 1) * 56) : (LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y);
     return hemisphere === 'lower' ? MAIN_Y + offset : MAIN_Y - offset;
   }
 
@@ -625,9 +708,10 @@
 
   function computeBranchGeometry(b, tipXOverride = null, tipYOverride = null, apexLayout = null) {
     const startX = xOfSpine(b.startSpineIndex);
-    const laneY = yOfLane(b.hemisphere, b.lane);
+    const isMerged = b.state === 'merged';
+    const laneY = yOfLane(b.hemisphere, b.lane, isMerged);
 
-    if (b.state === 'merged' && tipXOverride === null) {
+    if (isMerged && tipXOverride === null) {
       const endX = xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex));
       const apexX = (startX + endX) / 2;
       const apexY = laneY;
@@ -860,23 +944,52 @@
   }
 
   function capsulePositionForApex(b, apexX, apexY) {
+    if (b.state === 'merged') {
+      return {
+        x: apexX - MERGED_FO_W / 2,
+        y: apexY - MERGED_FO_H - 6,
+      };
+    }
     const x = apexX - FO_W / 2;
     const y = b.hemisphere === 'lower' ? apexY + 14 : apexY - FO_H + 12;
     return { x, y };
   }
 
   function buildCapsuleForeignObject(b, geom, isSelected, visible, tone) {
+    const isMerged = b.state === 'merged';
     const pos = capsulePositionForApex(b, geom.apexX, geom.apexY);
     const fo = svgEl('foreignObject', {
       x: pos.x,
       y: pos.y,
-      width: FO_W,
-      height: FO_H,
+      width: isMerged ? MERGED_FO_W : FO_W,
+      height: isMerged ? MERGED_FO_H : FO_H,
       class: `fo-capsule ${visible ? '' : 'dimmed'}`,
       'data-branch-id': b.id,
     });
 
-    const isMerged = b.state === 'merged';
+    if (isMerged) {
+      const pill = document.createElementNS(XHTML_NS, 'div');
+      const gone = Boolean(b.originGone || b.hasLocal);
+      pill.className = `cap-merged-pill ${isSelected ? 'selected' : ''} ${gone ? 'gone' : ''}`;
+      const prTxt = b.pr ? `#${b.pr.number} ` : '';
+      pill.innerHTML = `
+        <span class="cap-merged-txt">✓ ${esc(prTxt + truncate(b.name, 18))}</span>
+        <button type="button" class="cap-merged-del" data-act="delete" title="Kalıntı yerel dalı temizle">🧹</button>
+      `;
+      pill.querySelector('button[data-act="delete"]')?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+      pill.querySelector('button[data-act="delete"]')?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        handleDeleteBranch(b.id);
+      });
+      pill.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+      pill.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        selectBranch(b.id);
+      });
+      fo.appendChild(pill);
+      return fo;
+    }
+
     const isLower = b.hemisphere === 'lower';
     const isFailed = b.pr?.ci?.state === 'FAILURE';
     const hasConflict = Boolean(b.conflict?.hasConflict && !b.conflict.resolved);
@@ -884,10 +997,7 @@
 
     let badgeTone = 'sky';
     let badgeText = b.pr ? `PR #${b.pr.number} · ${b.pr.reviewState}` : 'Remote Ray';
-    if (isMerged) {
-      badgeTone = 'emerald';
-      badgeText = `Tam Parabol${b.pr ? ' · #' + b.pr.number : ''} · Merged`;
-    } else if (isFailed) {
+    if (isFailed) {
       badgeTone = 'danger';
       badgeText = `PR #${b.pr.number} · CI Failed`;
     } else if (hasConflict) {
@@ -916,33 +1026,39 @@
       alertsHtml += `<span class="cap-alert-pill cross">⇄ Cross-PR ${b.crossPr.map((c) => '#' + (c.otherPrNumber || '?')).join(',')}</span>`;
     }
 
+    const isWorkingTreeWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
+    const checkoutBtn = (!b.isHead && !isWorkingTreeWip)
+      ? `<button type="button" class="cap-btn-ico" data-act="checkout" title="Bu dala geç (git switch)">🎯</button>`
+      : '';
+
     let actionRowHtml = '';
-    if (isMerged) {
-      actionRowHtml = `<button type="button" class="cap-btn amber" data-act="delete">🧹 Dalı Sil / Temizle</button>`;
-    } else if (isFailed) {
+    if (isFailed) {
       actionRowHtml = `
         <button type="button" class="cap-btn danger" data-act="inspect">🔍 Hatayı Gör</button>
+        ${checkoutBtn}
         <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
       `;
     } else if (hasConflict && !isLive) {
       actionRowHtml = `
         <button type="button" class="cap-btn amber" data-act="resolve">✦ Auto-Resolve</button>
+        ${checkoutBtn}
         <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
       `;
     } else if (isLower) {
-      const isWorkingTreeWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
       if (isWorkingTreeWip) {
         actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🔍 Yerel Farkı Gör</button>`;
       } else {
         actionRowHtml = `
           <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
           <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>
+          ${checkoutBtn}
           <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
         `;
       }
     } else {
       actionRowHtml = `
         <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge (Parabolü Kapat)</button>
+        ${checkoutBtn}
         <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
       `;
     }
@@ -958,13 +1074,13 @@
       <div class="cap-actions">${actionRowHtml}</div>
     `;
 
-    // Button clicks stop drag propagation and invoke action directly
     card.querySelectorAll('button[data-act]').forEach((btn) => {
       btn.addEventListener('pointerdown', (ev) => ev.stopPropagation());
       btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         const act = btn.getAttribute('data-act');
         if (act === 'inspect') selectBranch(b.id);
+        else if (act === 'checkout') handleCheckoutBranch(b.id);
         else if (act === 'merge') handleMergeBranch(b.id);
         else if (act === 'promote') handlePromoteBranch(b.id);
         else if (act === 'resolve') handleResolveConflict(b.id);
@@ -1108,6 +1224,7 @@
             <h4>Commit Mesajı</h4>
             <div class="layer-line">${esc(node.subject)}</div>
           </div>
+          <div class="lock-note">🔒 <strong>main</strong> omurgasındaki commit mesajları tarihçe güvenliği için kilitlidir.</div>
         `;
         return;
       }
@@ -1144,8 +1261,18 @@
           ${b.originGone ? '<span class="chip warn">origin: gone</span>' : ''}
         </div>
         <div class="det-actions">
+          ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout">🎯 Dala Geç</button>` : ''}
           ${canPromote ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
-          ${isOpen && !isVirtualWip ? `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Main'e Merge Et</button>` : ''}
+          ${isOpen && !isVirtualWip ? `
+            <div class="merge-group">
+              <select id="merge-strategy" class="select-inline" aria-label="Merge stratejisi">
+                <option value="merge" ${state.mergeStrategy === 'merge' ? 'selected' : ''}>Merge</option>
+                <option value="squash" ${state.mergeStrategy === 'squash' ? 'selected' : ''}>Squash</option>
+                <option value="rebase" ${state.mergeStrategy === 'rebase' ? 'selected' : ''}>Rebase</option>
+              </select>
+              <button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>
+            </div>
+          ` : ''}
           ${!isLive && hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">✦ Auto-Resolve</button>` : ''}
           ${!isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-delete">🧹 Sil / Temizle</button>` : ''}
         </div>
@@ -1243,14 +1370,80 @@
       `;
     }
 
+    if (b.pr && isOpen) {
+      html += `
+        <div class="diag-card">
+          <h4>✏️ PR #${b.pr.number} Başlık &amp; Açıklama Düzenle</h4>
+          <form id="form-edit-pr" class="edit-form">
+            <input type="text" id="pr-edit-title" class="input-control mono" value="${esc(b.pr.title)}" placeholder="PR başlığı" required>
+            <textarea id="pr-edit-body" class="textarea-control" placeholder="PR açıklaması (opsiyonel)">${esc(b.pr.body || '')}</textarea>
+            <div class="det-actions">
+              <button type="submit" class="btn primary sm">PR Bilgisini Güncelle</button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+
+    if (b.canAmendCommit) {
+      html += `
+        <div class="diag-card">
+          <h4>✏️ Son Commit Mesajını Değiştir (--amend --only)</h4>
+          <form id="form-amend-commit" class="edit-form">
+            <input type="text" id="commit-amend-msg" class="input-control mono" value="${esc(b.lastCommitMsg || '')}" placeholder="Yeni commit mesajı" required>
+            <div class="det-actions">
+              <button type="submit" class="btn sm">Commit Mesajını Güncelle</button>
+            </div>
+          </form>
+        </div>
+      `;
+    } else if (isOpen && !isVirtualWip && !b.isHead) {
+      html += `<div class="lock-note">🔒 Commit mesajı yalnızca aktif çalışma dalı (HEAD) iken değiştirilebilir. Önce <strong>🎯 Dala Geç</strong> ile geçiş yapın.</div>`;
+    }
+
+    if (b.suggestedCmd) {
+      html += `
+        <div class="diag-card">
+          <h4>
+            <span>📋 Tek Tıkla Terminal Komutu</span>
+            <button type="button" class="btn sm" id="act-copy-cmd">Kopyala</button>
+          </h4>
+          <div class="cmd-box"><code class="cmd-code">${esc(b.suggestedCmd)}</code></div>
+        </div>
+      `;
+    }
+
     el.detail.innerHTML = html;
 
+    document.getElementById('act-checkout')?.addEventListener('click', () => handleCheckoutBranch(b.id));
     document.getElementById('act-promote')?.addEventListener('click', () => handlePromoteBranch(b.id));
+    document.getElementById('merge-strategy')?.addEventListener('change', (ev) => {
+      state.mergeStrategy = ev.target.value;
+    });
     document.getElementById('act-merge')?.addEventListener('click', () => handleMergeBranch(b.id));
     document.getElementById('act-resolve')?.addEventListener('click', () => handleResolveConflict(b.id));
     document.getElementById('act-resolve-card')?.addEventListener('click', () => handleResolveConflict(b.id));
     document.getElementById('act-fix-ci')?.addEventListener('click', () => handleFixCI(b.id));
     document.getElementById('act-delete')?.addEventListener('click', () => handleDeleteBranch(b.id));
+    document.getElementById('form-edit-pr')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const title = document.getElementById('pr-edit-title').value;
+      const body = document.getElementById('pr-edit-body').value;
+      handleEditPR(b.id, title, body);
+    });
+    document.getElementById('form-amend-commit')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const msg = document.getElementById('commit-amend-msg').value;
+      handleAmendCommit(b.id, msg);
+    });
+    document.getElementById('act-copy-cmd')?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(b.suggestedCmd);
+        showToast('Terminal komutu panoya kopyalandı', 'ok');
+      } catch {
+        showToast('Pano izni verilemedi', 'warn');
+      }
+    });
     document.getElementById('act-copy-log')?.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(b.pr.ci.rawLog || '');
@@ -1277,13 +1470,50 @@
   }
 
   // Action Handlers
-  async function handleMergeBranch(branchId) {
+  async function handleCheckoutBranch(branchId) {
     try {
       const snap = state.offlineMode
-        ? LocalFallbackEngine.mergeBranch(branchId)
-        : await apiCall('/api/branch/merge', 'POST', { branchId });
+        ? LocalFallbackEngine.checkoutBranch(branchId)
+        : await apiCall('/api/branch/checkout', 'POST', { branchId });
       applySnapshot(snap);
-      showToast('Dal merkez main omurgasına birleşti — Tam parabol tamamlandı!', 'ok');
+      showToast('Çalışma dalı (HEAD) değiştirildi', 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  }
+
+  async function handleEditPR(branchId, title, body) {
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.updatePRMeta(branchId, title, body)
+        : await apiCall('/api/pr/edit', 'POST', { branchId, title, body });
+      applySnapshot(snap);
+      showToast('PR başlık ve açıklaması güncellendi', 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  }
+
+  async function handleAmendCommit(branchId, message) {
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.amendLastCommit(branchId, message)
+        : await apiCall('/api/commit/amend', 'POST', { branchId, message });
+      applySnapshot(snap);
+      showToast('Son commit mesajı (--amend --only) güncellendi', 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  }
+
+  async function handleMergeBranch(branchId) {
+    const strategy = state.mergeStrategy || 'merge';
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.mergeBranch(branchId, strategy)
+        : await apiCall('/api/branch/merge', 'POST', { branchId, strategy });
+      applySnapshot(snap);
+      showToast(`Dal merkez main omurgasına (${strategy}) birleşti — Tam parabol tamamlandı!`, 'ok');
     } catch (err) {
       showToast(err.message, 'warn');
       renderSVG();
@@ -1402,6 +1632,7 @@
     if (state.offlineMode) return;
     try {
       const snap = await apiCall('/api/repo/switch', 'POST', { repoId });
+      localStorage.setItem(REPO_STORAGE_KEY, repoId);
       state.selectedBranchId = null;
       state.selectedNodeSha = null;
       applySnapshot(snap);

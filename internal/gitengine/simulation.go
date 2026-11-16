@@ -302,11 +302,38 @@ func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitS
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
-// MergeBranch closes an open half-parabola onto a new merge commit node on the main spine,
-// turning it into a complete parabolic arch.
-func (m *Manager) MergeBranch(branchID string) (model.CockpitSnapshot, error) {
+// CheckoutBranch switches HEAD to the given branch (simulation or `git switch`).
+func (m *Manager) CheckoutBranch(branchID string) (model.CockpitSnapshot, error) {
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.mergeBranchLive(live, branchID)
+		return m.checkoutBranchLive(live, branchID)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	found := false
+	for i := range m.simRepo.branches {
+		if m.simRepo.branches[i].ID == branchID {
+			if m.simRepo.branches[i].State != "open" {
+				return model.CockpitSnapshot{}, fmt.Errorf("yalnızca açık dallara geçiş yapılabilir")
+			}
+			m.simRepo.branches[i].IsHEAD = true
+			found = true
+		} else {
+			m.simRepo.branches[i].IsHEAD = false
+		}
+	}
+	if !found {
+		return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	}
+	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
+}
+
+// MergeBranch closes an open half-parabola onto a new merge commit node on the main spine,
+// turning it into a complete parabolic arch. strategy can be "merge", "squash", or "rebase".
+func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot, error) {
+	strategy = normalizeMergeStrategy(strategy)
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.mergeBranchLive(live, branchID, strategy)
 	}
 
 	m.mu.Lock()
@@ -412,7 +439,65 @@ func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) 
 	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
 }
 
-// FixCI simulates resolving a failing CI check and re-running tests to green.
+// UpdatePRMeta edits an open PR's title and description.
+func (m *Manager) UpdatePRMeta(branchID, title, body string) (model.CockpitSnapshot, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return model.CockpitSnapshot{}, fmt.Errorf("PR başlığı boş olamaz")
+	}
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.updatePRMetaLive(live, branchID, title, body)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.simRepo.branches {
+		b := &m.simRepo.branches[i]
+		if b.ID == branchID {
+			if b.PR == nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("%s dalı için açık PR yok", b.Name)
+			}
+			b.PR.Title = title
+			b.PR.Body = strings.TrimSpace(body)
+			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
+		}
+	}
+	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+}
+
+// AmendLastCommit safely updates only the commit message of the active HEAD feature branch.
+func (m *Manager) AmendLastCommit(branchID, message string) (model.CockpitSnapshot, error) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return model.CockpitSnapshot{}, fmt.Errorf("commit mesajı boş olamaz")
+	}
+	if live, ok := m.activeLiveRepo(); ok {
+		return m.amendLastCommitLive(live, branchID, message)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.simRepo.branches {
+		b := &m.simRepo.branches[i]
+		if b.ID == branchID {
+			if !b.IsHEAD || b.State != "open" {
+				return model.CockpitSnapshot{}, fmt.Errorf("yalnızca aktif çalışma dalının (HEAD) son commit mesajı değiştirilebilir")
+			}
+			b.LastCommitMsg = message
+			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
+		}
+	}
+	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+}
+
+func normalizeMergeStrategy(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "squash", "rebase", "merge":
+		return strings.ToLower(strings.TrimSpace(s))
+	default:
+		return "merge"
+	}
+}
 func (m *Manager) FixCI(branchID string) (model.CockpitSnapshot, error) {
 	if _, ok := m.activeLiveRepo(); ok {
 		return model.CockpitSnapshot{}, fmt.Errorf("canlı modda otomatik kod düzeltmesi kapalıdır; hatayı yerelde düzeltip pushlayın")
@@ -562,6 +647,8 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 			prCopy.CI = &ciCopy
 			branches[i].PR = &prCopy
 		}
+		branches[i].CanAmendCommit = branches[i].IsHEAD && branches[i].State == "open" && branches[i].AheadMain > 0
+		branches[i].SuggestedCmd = BuildSuggestedCommand(branches[i], m.simRepo.repo.DefaultBranch)
 	}
 
 	ComputeCrossPRCollisions(branches)
@@ -895,6 +982,23 @@ func (m *Manager) createBranchLive(live *repoEntry, name, hemisphere, fromSHA st
 			}
 		}
 	}
+	InvalidateGHCache(live.path)
+	return m.Snapshot()
+}
+
+func (m *Manager) checkoutBranchLive(live *repoEntry, branchID string) (model.CockpitSnapshot, error) {
+	b, _, err := m.findLiveBranch(live, branchID)
+	if err != nil {
+		return model.CockpitSnapshot{}, err
+	}
+	if b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
+		return model.CockpitSnapshot{}, fmt.Errorf("sanal çalışma dalına doğrudan geçiş yapılamaz")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if out, _, err := runCmd(ctx, live.path, "git", "switch", b.Name); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi (uncommitted çakışma olabilir): %s", b.Name, strings.TrimSpace(out))
+	}
 	return m.Snapshot()
 }
 
@@ -921,10 +1025,11 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID string) (model.Coc
 			}
 		}
 	}
+	InvalidateGHCache(live.path)
 	return m.Snapshot()
 }
 
-func (m *Manager) mergeBranchLive(live *repoEntry, branchID string) (model.CockpitSnapshot, error) {
+func (m *Manager) mergeBranchLive(live *repoEntry, branchID, strategy string) (model.CockpitSnapshot, error) {
 	b, snap, err := m.findLiveBranch(live, branchID)
 	if err != nil {
 		return model.CockpitSnapshot{}, err
@@ -953,14 +1058,13 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID string) (model.Cockp
 			_, _, _ = runCmd(ctx, live.path, "git", "checkout", defBranch)
 			curBranch = defBranch
 		}
-		out, _, err := runCmd(ctx, live.path, "gh", "pr", "merge", strconv.Itoa(b.PR.Number), "--merge", "--delete-branch")
+		flag := "--" + normalizeMergeStrategy(strategy)
+		out, _, err := runCmd(ctx, live.path, "gh", "pr", "merge", strconv.Itoa(b.PR.Number), flag, "--delete-branch")
 		if err != nil {
 			return model.CockpitSnapshot{}, fmt.Errorf("PR #%d merge edilemedi: %s", b.PR.Number, strings.TrimSpace(out))
 		}
-		_, _, _ = runCmd(ctx, live.path, "git", "fetch", "--prune", "origin")
-		if curBranch == defBranch && snap.Repo.DirtyCount == 0 {
-			_, _, _ = runCmd(ctx, live.path, "git", "merge", "--ff-only", "origin/"+defBranch)
-		}
+		syncDefaultBranchNonDestructive(ctx, live.path, defBranch)
+		InvalidateGHCache(live.path)
 		return m.Snapshot()
 	}
 
@@ -972,9 +1076,60 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID string) (model.Cockp
 			return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi: %s", defBranch, strings.TrimSpace(out))
 		}
 	}
-	if out, _, err := runCmd(ctx, live.path, "git", "merge", "--no-ff", b.Name); err != nil {
+	args := []string{"merge", "--no-ff", b.Name}
+	if strategy == "squash" {
+		args = []string{"merge", "--squash", b.Name}
+	}
+	if out, _, err := runCmd(ctx, live.path, "git", args...); err != nil {
 		return model.CockpitSnapshot{}, fmt.Errorf("yerel merge başarısız: %s", strings.TrimSpace(out))
 	}
+	if strategy == "squash" {
+		_, _, _ = runCmd(ctx, live.path, "git", "commit", "-m", fmt.Sprintf("squash merge %s", b.Name))
+	}
+	InvalidateGHCache(live.path)
+	return m.Snapshot()
+}
+
+func (m *Manager) updatePRMetaLive(live *repoEntry, branchID, title, body string) (model.CockpitSnapshot, error) {
+	b, _, err := m.findLiveBranch(live, branchID)
+	if err != nil {
+		return model.CockpitSnapshot{}, err
+	}
+	if b.PR == nil || b.PR.Number <= 0 {
+		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında düzenlenecek açık PR yok", b.Name)
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("PR düzenlemek için gh CLI gerekli")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, _, err := runCmd(ctx, live.path, "gh", "pr", "edit", strconv.Itoa(b.PR.Number), "--title", title, "--body", body)
+	if err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("PR #%d güncellenemedi: %s", b.PR.Number, strings.TrimSpace(out))
+	}
+	InvalidateGHCache(live.path)
+	return m.Snapshot()
+}
+
+func (m *Manager) amendLastCommitLive(live *repoEntry, branchID, message string) (model.CockpitSnapshot, error) {
+	b, snap, err := m.findLiveBranch(live, branchID)
+	if err != nil {
+		return model.CockpitSnapshot{}, err
+	}
+	if !b.IsHEAD || b.State != "open" || b.Name == snap.Repo.DefaultBranch || b.AheadMain <= 0 {
+		return model.CockpitSnapshot{}, fmt.Errorf("yalnızca aktif açık özellik dalının (HEAD) son commit mesajı değiştirilebilir")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if out, _, err := runCmd(ctx, live.path, "git", "commit", "--amend", "--only", "-m", message); err != nil {
+		return model.CockpitSnapshot{}, fmt.Errorf("commit mesajı güncellenemedi: %s", strings.TrimSpace(out))
+	}
+	if b.HasRemote {
+		if out, _, err := runCmd(ctx, live.path, "git", "push", "--force-with-lease", "origin", b.Name); err != nil {
+			return model.CockpitSnapshot{}, fmt.Errorf("yerelde mesaj değişti ancak force-with-lease push başarısız: %s", strings.TrimSpace(out))
+		}
+	}
+	InvalidateGHCache(live.path)
 	return m.Snapshot()
 }
 
@@ -983,51 +1138,66 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 	defer cancel()
 
 	_, _, _ = runCmd(ctx, live.path, "git", "fetch", "--prune", "origin")
+	snapBefore, snapErr := m.Snapshot()
+	if snapErr != nil {
+		return model.CockpitSnapshot{}, 0, snapErr
+	}
+
 	curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
 	currentBranch := strings.TrimSpace(curOut)
 	defBranch := detectDefaultBranch(ctx, live.path)
 
-	out, _, err := runCmd(ctx, live.path, "git", "for-each-ref", "--format=%(refname:short)\x1f%(upstream:track)", "refs/heads")
-	if err != nil {
-		return model.CockpitSnapshot{}, 0, fmt.Errorf("dalları okuma başarısız: %v", err)
-	}
-
 	removed := 0
-	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
-		parts := strings.Split(line, "\x1f")
-		if len(parts) < 2 {
+	for _, b := range snapBefore.Branches {
+		if !b.HasLocal || b.Name == currentBranch || b.Name == defBranch {
 			continue
 		}
-		name := parts[0]
-		track := parts[1]
-		if !strings.Contains(track, "[gone]") || name == currentBranch || name == defBranch {
+		if b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
 			continue
 		}
-		if err := validateBranchName(name); err != nil {
+		isMergedPR := b.PR != nil && b.PR.ReviewState == "MERGED" && b.RemoteAhead == 0 && b.UncommittedCount == 0
+		if !b.OriginGone && b.State != "gone" && !isMergedPR && b.State != "merged" {
 			continue
 		}
-		if _, _, err := runCmd(ctx, live.path, "git", "branch", "-d", name); err == nil {
+		if err := validateBranchName(b.Name); err != nil {
+			continue
+		}
+		if _, _, err := runCmd(ctx, live.path, "git", "branch", "-d", b.Name); err == nil {
 			removed++
+		} else if isMergedPR || b.OriginGone || b.State == "merged" {
+			if _, _, err := runCmd(ctx, live.path, "git", "branch", "-D", b.Name); err == nil {
+				removed++
+			}
 		}
 	}
+	InvalidateGHCache(live.path)
 	snap, err := m.Snapshot()
 	return snap, removed, err
+}
+
+func syncDefaultBranchNonDestructive(ctx context.Context, repoPath, defBranch string) error {
+	if out, _, err := runCmd(ctx, repoPath, "git", "fetch", "--prune", "origin"); err != nil {
+		return fmt.Errorf("git fetch başarısız: %s", strings.TrimSpace(out))
+	}
+	curOut, _, _ := runCmd(ctx, repoPath, "git", "branch", "--show-current")
+	statusOut, _, _ := runCmd(ctx, repoPath, "git", "status", "--porcelain")
+	if strings.TrimSpace(curOut) == defBranch && strings.TrimSpace(statusOut) == "" {
+		_, _, _ = runCmd(ctx, repoPath, "git", "merge", "--ff-only", "origin/"+defBranch)
+	} else {
+		_, _, _ = runCmd(ctx, repoPath, "git", "fetch", "--prune", "origin", defBranch+":"+defBranch)
+	}
+	return nil
 }
 
 func (m *Manager) syncSpineLive(live *repoEntry) (model.CockpitSnapshot, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if out, _, err := runCmd(ctx, live.path, "git", "fetch", "--prune", "origin"); err != nil {
-		return model.CockpitSnapshot{}, fmt.Errorf("git fetch başarısız: %s", strings.TrimSpace(out))
-	}
-
 	defBranch := detectDefaultBranch(ctx, live.path)
-	curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
-	statusOut, _, _ := runCmd(ctx, live.path, "git", "status", "--porcelain")
-	if strings.TrimSpace(curOut) == defBranch && strings.TrimSpace(statusOut) == "" {
-		_, _, _ = runCmd(ctx, live.path, "git", "merge", "--ff-only", "origin/"+defBranch)
+	if err := syncDefaultBranchNonDestructive(ctx, live.path, defBranch); err != nil {
+		return model.CockpitSnapshot{}, err
 	}
+	InvalidateGHCache(live.path)
 	return m.Snapshot()
 }
 
@@ -1045,7 +1215,17 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if out, _, err := runCmd(ctx, live.path, "git", "branch", "-d", b.Name); err != nil {
+		isSafeForce := (b.State == "merged" || b.OriginGone || (b.PR != nil && b.PR.ReviewState == "MERGED")) && b.RemoteAhead == 0
+		if isSafeForce {
+			if outD, _, errD := runCmd(ctx, live.path, "git", "branch", "-D", b.Name); errD == nil {
+				InvalidateGHCache(live.path)
+				return m.Snapshot()
+			} else {
+				return model.CockpitSnapshot{}, fmt.Errorf("dal silinemedi: %s", strings.TrimSpace(outD))
+			}
+		}
 		return model.CockpitSnapshot{}, fmt.Errorf("dal silinemedi (henüz merge edilmemiş olabilir): %s", strings.TrimSpace(out))
 	}
+	InvalidateGHCache(live.path)
 	return m.Snapshot()
 }

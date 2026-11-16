@@ -23,19 +23,23 @@
 go vet ./...
 go test -v ./...
 
-# Tek ikili olarak derle ve başlat
+# Tek ikili olarak derle ve bulunduğun Git deposunu canlı modda aç
 go build -o gitarc .
 ./gitarc
 
-# GitArc'ı kendi reposunda (canlı dogfooding modu) aç
-./gitarc -repo .
+# Demo simülasyon modunda aç
+./gitarc -repo sim
 
 # Belirli bir yerel Git deposunu canlı modda aç
 ./gitarc -repo /Users/ziyayesilbahce/Developer/sshpocket
+
+# Gömülü MCP Sunucusu (Antigravity / Claude Code / Cursor için stdio JSON-RPC 2.0)
+./gitarc -mcp -repo .
 ```
 
-## Canlı Mod (Dogfooding)
-`./gitarc -repo .` ile başlatıldığında GitArc kendi yerel dallarını, açık/birleşmiş GitHub PR'larını, Actions CI loglarını (`gh run view --log-failed`) ve Cross-PR dosya çarpışmalarını canlı olarak denetleyip yönetebilir.
+## Canlı Mod (Dogfooding) ve MCP Entegrasyonu
+- **Görsel Kokpit (`./gitarc`):** Çalıştırıldığı Git deposunu varsayılan olarak canlı modda açar, 4 saniyede bir arka planda değişiklikleri izler, tek tıkla dala geçiş (`Checkout`), `Merge | Squash | Rebase` birleştirme, PR başlık/açıklama düzenleme ve `HEAD` commit mesajı (`--amend --only`) güncelleme imkanı sunar.
+- **MCP Modu (`./gitarc -mcp`):** AI ajanlarına `gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest` ve `gitarc_sync_main` araçlarını sıfır bağımlılıkla sağlar. Ayrıntılı mimari şartname için [docs/PLAN.md](docs/PLAN.md) belgesine bakın.
 
 Arayüz, Go sunucusu olmadan `web/index.html` doğrudan tarayıcıda açıldığında da yerleşik `LocalFallbackEngine` ile simülasyon modunda çalışır.
 

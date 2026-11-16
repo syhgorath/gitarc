@@ -84,15 +84,18 @@ type BranchArc struct {
 	LastCommitMsg    string `json:"lastCommitMsg,omitempty"`
 
 	// Smart Diagnostics & Conflict Radar
-	ChangedFiles []string         `json:"changedFiles"`
-	Conflict     *ConflictDetail  `json:"conflict,omitempty"`
-	CrossPR      []CrossPRWarning `json:"crossPr,omitempty"`
+	ChangedFiles   []string         `json:"changedFiles"`
+	Conflict       *ConflictDetail  `json:"conflict,omitempty"`
+	CrossPR        []CrossPRWarning `json:"crossPr,omitempty"`
+	CanAmendCommit bool             `json:"canAmendCommit,omitempty"`
+	SuggestedCmd   string           `json:"suggestedCmd,omitempty"`
 }
 
 // PRStatus models GitHub Pull Request review & Actions CI status.
 type PRStatus struct {
 	Number      int       `json:"number"`
 	Title       string    `json:"title"`
+	Body        string    `json:"body,omitempty"`
 	Author      string    `json:"author"`
 	URL         string    `json:"url,omitempty"`
 	ReviewState string    `json:"reviewState"` // "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | "MERGED"
