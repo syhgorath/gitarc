@@ -899,6 +899,7 @@
     }
 
     const isLower = b.hemisphere === 'lower';
+    const isWorkingTreeWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-') || b.name === 'wip/working-tree';
     const isFailed = b.pr?.ci?.state === 'FAILURE';
     const isRunning = b.pr?.ci?.state === 'RUNNING';
     const isQueued = Boolean(state.pendingAutoMerge[b.id]);
@@ -924,7 +925,7 @@
       badgeText = 'origin: gone';
     } else if (isLower) {
       badgeTone = 'purple';
-      badgeText = 'Yarım Parabol · Local';
+      badgeText = isWorkingTreeWip ? 'Yerel Taslak · Uncommitted' : 'Yarım Parabol · Local';
     }
 
     const subText = b.lastCommitMsg
@@ -945,7 +946,6 @@
       alertsHtml += `<span class="cap-alert-pill cross">⇄ Cross-PR ${b.crossPr.map((c) => '#' + (c.otherPrNumber || '?')).join(',')}</span>`;
     }
 
-    const isWorkingTreeWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
     const checkoutTitle = isRemoteOnly ? 'Yerelde İndir &amp; Geç (git switch --track)' : 'Bu dala geç (git switch)';
     const checkoutBtn = (!b.isHead && !isWorkingTreeWip)
       ? `<button type="button" class="cap-btn-ico" data-act="checkout" title="${checkoutTitle}">🎯</button>`
@@ -995,8 +995,8 @@
         <span class="cap-badge ${badgeTone} ${badgePulse ? 'running-pulse' : ''}">${esc(badgeText)}</span>
         ${b.isHead ? '<span class="cap-head-pill">HEAD</span>' : ''}
       </div>
-      <div class="cap-name">${esc(b.name)}</div>
-      <div class="cap-sub">${esc(truncate(subText, 34))}${b.uncommittedCount > 0 ? ` · ●${b.uncommittedCount} dirty` : ''}</div>
+      <div class="cap-name">${isWorkingTreeWip ? '✏️ Kaydedilmemiş Değişiklikler' : esc(b.name)}</div>
+      <div class="cap-sub">${isWorkingTreeWip ? `${b.uncommittedCount || 0} dosya bekliyor · Commit stüdyosu` : esc(truncate(subText, 34))}${!isWorkingTreeWip && b.uncommittedCount > 0 ? ` · ●${b.uncommittedCount} dirty` : ''}</div>
       ${alertsHtml ? `<div class="cap-alerts">${alertsHtml}</div>` : ''}
       <div class="cap-actions">${actionRowHtml}</div>
     `;
@@ -1405,12 +1405,33 @@
       return;
     }
 
+    const isLive = snap.repo.mode === 'live';
+    const hasConflict = b.conflict?.hasConflict && !b.conflict.resolved;
+    const isOpen = b.state === 'open';
+    const isRemoteOnly = !b.hasLocal && b.hasRemote;
+    const isVirtualWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-') || b.name === 'wip/working-tree' || (b.name && b.name.includes('Kaydedilmemiş'));
+    const ciState = b.pr?.ci?.state;
+    const isRunning = ciState === 'RUNNING';
+    const isQueued = Boolean(state.pendingAutoMerge[b.id]);
+    const canCommitWorkingTree = isVirtualWip || (b.uncommittedCount || 0) > 0 || (b.isHead && (state.snapshot?.repo?.dirtyCount || 0) > 0);
+    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip && !canCommitWorkingTree;
+    const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
+    const canMerge = isOpen && hasOpenPR && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
+
+    const ciChip = ciState === 'FAILURE' ? '<span class="chip danger">CI: FAILURE</span>'
+      : ciState === 'RUNNING' ? '<span class="chip warn running-pulse">CI: RUNNING</span>'
+        : ciState === 'SUCCESS' ? '<span class="chip ok">CI: PASS</span>' : '';
+
+    const queuedChip = isQueued ? '<span class="chip warn running-pulse">⏳ Auto-Merge Kuyruğunda</span>' : '';
+
     let html = `
       ${proposalHtml}
       <div class="det-header">
         <div class="det-title-row">
-          <h3 class="det-branch-name">${esc(b.name)}</h3>
-          <span class="chip ${b.state === 'merged' ? 'ok' : (b.hemisphere === 'lower' ? 'purple' : 'accent')}">${b.state === 'merged' ? 'Tam Parabol' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR'}</span>
+          <h3 class="det-branch-name">${isVirtualWip ? '✏️ Çalışma Alanı (Kaydedilmemiş Değişiklikler)' : esc(b.name)}</h3>
+          <span class="chip ${b.state === 'merged' ? 'ok' : (isVirtualWip ? 'purple' : (b.hemisphere === 'lower' ? 'purple' : 'accent'))}">
+            ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR')}
+          </span>
         </div>
         <div class="det-badges">
           ${b.pr ? `<span class="chip accent">PR #${b.pr.number}</span>` : ''}
@@ -1455,7 +1476,11 @@
         </div>
         <div class="layer-box">
           <h3>Alt Ray · Local</h3>
-          ${!b.hasLocal ? `
+          ${isVirtualWip ? `
+            <div class="layer-line">Konum: main omurgası (Kaydedilmemiş Çalışma)</div>
+            <div class="layer-line">Durum: Henüz bir dala veya commite aktarılmamış</div>
+            <div class="layer-line">Değişen Dosyalar: ${b.uncommittedCount || state.snapshot?.repo?.dirtyCount || 0} adet dosya</div>
+          ` : (!b.hasLocal ? `
             <div class="layer-line">${b.state === 'merged' && !b.originGone ? '✓ Yerel kalıntı dal temizlendi' : `Yerelde dal yok (origin/${esc(b.name)})`}</div>
             <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
             <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
@@ -1464,7 +1489,7 @@
             <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
             <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
             <div class="layer-line">Uncommitted (Staged + Untracked): ${b.uncommittedCount || (b.isHead ? state.snapshot?.repo?.dirtyCount : 0) || 0} dosya</div>
-          `}
+          `)}
         </div>
       </div>
     `;
@@ -1544,17 +1569,17 @@
       let defaultPrBody = b.draftPrBody || '';
 
       if (isVirtualWip || isMerged) {
-        defaultWtBranch = '';
-        branchPlaceholder = 'Örn: feat/kullanici-paneli (dal adı belirleyin)';
+        defaultWtBranch = suggestUniqueBranchName('feat', candidateFiles, snap);
+        branchPlaceholder = 'Örn: ' + defaultWtBranch;
         defaultCommitMsg = '';
         defaultPrTitle = '';
         defaultPrBody = '';
       }
       const defBranch = snap.repo?.defaultBranch || 'main';
       const wtNote = isMerged
-        ? `Bu dal (<strong>${esc(b.name)}</strong>) birleşmiş (merged/gone). Kaydedilmemiş değişiklikleriniz korunarak <strong>origin/${esc(defBranch)}</strong> tabanlı yeni bir dala aktarılacaktır.`
+        ? `Bu dal (<strong>${esc(b.name)}</strong>) GitHub'da birleşmiş. Kaydedilmemiş değişiklikleriniz korunarak <strong>origin/${esc(defBranch)}</strong> tabanlı yeni bir dala aktarılacaktır.`
         : (isVirtualWip
-          ? `Şu an <strong>${esc(defBranch)}</strong> üzerindeki kaydedilmemiş değişiklikleri görüyorsunuz. Terminal açmadan yeni dal açabilir, commit atabilir ve doğrudan push + PR oluşturabilirsiniz.`
+          ? `Şu an <strong>${esc(defBranch)}</strong> omurgası üzerindeki kaydedilmemiş açık değişikliklerinizi görüyorsunuz. Terminal açmadan doğrudan yeni bir dal açabilir, commit atabilir ve PR oluşturabilirsiniz.`
           : 'Bu daldaki kaydedilmemiş değişiklikleri konsol kullanmadan yerelde commitleyin veya tek tıkla pushlayıp PR açın.');
 
       html += `
@@ -1692,7 +1717,16 @@
     wireProposalActions();
 
     document.getElementById('act-checkout')?.addEventListener('click', () => handleCheckoutBranch(b.id));
-    document.getElementById('act-promote')?.addEventListener('click', (ev) => handlePromoteBranch(b.id, undefined, undefined, ev.currentTarget));
+    document.getElementById('act-promote')?.addEventListener('click', (ev) => {
+      const titleInput = document.getElementById('promote-pr-title');
+      if (titleInput) {
+        titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        titleInput.focus();
+        showToast('Push öncesi PR başlık ve açıklamasını kontrol edip formu onaylayın', 'info');
+      } else {
+        handlePromoteBranch(b.id, undefined, undefined, ev.currentTarget);
+      }
+    });
     document.getElementById('form-commit-wt')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const bName = document.getElementById('wt-branch-name').value;
@@ -2354,7 +2388,7 @@
 
     let warningText = '';
     if (isHead && dirty) {
-      warningText = `\n\n🚨 DİKKAT: "${branchName}" şu an aktif dal (HEAD) ve çalışma ağacında ${dirtyCount} adet kaydedilmemiş (staged / takipsiz) dosya var!\nDalı silmeden önce değişikliklerinizi commitlemeniz veya saklamanız (stash) gerekir, aksi takdirde veriler kaybolur.`;
+      warningText = `\n\nℹ️ Bu dal şu an aktif (HEAD). GitArc önce "git switch ${defBranch}" ile ana omurgaya geçecek (kaydedilmemiş ${dirtyCount} dosyanız korunacaktır), ardından birleşmiş dalı silecektir.`;
     } else if (isHead) {
       warningText = `\n\nℹ️ Bu dal şu an aktif (HEAD) olduğu için doğrudan silinemez. Komut önce "git switch ${defBranch}" ile ana omurgaya geçecek, ardından dalı silecektir.`;
     } else if (dirty) {
