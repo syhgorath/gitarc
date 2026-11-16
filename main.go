@@ -556,9 +556,6 @@ func main() {
 	flag.Parse()
 
 	targetRepo := *repoPath
-	if targetRepo == "sim" {
-		targetRepo = ""
-	}
 	mgr := gitengine.NewManager(targetRepo)
 	if *teamMode {
 		mgr.SetTeamMode(true)
