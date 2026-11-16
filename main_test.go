@@ -130,10 +130,19 @@ func TestSecurityGuardsAndAPIFlow(t *testing.T) {
 		return rec
 	}
 
+	if rec := doPost("/api/branch/checkout", `{"branchId":"br-local-wip"}`); rec.Code != http.StatusOK {
+		t.Fatalf("checkout failed: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := doPost("/api/commit/amend", `{"branchId":"br-local-wip","message":"wip: updated commit message"}`); rec.Code != http.StatusOK {
+		t.Fatalf("commit amend failed: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := doPost("/api/pr/edit", `{"branchId":"br-open-421","title":"feat(audit): refined title","body":"Body text"}`); rec.Code != http.StatusOK {
+		t.Fatalf("pr edit failed: %d %s", rec.Code, rec.Body.String())
+	}
 	if rec := doPost("/api/branch/resolve", `{"branchId":"br-open-421"}`); rec.Code != http.StatusOK {
 		t.Fatalf("resolve failed: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := doPost("/api/branch/merge", `{"branchId":"br-open-421"}`); rec.Code != http.StatusOK {
+	if rec := doPost("/api/branch/merge", `{"branchId":"br-open-421","strategy":"squash"}`); rec.Code != http.StatusOK {
 		t.Fatalf("merge after resolve failed: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := doPost("/api/branch/fix-ci", `{"branchId":"br-open-422"}`); rec.Code != http.StatusOK {

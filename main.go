@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"gitarc/internal/gitengine"
+	"gitarc/internal/mcp"
 )
 
 //go:embed web
@@ -163,12 +164,15 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/snapshot", a.guard(a.handleSnapshot))
 	mux.HandleFunc("/api/repo/switch", a.guard(a.handleSwitchRepo))
 	mux.HandleFunc("/api/branch/create", a.guard(a.handleCreateBranch))
+	mux.HandleFunc("/api/branch/checkout", a.guard(a.handleCheckoutBranch))
 	mux.HandleFunc("/api/branch/merge", a.guard(a.handleMergeBranch))
 	mux.HandleFunc("/api/branch/promote", a.guard(a.handlePromoteBranch))
 	mux.HandleFunc("/api/branch/resolve", a.guard(a.handleResolveConflict))
 	mux.HandleFunc("/api/branch/fix-ci", a.guard(a.handleFixCI))
 	mux.HandleFunc("/api/branch/delete", a.guard(a.handleDeleteBranch))
 	mux.HandleFunc("/api/branch/prune", a.guard(a.handlePruneGone))
+	mux.HandleFunc("/api/pr/edit", a.guard(a.handleEditPR))
+	mux.HandleFunc("/api/commit/amend", a.guard(a.handleAmendCommit))
 	mux.HandleFunc("/api/spine/sync", a.guard(a.handleSyncSpine))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/test/run", a.guard(a.handleRunLocalTest))
@@ -220,16 +224,65 @@ func (a *App) handleCreateBranch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
-func (a *App) handleMergeBranch(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleCheckoutBranch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		BranchID string `json:"branchId"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
 	}
-	snap, err := a.mgr.MergeBranch(req.BranchID)
+	snap, err := a.mgr.CheckoutBranch(req.BranchID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleMergeBranch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+		Strategy string `json:"strategy"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.MergeBranch(req.BranchID, req.Strategy)
 	if err != nil {
 		writeJSONError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleEditPR(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+		Title    string `json:"title"`
+		Body     string `json:"body"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.UpdatePRMeta(req.BranchID, req.Title, req.Body)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleAmendCommit(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+		Message  string `json:"message"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.AmendLastCommit(req.BranchID, req.Message)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
@@ -407,9 +460,23 @@ func openBrowser(url string) {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7432", "dinlenecek yerel adres (örn. 127.0.0.1:7432 veya 127.0.0.1:0)")
-	repoPath := flag.String("repo", "", "doğrudan açılacak yerel git deposu yolu")
+	repoPath := flag.String("repo", ".", "doğrudan açılacak yerel git deposu yolu ('sim' = demo simülasyon)")
 	openUI := flag.Bool("open", true, "başlatınca varsayılan tarayıcıda aç")
+	mcpMode := flag.Bool("mcp", false, "stdio üzerinden MCP JSON-RPC 2.0 sunucusu olarak çalıştır")
 	flag.Parse()
+
+	targetRepo := *repoPath
+	if targetRepo == "sim" {
+		targetRepo = ""
+	}
+	mgr := gitengine.NewManager(targetRepo)
+
+	if *mcpMode {
+		if err := mcp.ServeStdio(os.Stdin, os.Stdout, mgr); err != nil {
+			log.Fatalf("mcp sunucu hatası: %v", err)
+		}
+		return
+	}
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
@@ -421,7 +488,6 @@ func main() {
 	}
 
 	host := ln.Addr().String()
-	mgr := gitengine.NewManager(*repoPath)
 	app := newApp(host, mgr)
 	srv := &http.Server{
 		Handler:           app.routes(),

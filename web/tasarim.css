@@ -978,6 +978,86 @@ body {
   color: var(--danger);
 }
 
+.cap-btn-ico {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.cap-btn-ico:hover {
+  border-color: var(--sky);
+  color: var(--sky);
+}
+
+/* Compact Merged Arch Pill */
+.cap-merged-pill {
+  width: 200px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  border: 1.5px solid var(--emerald-border);
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.cap-merged-pill:hover {
+  transform: translateY(-2px);
+  border-color: var(--emerald);
+}
+
+.cap-merged-pill.selected {
+  border-color: var(--emerald);
+  box-shadow: 0 0 0 2px var(--emerald-weak), var(--shadow-2);
+}
+
+.cap-merged-pill.gone {
+  border-color: var(--warn-border);
+}
+
+.cap-merged-txt {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--emerald);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cap-merged-pill.gone .cap-merged-txt {
+  color: var(--warn);
+}
+
+.cap-merged-del {
+  flex: 0 0 auto;
+  border: 0;
+  background: var(--surface-3);
+  color: var(--text-2);
+  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.cap-merged-del:hover {
+  background: var(--warn-weak);
+  color: var(--warn);
+}
+
 /* Right Inspector Pane */
 .inspector-pane {
   display: flex;
@@ -1430,4 +1510,76 @@ body {
     border-left: 0;
     border-top: 1px solid var(--border);
   }
+}
+
+/* Inspector Merge Strategy, Edit Forms, Lock Note & Suggested Command */
+.merge-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.select-inline {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.textarea-control {
+  width: 100%;
+  min-height: 62px;
+  resize: vertical;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+}
+
+.textarea-control:focus {
+  border-color: var(--sky);
+}
+
+.lock-note {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cmd-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  background: var(--log-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+}
+
+.cmd-code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--sky);
+  word-break: break-all;
 }

@@ -121,7 +121,7 @@ func TestSimulationLifecycleActions(t *testing.T) {
 	}
 
 	// Merging conflicted br-open-421 before AutoResolve must fail
-	if _, err := mgr.MergeBranch("br-open-421"); err == nil {
+	if _, err := mgr.MergeBranch("br-open-421", "merge"); err == nil {
 		t.Fatalf("expected merge to fail while CHANGELOG conflict is unresolved")
 	}
 
@@ -131,7 +131,7 @@ func TestSimulationLifecycleActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AutoResolveConflict failed: %v", err)
 	}
-	snap, err = mgr.MergeBranch("br-open-421")
+	snap, err = mgr.MergeBranch("br-open-421", "squash")
 	if err != nil {
 		t.Fatalf("MergeBranch after AutoResolve failed: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestSimulationDeleteBranch(t *testing.T) {
 
 func TestFixCIAndMergeLock(t *testing.T) {
 	mgr := NewManager("")
-	if _, err := mgr.MergeBranch("br-open-422"); err == nil {
+	if _, err := mgr.MergeBranch("br-open-422", ""); err == nil {
 		t.Fatalf("expected MergeBranch to fail while CI status is FAILURE")
 	}
 	snap, err := mgr.FixCI("br-open-422")
@@ -291,8 +291,50 @@ func TestFixCIAndMergeLock(t *testing.T) {
 	if fixed == nil || fixed.PR == nil || fixed.PR.CI == nil || fixed.PR.CI.State != "SUCCESS" {
 		t.Fatalf("expected br-open-422 CI to be SUCCESS after FixCI, got %+v", fixed)
 	}
-	if _, err := mgr.MergeBranch("br-open-422"); err != nil {
+	if _, err := mgr.MergeBranch("br-open-422", "rebase"); err != nil {
 		t.Fatalf("expected MergeBranch to succeed after FixCI, got %v", err)
+	}
+}
+
+func TestCheckoutEditPRAndAmendCommit(t *testing.T) {
+	mgr := NewManager("")
+	// Non-HEAD branch cannot amend commit
+	if _, err := mgr.AmendLastCommit("br-local-wip", "updated msg"); err == nil {
+		t.Fatalf("expected AmendLastCommit to fail for non-HEAD branch")
+	}
+	// Checkout local branch makes it HEAD and allows AmendLastCommit
+	snap, err := mgr.CheckoutBranch("br-local-wip")
+	if err != nil {
+		t.Fatalf("CheckoutBranch failed: %v", err)
+	}
+	var wip *model.BranchArc
+	for i := range snap.Branches {
+		if snap.Branches[i].ID == "br-local-wip" {
+			wip = &snap.Branches[i]
+		}
+	}
+	if wip == nil || !wip.IsHEAD || !wip.CanAmendCommit {
+		t.Fatalf("expected checked-out br-local-wip to be HEAD and amendable: %+v", wip)
+	}
+	snap, err = mgr.AmendLastCommit("br-local-wip", "feat(doctor): refined keychain ACL check")
+	if err != nil {
+		t.Fatalf("AmendLastCommit failed: %v", err)
+	}
+	for _, b := range snap.Branches {
+		if b.ID == "br-local-wip" && b.LastCommitMsg != "feat(doctor): refined keychain ACL check" {
+			t.Fatalf("unexpected amended commit msg: %q", b.LastCommitMsg)
+		}
+	}
+
+	// Update PR metadata
+	snap, err = mgr.UpdatePRMeta("br-open-421", "feat(report): clean audit export", "Updated PR body")
+	if err != nil {
+		t.Fatalf("UpdatePRMeta failed: %v", err)
+	}
+	for _, b := range snap.Branches {
+		if b.ID == "br-open-421" && (b.PR.Title != "feat(report): clean audit export" || b.PR.Body != "Updated PR body") {
+			t.Fatalf("unexpected PR metadata after UpdatePRMeta: %+v", b.PR)
+		}
 	}
 }
 
