@@ -363,10 +363,21 @@
         }
         return recompute();
       },
-      commitWorkingTree(branchName, commitMsg, prTitle = '', prBody = '', pushAndPr = false) {
+      commitWorkingTree(branchName, commitMsg, prTitle = '', prBody = '', pushAndPr = false, files = []) {
         const cleanBranch = (branchName || '').trim() || 'feat/working-tree';
         const cleanCommit = (commitMsg || '').trim();
         if (!cleanCommit) throw new Error('Commit mesajı boş olamaz');
+        const secretPats = ['img/logoyeni.jpg', 'referans/**', '.mcp.json', '.env', '*.pem', '*.key', 'id_*'];
+        for (const f of files) {
+          const lower = (f || '').toLowerCase();
+          for (const pat of secretPats) {
+            if (pat.endsWith('/**') && lower.startsWith(pat.replace('/**', ''))) {
+              throw new Error(`GÜVENLİK ENGELİ: Gizli dosya tespit edildi: '${f}' (${pat}). Commit engellendi!`);
+            } else if (lower.includes(pat.replace(/\*/g, ''))) {
+              throw new Error(`GÜVENLİK ENGELİ: Gizli dosya tespit edildi: '${f}' (${pat}). Commit engellendi!`);
+            }
+          }
+        }
         if (pushAndPr) {
           const existing = sim.branches.find((x) => x.name === cleanBranch);
           if (existing && (existing.state === 'merged' || existing.originGone || existing.state === 'gone')) {
@@ -418,6 +429,30 @@
           b.pr.ci.duration = '0m 41s';
           b.pr.reviewState = 'APPROVED';
         }
+        return recompute();
+      },
+      dismissProposal() {
+        sim.pendingProposal = null;
+        return recompute();
+      },
+      proposeCommit(branchName, message, files = [], prTitle = '', prBody = '') {
+        const cleanBranch = (branchName || '').trim();
+        const cleanMsg = (message || '').trim();
+        if (!cleanBranch || !cleanMsg) throw new Error('Dal adı ve mesaj zorunludur');
+        sim.pendingProposal = {
+          id: 'prop-fallback',
+          branchName: cleanBranch,
+          baseBranch: 'origin/main',
+          message: cleanMsg,
+          files: files.length > 0 ? files : ['CHANGELOG.md'],
+          prTitle: prTitle || cleanMsg,
+          prBody: prBody || 'Claude önerisi',
+          diffStat: 'CHANGELOG.md | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)',
+          filesChanged: files.length || 1,
+          totalLines: 2,
+          isLargeDiff: false,
+          createdAt: new Date().toLocaleTimeString(),
+        };
         return recompute();
       },
       inspectConflict(branchId) {

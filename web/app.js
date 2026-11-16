@@ -372,6 +372,51 @@
     return Boolean(b.state === 'merged' || b.state === 'gone' || b.originGone);
   }
 
+  function isSecretFile(f, snap = state.snapshot) {
+    if (!f) return false;
+    const patterns = snap?.repo?.secretPatterns || [
+      'img/logoyeni.jpg',
+      'referans/**',
+      'referans/*',
+      'referans',
+      '.mcp.json',
+      '.env*',
+      '*.env',
+      '*.pem',
+      '*.key',
+      'id_*',
+      'id_rsa*',
+      'id_ed25519*',
+    ];
+    const clean = f.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+    const base = clean.split('/').pop();
+
+    for (const p of patterns) {
+      const pClean = p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+      if (pClean.endsWith('/**') || pClean.endsWith('/*')) {
+        const prefix = pClean.replace(/\/\*\*?$/, '');
+        if (clean === prefix || clean.startsWith(prefix + '/')) return true;
+      } else if (pClean.endsWith('/')) {
+        if (clean.startsWith(pClean)) return true;
+      } else if (clean === pClean) {
+        return true;
+      }
+      if (!pClean.includes('/')) {
+        if (pClean.includes('*')) {
+          const reg = new RegExp('^' + pClean.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
+          if (reg.test(base)) return true;
+        } else if (base === pClean) {
+          return true;
+        }
+      }
+      if (pClean.includes('*')) {
+        const reg = new RegExp('^' + pClean.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
+        if (reg.test(clean)) return true;
+      }
+    }
+    return false;
+  }
+
   function isOpenPR(b) {
     return Boolean(b.pr && b.pr.number > 0 && b.state === 'open' && b.pr.reviewState !== 'MERGED');
   }
@@ -1197,8 +1242,9 @@
     const isRunning = ciState === 'RUNNING';
     const isQueued = Boolean(state.pendingAutoMerge[b.id]);
     const canCommitWorkingTree = isVirtualWip || (b.uncommittedCount || 0) > 0 || (b.isHead && (state.snapshot?.repo?.dirtyCount || 0) > 0);
-    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip;
-    const canMerge = isOpen && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
+    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip && !canCommitWorkingTree;
+    const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
+    const canMerge = isOpen && hasOpenPR && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
 
     const ciChip = ciState === 'FAILURE' ? '<span class="chip danger">CI: FAILURE</span>'
       : ciState === 'RUNNING' ? '<span class="chip warn running-pulse">CI: RUNNING</span>'
@@ -1206,7 +1252,63 @@
 
     const queuedChip = isQueued ? '<span class="chip warn running-pulse">⏳ Auto-Merge Kuyruğunda</span>' : '';
 
+    let proposalHtml = '';
+    if (snap.pendingProposal) {
+      const prop = snap.pendingProposal;
+      proposalHtml = `
+        <div class="diag-card proposal-card">
+          <div class="proposal-head">
+            <h4>
+              <span>🤖 Claude / AI Commit &amp; PR Önerisi</span>
+              <span class="chip accent">Kullanıcı Onayı Bekliyor</span>
+            </h4>
+            <span class="proposal-time">${esc(prop.createdAt || '')}</span>
+          </div>
+          <div class="wt-note">
+            Claude bir commit ve PR önerisi hazırladı. Bu öneri <strong>${esc(prop.baseBranch || 'origin/main')}</strong> tabanlı yeni bir dal açacak, yalnız aşağıdaki açık dosyaları stage edecek ve PR oluşturacaktır. İnceleyip onaylayabilirsiniz.
+          </div>
+
+          <div class="wt-field">
+            <label class="wt-label">Önerilen Dal Adı</label>
+            <div class="layer-line mono"><strong>${esc(prop.branchName)}</strong> <span class="chip ok">${esc(prop.baseBranch || 'origin/main')} tabanlı</span></div>
+          </div>
+
+          <div class="wt-field">
+            <label class="wt-label">Commitlenecek Açık Dosyalar (${prop.files?.length || 0} adet)</label>
+            <div class="file-list">
+              ${(prop.files || []).map((f) => `<span class="file-tag special">${esc(f)}</span>`).join('')}
+            </div>
+          </div>
+
+          ${prop.diffStat ? `
+            <div class="wt-field">
+              <label class="wt-label">Değişiklik Özeti (git diff --stat)</label>
+              <pre class="terminal-box">${esc(prop.diffStat)}</pre>
+            </div>
+          ` : ''}
+
+          <div class="wt-field">
+            <label class="wt-label">Önerilen Commit Mesajı</label>
+            <div class="layer-line mono"><strong>${esc(prop.message)}</strong></div>
+          </div>
+
+          ${prop.prTitle ? `
+            <div class="wt-field">
+              <label class="wt-label">PR Başlığı</label>
+              <div class="layer-line">${esc(prop.prTitle)}</div>
+            </div>
+          ` : ''}
+
+          <div class="det-actions">
+            <button type="button" class="btn ok sm" id="act-proposal-approve">✅ İncele &amp; Onayla (Commit + Push + PR)</button>
+            <button type="button" class="btn ghost sm" id="act-proposal-dismiss">❌ Öneriyi Reddet</button>
+          </div>
+        </div>
+      `;
+    }
+
     let html = `
+      ${proposalHtml}
       <div class="det-header">
         <div class="det-title-row">
           <h3 class="det-branch-name">${esc(b.name)}</h3>
@@ -1222,8 +1324,8 @@
         </div>
         <div class="det-actions">
           ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout" ${snap.repo.teamMode ? 'disabled title="Team Server modunda paylaşılan HEAD kilitlidir"' : ''}>${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
-          ${canPromote ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
-          ${isOpen && !isVirtualWip ? `
+          ${canPromote && !hasOpenPR ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
+          ${hasOpenPR && !isVirtualWip ? `
             <div class="merge-group">
               <select id="merge-strategy" class="select-inline" aria-label="Merge stratejisi">
                 <option value="merge" ${state.mergeStrategy === 'merge' ? 'selected' : ''}>Merge</option>
@@ -1328,17 +1430,27 @@
 
     if (canCommitWorkingTree) {
       const isMerged = isMergedOrGone(b) || b.state === 'merged' || b.pr?.reviewState === 'MERGED';
+      const candidateFiles = (b.changedFiles || []).filter(Boolean);
+      const secretFile = candidateFiles.find((f) => isSecretFile(f, snap));
+
       let defaultWtBranch = b.name;
-      let defaultCommitMsg = b.lastCommitMsg || 'feat: cockpit workflow updates';
-      let defaultPrTitle = b.draftPrTitle || b.lastCommitMsg || defaultCommitMsg;
+      let branchPlaceholder = 'feat/ozellik-adi';
+      let defaultCommitMsg = b.lastCommitMsg || '';
+      if (/update\s+\d+\s+files/i.test(defaultCommitMsg) || defaultCommitMsg.startsWith('Pushlanmamış yerel çalışma')) {
+        defaultCommitMsg = '';
+      }
+      let defaultPrTitle = b.draftPrTitle || defaultCommitMsg;
+      if (/update\s+\d+\s+files/i.test(defaultPrTitle)) {
+        defaultPrTitle = '';
+      }
       let defaultPrBody = b.draftPrBody || '';
 
       if (isVirtualWip || isMerged) {
-        defaultWtBranch = suggestUniqueBranchName(b, snap);
-        const suggested = suggestCommitAndPR(b);
-        defaultCommitMsg = suggested.commitMsg;
-        defaultPrTitle = suggested.prTitle;
-        defaultPrBody = suggested.prBody;
+        defaultWtBranch = '';
+        branchPlaceholder = 'Örn: feat/kullanici-paneli (dal adı belirleyin)';
+        defaultCommitMsg = '';
+        defaultPrTitle = '';
+        defaultPrBody = '';
       }
       const defBranch = snap.repo?.defaultBranch || 'main';
       const wtNote = isMerged
@@ -1351,17 +1463,29 @@
         <div class="diag-card">
           <h4>
             <span>🚀 Konsolsuz Dal Aç, Commit &amp; PR Oluştur</span>
-            <span class="chip accent">${b.uncommittedCount || (b.isHead ? snap.repo?.dirtyCount : 0) || 0} dosya</span>
+            <span class="chip accent">${candidateFiles.length || b.uncommittedCount || (b.isHead ? snap.repo?.dirtyCount : 0) || 0} dosya</span>
           </h4>
           <div class="wt-note">${wtNote}</div>
+          ${candidateFiles.length > 0 ? `
+            <div class="wt-field">
+              <label class="wt-label">Commitlenecek Staged / Takipsiz Dosyalar (${candidateFiles.length} adet)</label>
+              <div class="file-list">
+                ${candidateFiles.map((f) => {
+                  const isSec = isSecretFile(f, snap);
+                  return `<span class="file-tag ${isSec ? 'special danger' : ''}">${esc(f)}${isSec ? ' 🚨 GİZLİ DOSYA' : ''}</span>`;
+                }).join('')}
+              </div>
+              ${secretFile ? `<div class="lock-note danger">🚨 GÜVENLİK ENGELİ: Staged dosyalar arasında gizli/korumalı dosya (<strong>${esc(secretFile)}</strong>) tespit edildi! Commit ve Push kilitlendi.</div>` : ''}
+            </div>
+          ` : ''}
           <form id="form-commit-wt" class="edit-form">
             <div class="wt-field">
-              <label class="wt-label" for="wt-branch-name">Özellik Dalı Adı</label>
-              <input type="text" id="wt-branch-name" class="input-control mono" value="${esc(defaultWtBranch)}" placeholder="feat/cockpit-updates" required>
+              <label class="wt-label" for="wt-branch-name">Özellik Dalı Adı ${isMerged || isVirtualWip ? '<span class="chip warn">Yeni dal adı girin</span>' : ''}</label>
+              <input type="text" id="wt-branch-name" class="input-control mono" value="${esc(defaultWtBranch)}" placeholder="${esc(branchPlaceholder)}" required>
             </div>
             <div class="wt-field">
               <label class="wt-label" for="wt-commit-msg">Commit Mesajı</label>
-              <input type="text" id="wt-commit-msg" class="input-control mono" value="${esc(defaultCommitMsg)}" placeholder="feat: ..." required>
+              <input type="text" id="wt-commit-msg" class="input-control mono" value="${esc(defaultCommitMsg)}" placeholder="feat: yapılan değişikliği açıklayın" required>
             </div>
             <div class="wt-field">
               <label class="wt-label" for="wt-pr-title">PR Başlığı (Push &amp; PR için)</label>
@@ -1372,8 +1496,8 @@
               <textarea id="wt-pr-body" class="textarea-control" placeholder="Neler değişti ve nasıl doğrulandı?">${esc(defaultPrBody)}</textarea>
             </div>
             <div class="det-actions">
-              <button type="submit" class="btn emerald sm" id="act-wt-commit-only" ${snap.repo.teamMode ? 'disabled' : ''}>💾 Sadece Dal Aç &amp; Commit At</button>
-              <button type="button" class="btn primary sm" id="act-wt-commit-push" ${snap.repo.teamMode ? 'disabled' : ''}>🚀 Commit + Push &amp; PR Oluştur</button>
+              <button type="submit" class="btn emerald sm" id="act-wt-commit-only" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>💾 Sadece Dal Aç &amp; Commit At</button>
+              <button type="button" class="btn primary sm" id="act-wt-commit-push" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>${b.pr && b.pr.number > 0 ? `🚀 Commit &amp; PR #${b.pr.number}'a Pushla` : '🚀 Commit + Push &amp; PR Oluştur'}</button>
             </div>
           </form>
         </div>
@@ -1466,6 +1590,58 @@
     }
 
     el.detail.innerHTML = html;
+
+    document.getElementById('act-proposal-dismiss')?.addEventListener('click', async () => {
+      try {
+        const res = state.offlineMode
+          ? LocalFallbackEngine.dismissProposal()
+          : await apiCall('/api/proposal/dismiss', 'POST', {});
+        applySnapshot(res);
+        showToast('Öneri kartı kapatıldı', 'info');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    });
+
+    document.getElementById('act-proposal-approve')?.addEventListener('click', async () => {
+      const prop = state.snapshot?.pendingProposal;
+      if (!prop) return;
+      const btn = document.getElementById('act-proposal-approve');
+
+      // 1. Mesaj ve dosya sayısı eşleşme denetimi (Madde 2)
+      const countMatch = prop.message.match(/(\d+)\s+dosya/i) || prop.message.match(/update\s+(\d+)\s+files/i);
+      if (countMatch && parseInt(countMatch[1], 10) !== prop.files.length) {
+        const mismatchConfirm = window.confirm(
+          `⚠️ UYARI: Commit mesajında belirtilen sayı (${countMatch[1]}) ile commitlenecek gerçek dosya sayısı (${prop.files.length}) uyuşmuyor!\n\nDevam etmek istiyor musunuz?`,
+        );
+        if (!mismatchConfirm) return;
+      }
+
+      // 2. 10+ dosya ya da 1000+ satırda ekstra onay (Madde 5)
+      if (prop.isLargeDiff || prop.filesChanged > 10 || prop.totalLines >= 1000) {
+        const largeConfirm = window.confirm(
+          `🚨 DİKKAT: BÜYÜK DEĞİŞİKLİK TESPİT EDİLDİ!\n\nBu öneri ${prop.filesChanged} adet dosya ve ${prop.totalLines} satır değişiklik içermektedir!\nHalka açık depoya yanlışlıkla büyük veri, gizli anahtarlar veya istemediğiniz dosyaları itmediğinizden kesinlikle emin misiniz?\n\nYine de devam etmek istiyor musunuz?`,
+        );
+        if (!largeConfirm) return;
+      }
+
+      // 3. Çalıştırılacak komutları şeffafça göster
+      const cmd = `git switch -c ${prop.branchName} ${prop.baseBranch || 'origin/main'} && git add -- ${prop.files.join(' ')} && git commit -m "${prop.message}" && git push -u origin ${prop.branchName} && gh pr create --head ${prop.branchName} --title "${prop.prTitle || prop.message}"`;
+      const confirmed = window.confirm(
+        `🤖 CLAUDE ÖNERİSİNİ ONAYLA:\n\nÖnerilen dal: ${prop.branchName} (${prop.baseBranch})\nCommitlenecek Dosyalar (${prop.files.length} adet):\n${prop.files.map((f) => ' • ' + f).join('\n')}\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
+      );
+      if (!confirmed) return;
+
+      await handleCommitWorkingTree(prop.branchName, prop.message, prop.prTitle, prop.prBody, true, btn, prop.files);
+      if (!state.offlineMode) {
+        try {
+          const dismissedSnap = await apiCall('/api/proposal/dismiss', 'POST', {});
+          applySnapshot(dismissedSnap);
+        } catch (_) {}
+      } else {
+        LocalFallbackEngine.dismissProposal();
+      }
+    });
 
     document.getElementById('act-checkout')?.addEventListener('click', () => handleCheckoutBranch(b.id));
     document.getElementById('act-promote')?.addEventListener('click', () => handlePromoteBranch(b.id));
@@ -1662,7 +1838,7 @@
     await executeMergeNow(branchId, strategy, false);
   }
 
-  async function handleCommitWorkingTree(branchName, commitMsg, prTitle, prBody, pushAndPr, btnEl = null) {
+  async function handleCommitWorkingTree(branchName, commitMsg, prTitle, prBody, pushAndPr, btnEl = null, explicitFiles = null) {
     const cleanBranch = (branchName || '').trim();
     const cleanCommit = (commitMsg || '').trim();
     if (!cleanBranch || !cleanCommit) {
@@ -1670,55 +1846,102 @@
       return;
     }
 
-    const existingBranch = (state.snapshot?.branches || []).find((x) => x.name === cleanBranch);
+    const snap = state.snapshot;
+    const curBranch = snap?.branches?.find((x) => x.isHead)?.name || '';
+    const defBranch = snap?.repo?.defaultBranch || 'main';
+
+    const b = snap?.branches?.find((x) => x.id === state.selectedBranchId) || snap?.branches?.find((x) => x.isHead);
+    const candidateFiles = (explicitFiles && explicitFiles.length > 0)
+      ? explicitFiles
+      : (b?.changedFiles || []).filter(Boolean);
+
+    // 1. Secret file check
+    const secretFile = candidateFiles.find((f) => isSecretFile(f, snap));
+    if (secretFile) {
+      showToast(`🚨 GÜVENLİK ENGELİ: Gizli dosya tespit edildi: '${secretFile}'. Commit engellendi!`, 'danger');
+      return;
+    }
+
+    const existingBranch = (snap?.branches || []).find((x) => x.name === cleanBranch);
     if (pushAndPr && existingBranch && isMergedOrGone(existingBranch)) {
       showToast(`'${cleanBranch}' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın üzerine push yapılamaz! Lütfen yeni bir dal adı belirleyin.`, 'warn');
       return;
     }
 
-    const curBranch = state.snapshot?.branches?.find((x) => x.isHead)?.name || '';
-    const defBranch = state.snapshot?.repo?.defaultBranch || 'main';
     const isNewBranch = cleanBranch !== curBranch;
     const switchCmd = isNewBranch ? `git switch -c ${cleanBranch} origin/${defBranch}` : '';
-    const commitCmd = `git add -A && git commit -m "${cleanCommit}"`;
+
+    // NEVER use git add -A or git add .!
+    const filesListStr = candidateFiles.length > 0 ? candidateFiles.join(' ') : '<dosyalar>';
+    const addCmd = `git add -- ${filesListStr}`;
+    const commitCmd = `git commit -m "${cleanCommit}"`;
+
+    const fileListPreview = candidateFiles.length > 0
+      ? `\nCommitlenecek Dosyalar (${candidateFiles.length} adet):\n` + candidateFiles.map((f) => ` • ${f}`).join('\n') + '\n'
+      : '';
 
     if (!pushAndPr) {
       state.draftPrEdits[cleanBranch] = {
         title: (prTitle || '').trim() || cleanCommit,
         body: (prBody || '').trim(),
       };
-      const fullCmd = [switchCmd, commitCmd].filter(Boolean).join(' && ');
+      const fullCmd = [switchCmd, addCmd, commitCmd].filter(Boolean).join(' && ');
       const confirmed = window.confirm(
-        `💾 COMMIT ONAYI:\nÇalışma dizini '${cleanBranch}' dalına kaydedilecektir.\n\nÇalıştırılacak Komut:\n${fullCmd}\n\nBu işlemi onaylıyor musunuz?`,
+        `💾 COMMIT ONAYI:\nÇalışma dizini '${cleanBranch}' dalına kaydedilecektir.${fileListPreview}\nCommit Mesajı: "${cleanCommit}"\n\nÇalıştırılacak Komut:\n${fullCmd}\n\nBu işlemi onaylıyor musunuz?`,
       );
       if (!confirmed) return;
     } else {
       delete state.draftPrEdits[cleanBranch];
+
+      // Fetch diff stat
+      let diffStat = null;
+      if (!state.offlineMode) {
+        try {
+          diffStat = await apiCall('/api/working-tree/diff-stat', 'GET');
+        } catch (e) {
+          console.warn('diff-stat fetch failed', e);
+        }
+      }
+
       const pushCmd = `git push -u origin ${cleanBranch}`;
       const prCmd = `gh pr create --head ${cleanBranch} --title "${prTitle || cleanCommit}"`;
-      const fullCmd = [switchCmd, commitCmd, pushCmd, prCmd].filter(Boolean).join(' && ');
+      const fullCmd = [switchCmd, addCmd, commitCmd, pushCmd, prCmd].filter(Boolean).join(' && ');
+
+      const statPreview = diffStat?.stat ? `\n📊 Değişiklik Özeti (git diff --stat):\n${diffStat.stat}\n` : '';
+
       const confirmed = window.confirm(
-        `⚠️ PUSH & PR ONAYI:\nÇalışma dizini kaydedilip doğrudan uzak sunucuya pushlanacak ve GitHub PR açılacaktır.\n\nÇalıştırılacak Komut:\n${fullCmd}\n\nBu işlemi onaylıyor musunuz?`,
+        `⚠️ PUSH & PR ONAYI:\nÇalışma dizini kaydedilip doğrudan uzak sunucuya pushlanacak ve GitHub PR açılacaktır.${fileListPreview}${statPreview}\nÇalıştırılacak Komut:\n${fullCmd}\n\nBu işlemi onaylıyor musunuz?`,
       );
       if (!confirmed) return;
+
+      // 10'dan fazla dosya ya da 1000+ satır varsa ekstra onay iste (Madde 5)
+      const filesCount = diffStat?.filesChanged || candidateFiles.length;
+      const totalLines = diffStat?.totalLines || 0;
+      if (filesCount > 10 || totalLines >= 1000 || diffStat?.isLargeDiff) {
+        const largeConfirmed = window.confirm(
+          `🚨 DİKKAT: BÜYÜK DEĞİŞİKLİK TESPİT EDİLDİ!\n\nBu işlem ${filesCount} adet dosya ve ${totalLines > 0 ? totalLines + ' satır ' : ''}değişiklik içermektedir!\nHalka açık (public) depoya yanlışlıkla büyük veri, gizli anahtar veya istemediğiniz dosyaları itmediğinizden kesinlikle emin misiniz?\n\nYine de devam etmek istiyor musunuz?`,
+        );
+        if (!largeConfirmed) return;
+      }
     }
 
     if (btnEl) btnEl.disabled = true;
     try {
-      const snap = state.offlineMode
-        ? LocalFallbackEngine.commitWorkingTree(cleanBranch, cleanCommit, prTitle || '', prBody || '', Boolean(pushAndPr))
+      const snapResult = state.offlineMode
+        ? LocalFallbackEngine.commitWorkingTree(cleanBranch, cleanCommit, prTitle || '', prBody || '', Boolean(pushAndPr), candidateFiles)
         : await apiCall('/api/working-tree/commit', 'POST', {
           branchName: cleanBranch,
           commitMsg: cleanCommit,
           prTitle: (prTitle || '').trim(),
           prBody: (prBody || '').trim(),
           pushAndPr: Boolean(pushAndPr),
+          files: candidateFiles,
         });
-      const created = (snap.branches || []).find((x) => x.name === cleanBranch);
+      const created = (snapResult.branches || []).find((x) => x.name === cleanBranch);
       if (created) {
         state.selectedBranchId = created.id;
       }
-      applySnapshot(snap);
+      applySnapshot(snapResult);
       showToast(
         pushAndPr
           ? `Dal açıldı, commitlendi, pushlandı ve PR oluşturuldu (${cleanBranch})!`

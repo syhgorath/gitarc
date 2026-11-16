@@ -39,17 +39,18 @@ func validateBranchName(name string) error {
 // Manager coordinates active workspace repositories (simulation + live local repos)
 // and executes thread-safe lifecycle mutations on the cockpit graph.
 type Manager struct {
-	mu           sync.RWMutex
-	activeRepoID string
-	simRepo      simWorkspace
-	liveRepos    []repoEntry
-	nextPR       int
-	nextSeq      int
-	logs         []model.ActionLogEntry
-	logSeq       int
-	teamMode     bool
-	latestVer    string
-	updateAvail  bool
+	mu              sync.RWMutex
+	activeRepoID    string
+	simRepo         simWorkspace
+	liveRepos       []repoEntry
+	nextPR          int
+	nextSeq         int
+	logs            []model.ActionLogEntry
+	logSeq          int
+	teamMode        bool
+	latestVer       string
+	updateAvail     bool
+	pendingProposal *model.CommitProposal
 }
 
 type repoEntry struct {
@@ -227,6 +228,7 @@ func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 	snap.Repo.AppVersion = AppVersion
 	snap.Repo.LatestVersion = m.latestVer
 	snap.Repo.UpdateAvailable = m.updateAvail
+	snap.PendingProposal = m.pendingProposal
 	m.mu.RUnlock()
 	snap.Logs = m.recentLogs()
 	return snap, nil
@@ -547,7 +549,11 @@ func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot,
 
 // CommitWorkingTree stages uncommitted changes on a new or current branch, commits them,
 // and optionally pushes and opens a GitHub Pull Request without touching a terminal.
-func (m *Manager) CommitWorkingTree(branchName, commitMsg, prTitle, prBody string, pushAndPR bool) (model.CockpitSnapshot, error) {
+func (m *Manager) CommitWorkingTree(branchName, commitMsg, prTitle, prBody string, pushAndPR bool, explicitFiles ...[]string) (model.CockpitSnapshot, error) {
+	var files []string
+	if len(explicitFiles) > 0 {
+		files = explicitFiles[0]
+	}
 	if m.IsTeamMode() {
 		err := fmt.Errorf("Team Server modunda paylaşılan çalışma dizini (HEAD) kilitlidir")
 		m.recordLog("error", "Konsolsuz Commit & PR", branchName, err.Error(), "")
@@ -568,7 +574,7 @@ func (m *Manager) CommitWorkingTree(branchName, commitMsg, prTitle, prBody strin
 	}
 
 	if live, ok := m.activeLiveRepo(); ok {
-		snap, err := m.commitWorkingTreeLive(live, branchName, commitMsg, prTitle, prBody, pushAndPR)
+		snap, err := m.commitWorkingTreeLive(live, branchName, commitMsg, prTitle, prBody, pushAndPR, files)
 		okMsg := fmt.Sprintf("Değişiklikler '%s' dalına commitlendi", branchName)
 		if pushAndPR {
 			okMsg = fmt.Sprintf("Dal açıldı, commitlendi, pushlandı ve PR oluşturuldu (%s)", branchName)
@@ -578,6 +584,14 @@ func (m *Manager) CommitWorkingTree(branchName, commitMsg, prTitle, prBody strin
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	for _, f := range files {
+		if isSecret, pat := IsSecretPath(f, DefaultGuardConfig.SecretPatterns); isSecret {
+			err := fmt.Errorf("GÜVENLİK ENGELİ: Gizli/korumalı dosya tespit edildi: '%s' (eşleşen kural: %s). Commit engellendi!", f, pat)
+			m.recordLogLocked("error", "Konsolsuz Commit & PR", branchName, err.Error(), "")
+			return model.CockpitSnapshot{}, err
+		}
+	}
 
 	if pushAndPR && branchName != "" {
 		for _, b := range m.simRepo.branches {
@@ -958,15 +972,33 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 	repoMeta.AppVersion = AppVersion
 	repoMeta.LatestVersion = m.latestVer
 	repoMeta.UpdateAvailable = m.updateAvail
+	repoMeta.SecretPatterns = DefaultGuardConfig.SecretPatterns
+	repoMeta.NoGitAddAll = DefaultGuardConfig.NoGitAddAll
 
 	return model.CockpitSnapshot{
-		Repo:        repoMeta,
-		Repos:       opts,
-		Nodes:       nodes,
-		Branches:    branches,
-		Diagnostics: diags,
-		Logs:        m.recentLogsLocked(),
-		GeneratedAt: time.Now(),
+		Repo:            repoMeta,
+		Repos:           opts,
+		Nodes:           nodes,
+		Branches:        branches,
+		Diagnostics:     diags,
+		Logs:            m.recentLogsLocked(),
+		PendingProposal: m.pendingProposal,
+		GeneratedAt:     time.Now(),
+	}
+}
+
+func (m *Manager) getDiffStatSimLocked() model.DiffStat {
+	dirty := m.simRepo.repo.DirtyCount
+	if dirty == 0 {
+		return model.DiffStat{Stat: "0 files changed"}
+	}
+	return model.DiffStat{
+		Stat:         "CHANGELOG.md | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)",
+		FilesChanged: 1,
+		Insertions:   1,
+		Deletions:    1,
+		TotalLines:   2,
+		IsLargeDiff:  false,
 	}
 }
 

@@ -102,7 +102,7 @@ func (m *Manager) checkoutBranchLive(live *repoEntry, branchID string) (model.Co
 	return m.Snapshot()
 }
 
-func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, prTitle, prBody string, pushAndPR bool) (model.CockpitSnapshot, error) {
+func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, prTitle, prBody string, pushAndPR bool, explicitFiles []string) (model.CockpitSnapshot, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -151,9 +151,13 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 		}
 	}
 
-	if out, _, err := runCmd(ctx, live.path, "git", "add", "-A"); err != nil {
-		return model.CockpitSnapshot{}, fmt.Errorf("dosyalar stage edilemedi: %s", strings.TrimSpace(out))
+	cfg := LoadGuardConfig(live.path)
+	stagedFiles, err := StageSafeFiles(ctx, live.path, explicitFiles, cfg)
+	if err != nil {
+		return model.CockpitSnapshot{}, err
 	}
+	_ = stagedFiles
+
 	if out, _, err := runCmd(ctx, live.path, "git", "commit", "-m", commitMsg); err != nil {
 		return model.CockpitSnapshot{}, fmt.Errorf("commit atılamadı: %s", strings.TrimSpace(out))
 	}
@@ -176,7 +180,9 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 				body = "GitArc kokpitinden oluşturuldu."
 			}
 			if out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", curBranch, "--title", title, "--body", body); prErr != nil {
-				return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
+				if !strings.Contains(strings.ToLower(out), "already exists") {
+					return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
+				}
 			}
 		}
 	}
@@ -203,8 +209,9 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody s
 
 	if b.AheadMain == 0 {
 		if b.IsHEAD && snap.Repo.DirtyCount > 0 && !m.IsTeamMode() {
-			if out, _, addErr := runCmd(ctx, live.path, "git", "add", "-A"); addErr != nil {
-				return model.CockpitSnapshot{}, fmt.Errorf("değişiklikler stage edilemedi: %s", strings.TrimSpace(out))
+			cfg := LoadGuardConfig(live.path)
+			if _, addErr := StageSafeFiles(ctx, live.path, nil, cfg); addErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("güvenli stage hatası: %w", addErr)
 			}
 			if out, _, comErr := runCmd(ctx, live.path, "git", "commit", "-m", title); comErr != nil {
 				return model.CockpitSnapshot{}, fmt.Errorf("otomatik commit atılamadı: %s", strings.TrimSpace(out))
@@ -225,7 +232,9 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody s
 			}
 			out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", b.Name, "--title", title, "--body", body)
 			if prErr != nil {
-				return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
+				if !strings.Contains(strings.ToLower(out), "already exists") {
+					return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
+				}
 			}
 		}
 	}
@@ -265,9 +274,12 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID, strategy string) (m
 		strat := normalizeMergeStrategy(strategy)
 		mergeArgs := []string{"pr", "merge", strconv.Itoa(b.PR.Number)}
 		if strat == "auto" {
-			mergeArgs = append(mergeArgs, "--merge", "--auto", "--delete-branch")
+			mergeArgs = append(mergeArgs, "--merge", "--auto")
 		} else {
-			mergeArgs = append(mergeArgs, "--"+strat, "--delete-branch")
+			mergeArgs = append(mergeArgs, "--"+strat)
+		}
+		if snap.Repo.DirtyCount == 0 || curBranch != b.Name {
+			mergeArgs = append(mergeArgs, "--delete-branch")
 		}
 		out, _, err := runCmd(ctx, live.path, "gh", mergeArgs...)
 		if err != nil {
@@ -516,4 +528,25 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 
 	InvalidateGHCache(live.path)
 	return m.Snapshot()
+}
+
+// GetDiffStat returns summary statistics of uncommitted or staged changes.
+func (m *Manager) GetDiffStat() (model.DiffStat, error) {
+	if live, ok := m.activeLiveRepo(); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		out, _, err := runCmd(ctx, live.path, "git", "diff", "--cached", "--stat")
+		if err != nil || strings.TrimSpace(out) == "" {
+			out, _, _ = runCmd(ctx, live.path, "git", "diff", "--stat", "HEAD")
+			if strings.TrimSpace(out) == "" {
+				out, _, _ = runCmd(ctx, live.path, "git", "diff", "--stat")
+			}
+		}
+		return ParseDiffStat(out), nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.getDiffStatSimLocked(), nil
 }

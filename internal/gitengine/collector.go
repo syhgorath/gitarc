@@ -305,6 +305,8 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 		}
 	}
 
+	cfg := LoadGuardConfig(repoPath)
+
 	return model.CockpitSnapshot{
 		Repo: model.RepoMeta{
 			ID:                repoID,
@@ -322,6 +324,8 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			ProtectionSummary: protectionSummary,
 			AppVersion:        AppVersion,
 			CacheHits:         cacheHits,
+			SecretPatterns:    cfg.SecretPatterns,
+			NoGitAddAll:       cfg.NoGitAddAll,
 		},
 		Repos:       repos,
 		Nodes:       nodes,
@@ -946,9 +950,12 @@ func buildSuggestedCommitAndPR(repoPath, branchHint string, files []string) (com
 		prefix = fmt.Sprintf("feat(%s)", branchHint)
 	}
 
-	summary := fmt.Sprintf("update %d files", len(files))
+	summary := "değişiklikleri kaydet"
 	if len(files) == 1 {
-		summary = "update " + filepath.Base(files[0])
+		summary = filepath.Base(files[0]) + " güncellendi"
+	} else if len(files) > 0 {
+		first := filepath.Base(files[0])
+		summary = fmt.Sprintf("%s ve ilgili dosyalar güncellendi", first)
 	}
 	commitMsg = fmt.Sprintf("%s: %s", prefix, summary)
 	prTitle = commitMsg
