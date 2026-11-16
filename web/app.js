@@ -2,20 +2,21 @@
   'use strict';
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const SPINE_Y = 340;
-  const SPINE_START_X = 120;
-  const SPINE_STEP_X = 148;
-  const LANE_BASE_OFFSET = 98;
-  const LANE_STEP_Y = 96;
-  const CAPSULE_W = 224;
-  const CAPSULE_H = 66;
+  const XHTML_NS = 'http://www.w3.org/1999/xhtml';
+  const MAIN_Y = 300;
+  const SPINE_START_X = 140;
+  const SPINE_STEP_X = 152;
+  const LANE_BASE_OFFSET = 132;
+  const LANE_STEP_Y = 122;
+  const FO_W = 244;
+  const FO_H = 122;
 
   const state = {
     snapshot: null,
     selectedBranchId: null,
     selectedNodeSha: null,
-    filter: 'all', // 'all' | 'issues' | 'ci_fail' | 'gone'
-    geomMode: 'viaduct', // 'viaduct' | 'arch'
+    filter: 'all', // 'all' | 'issues' | 'ci_fail' | 'lower' | 'gone'
+    showMergedArches: true,
     offlineMode: false,
     zoom: 1,
     panX: 0,
@@ -25,7 +26,6 @@
     localRunOutput: {},
   };
 
-  // DOM Elements
   const el = {
     svg: document.getElementById('rail-svg'),
     viewport: document.getElementById('svg-viewport'),
@@ -37,11 +37,13 @@
     detail: document.getElementById('inspector-detail'),
     pruneCount: document.getElementById('prune-count'),
     dragHint: document.getElementById('drag-hint'),
+    spineSyncBadge: document.getElementById('spine-sync-badge'),
+    engineStatus: document.getElementById('engine-status'),
     zoomReset: document.getElementById('zoom-reset'),
-    popover: document.getElementById('new-branch-popover'),
+    toggleMerged: document.getElementById('toggle-merged-arches'),
+    modal: document.getElementById('create-branch-modal'),
     newBranchForm: document.getElementById('new-branch-form'),
     newBranchName: document.getElementById('new-branch-name'),
-    newBranchHemi: document.getElementById('new-branch-hemi'),
     newBranchBase: document.getElementById('new-branch-base'),
     toastStack: document.getElementById('toast-stack'),
   };
@@ -117,15 +119,15 @@
           { id: 'sim-keylab', name: 'keylab / sshpocket (Offline Simülasyon)', path: '/Users/ziyayesilbahce/Developer/sshpocket', mode: 'simulation' },
         ],
         nodes: [
-          { sha: '19a4c01', shortSha: '19a4c01', subject: 'chore(release): prepare v4.0.14 signed archive', author: 'ziya', relativeTime: '6 gün önce', spineIndex: 0, tag: 'v4.0.14' },
-          { sha: '2f81d12', shortSha: '2f81d12', subject: 'refactor(runner): unify sudo askpass gate', author: 'ziya', relativeTime: '5 gün önce', spineIndex: 1 },
+          { sha: '19a4c01', shortSha: '19a4c01', subject: 'chore(release): prepare v4.0.14', author: 'ziya', relativeTime: '6 gün önce', spineIndex: 0, tag: 'v4.0.14' },
+          { sha: '2f81d12', shortSha: '2f81d12', subject: 'refactor(runner): sudo askpass', author: 'ziya', relativeTime: '5 gün önce', spineIndex: 1 },
           { sha: '3c19e44', shortSha: '3c19e44', subject: 'Merge PR #412 feat/vault-idle-lock', author: 'ziya', relativeTime: '4 gün önce', spineIndex: 2, isMerge: true },
-          { sha: '4b70a89', shortSha: '4b70a89', subject: 'docs(standard): document catalog items contract', author: 'ziya', relativeTime: '3 gün önce', spineIndex: 3, tag: 'v4.0.15' },
+          { sha: '4b70a89', shortSha: '4b70a89', subject: 'docs(standard): catalog items', author: 'ziya', relativeTime: '3 gün önce', spineIndex: 3, tag: 'v4.0.15' },
           { sha: '5e02b11', shortSha: '5e02b11', subject: 'Merge PR #415 fix/usb-exfat-update', author: 'ziya', relativeTime: '2 gün önce', spineIndex: 4, isMerge: true },
-          { sha: '6d44f08', shortSha: '6d44f08', subject: 'feat(components): verify index_signers timestamp', author: 'ziya', relativeTime: '1 gün önce', spineIndex: 5 },
-          { sha: '7a91c33', shortSha: '7a91c33', subject: 'Merge PR #418 feat/utility-items-catalog', author: 'ziya', relativeTime: '18 saat önce', spineIndex: 6, isMerge: true, tag: 'v4.0.16' },
-          { sha: '8e35d02', shortSha: '8e35d02', subject: 'chore(lock): bump utility 0.2.0 sha256', author: 'ziya', relativeTime: '6 saat önce', spineIndex: 7 },
-          { sha: '9f10b77', shortSha: '9f10b77', subject: 'test(csp): enforce style-src-attr none', author: 'ziya', relativeTime: '2 saat önce', spineIndex: 8, isHead: true },
+          { sha: '6d44f08', shortSha: '6d44f08', subject: 'feat(components): verify signers', author: 'ziya', relativeTime: '1 gün önce', spineIndex: 5 },
+          { sha: '7a91c33', shortSha: '7a91c33', subject: 'Merge PR #418 feat/utility-items', author: 'ziya', relativeTime: '18 saat önce', spineIndex: 6, isMerge: true, tag: 'v4.0.16' },
+          { sha: '8e35d02', shortSha: '8e35d02', subject: 'chore(lock): bump utility 0.2.0', author: 'ziya', relativeTime: '6 saat önce', spineIndex: 7 },
+          { sha: '9f10b77', shortSha: '9f10b77', subject: 'test(csp): enforce strict csp', author: 'ziya', relativeTime: '2 saat önce', spineIndex: 8, isHead: true },
         ],
         branches: [
           {
@@ -334,9 +336,13 @@
         }
         return recompute();
       },
+      deleteBranch(branchId) {
+        sim.branches = sim.branches.filter((b) => b.id !== branchId);
+        return recompute();
+      },
       pruneGone() {
         const before = sim.branches.length;
-        sim.branches = sim.branches.filter((b) => !b.originGone && b.state !== 'gone');
+        sim.branches = sim.branches.filter((b) => !b.originGone && b.state !== 'gone' && b.state !== 'merged');
         return { snapshot: recompute(), removed: before - sim.branches.length };
       },
       syncSpine() {
@@ -352,7 +358,6 @@
     };
   })();
 
-  // Network / API helper with graceful fallback
   async function apiCall(path, method = 'GET', body = null) {
     if (state.offlineMode || window.location.protocol === 'file:') {
       throw new Error('offline');
@@ -382,8 +387,9 @@
     t.textContent = msg;
     el.toastStack.appendChild(t);
     setTimeout(() => {
-      t.remove();
-    }, 3400);
+      t.classList.add('fade-out');
+      setTimeout(() => t.remove(), 260);
+    }, 3100);
   }
 
   function svgEl(tag, attrs = {}, text = null) {
@@ -429,6 +435,7 @@
     if (!state.selectedBranchId && snap.branches?.length) {
       const priority = snap.branches.find((b) => b.pr?.ci?.state === 'FAILURE')
         || snap.branches.find((b) => b.conflict?.hasConflict)
+        || snap.branches.find((b) => b.hemisphere === 'lower')
         || snap.branches.find((b) => b.state === 'open')
         || snap.branches[0];
       state.selectedBranchId = priority.id;
@@ -436,6 +443,10 @@
       state.selectedBranchId = snap.branches[0]?.id || null;
     }
 
+    renderAll();
+  }
+
+  function renderAll() {
     renderTopbar();
     renderKPIs();
     renderRadar();
@@ -450,6 +461,7 @@
 
     const liveLabel = state.offlineMode ? 'Offline Simülasyon' : (snap.repo.mode === 'live' ? 'Canlı Git · Aktif' : 'Simülasyon · Etkileşimli');
     el.modeBadge.textContent = `${snap.repo.name} · ${liveLabel}`;
+    el.engineStatus.textContent = snap.repo.mode === 'live' ? '● Canlı Repo Bağlı' : '● Simülasyon Hazır';
 
     el.repoSelect.innerHTML = '';
     (snap.repos || []).forEach((r) => {
@@ -460,26 +472,40 @@
       el.repoSelect.appendChild(opt);
     });
 
-    const goneCount = (snap.branches || []).filter((b) => b.originGone || b.state === 'gone').length;
-    el.pruneCount.textContent = String(goneCount);
-    document.getElementById('btn-prune-gone').disabled = goneCount === 0 && snap.repo.mode !== 'live';
+    const cleanableCount = (snap.branches || []).filter((b) => b.originGone || b.state === 'gone' || (snap.repo.mode !== 'live' && b.state === 'merged')).length;
+    el.pruneCount.textContent = String(cleanableCount);
+    document.getElementById('btn-prune-gone').disabled = cleanableCount === 0 && snap.repo.mode !== 'live';
     document.getElementById('btn-new-branch').disabled = false;
     document.getElementById('btn-sync-spine').disabled = snap.repo.mode !== 'live' && snap.repo.ahead === 0 && snap.repo.behind === 0;
     document.getElementById('btn-reset-sim').hidden = snap.repo.mode === 'live';
+
+    const ahead = snap.repo.ahead || 0;
+    const behind = snap.repo.behind || 0;
+    const remoteName = snap.repo.remoteName || 'origin';
+    const defBranch = snap.repo.defaultBranch || 'main';
+    if (ahead === 0 && behind === 0) {
+      el.spineSyncBadge.textContent = `${defBranch} ↔ ${remoteName}/${defBranch} (Synced)`;
+      el.spineSyncBadge.classList.remove('skewed');
+    } else {
+      el.spineSyncBadge.textContent = `${defBranch} ↔ ${remoteName}/${defBranch}  ↑${ahead} · ↓${behind}`;
+      el.spineSyncBadge.classList.add('skewed');
+    }
   }
 
   function renderKPIs() {
     const branches = state.snapshot?.branches || [];
-    const openCount = branches.filter((b) => b.state === 'open').length;
+    const upperCount = branches.filter((b) => b.hemisphere === 'upper' && b.state !== 'merged').length;
+    const lowerCount = branches.filter((b) => b.hemisphere === 'lower' && b.state !== 'merged').length;
     const conflictCount = branches.filter((b) => (b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length > 0)).length;
     const failCount = branches.filter((b) => b.pr?.ci?.state === 'FAILURE').length;
-    const goneCount = branches.filter((b) => b.originGone || b.state === 'gone').length;
+    const goneCount = branches.filter((b) => b.originGone || b.state === 'gone' || b.state === 'merged').length;
 
     const defs = [
       { key: 'all', label: 'Tümü', val: branches.length, tone: '' },
+      { key: 'lower', label: 'Alt Ray (Local)', val: lowerCount, tone: lowerCount ? 'purple' : '' },
       { key: 'issues', label: 'Çakışma / Cross-PR', val: conflictCount, tone: conflictCount ? 'warn' : '' },
       { key: 'ci_fail', label: 'CI Hatası', val: failCount, tone: failCount ? 'danger' : '' },
-      { key: 'gone', label: 'Temizlenebilir (gone)', val: goneCount, tone: goneCount ? 'ok' : '' },
+      { key: 'gone', label: 'Birleşmiş / Gone', val: goneCount, tone: goneCount ? 'ok' : '' },
     ];
 
     el.kpiPills.innerHTML = '';
@@ -496,20 +522,22 @@
       el.kpiPills.appendChild(btn);
     });
 
-    const openBadge = document.createElement('span');
-    openBadge.className = 'kpi-pill';
-    openBadge.innerHTML = `<span>Açık Ray</span><strong>${openCount}</strong>`;
-    el.kpiPills.appendChild(openBadge);
+    const prBadge = document.createElement('span');
+    prBadge.className = 'kpi-pill';
+    prBadge.innerHTML = `<span>Üst Ray (PR)</span><strong>${upperCount}</strong>`;
+    el.kpiPills.appendChild(prBadge);
   }
 
   function matchesFilter(b) {
     switch (state.filter) {
+      case 'lower':
+        return b.hemisphere === 'lower';
       case 'issues':
         return Boolean((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length));
       case 'ci_fail':
         return b.pr?.ci?.state === 'FAILURE';
       case 'gone':
-        return Boolean(b.originGone || b.state === 'gone');
+        return Boolean(b.originGone || b.state === 'gone' || b.state === 'merged');
       default:
         return true;
     }
@@ -534,10 +562,7 @@
       item.className = `radar-item ${d.severity}`;
       item.innerHTML = `<span class="radar-title">${esc(d.title)}</span><span class="radar-sub">${esc(d.branchName)} · ${esc(d.detail)}</span>`;
       item.addEventListener('click', () => {
-        state.selectedBranchId = d.branchId;
-        state.selectedNodeSha = null;
-        renderSVG();
-        renderInspector();
+        selectBranch(d.branchId);
       });
       el.radarList.appendChild(item);
     });
@@ -550,61 +575,47 @@
   function yOfLane(hemisphere, lane) {
     const l = Math.max(1, lane || 1);
     const offset = LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y;
-    return hemisphere === 'lower' ? SPINE_Y + offset : SPINE_Y - offset;
+    return hemisphere === 'lower' ? MAIN_Y + offset : MAIN_Y - offset;
   }
 
-  function buildArcPath(b, tipXOverride = null, tipYOverride = null) {
-    const x0 = xOfSpine(b.startSpineIndex);
-    const y0 = SPINE_Y;
-    const yLane = yOfLane(b.hemisphere, b.lane);
+  function computeBranchGeometry(b, tipXOverride = null, tipYOverride = null) {
+    const startX = xOfSpine(b.startSpineIndex);
+    const laneY = yOfLane(b.hemisphere, b.lane);
 
     if (b.state === 'merged' && tipXOverride === null) {
-      const xEnd = xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex));
-      if (state.geomMode === 'arch') {
-        const span = xEnd - x0;
-        const yc = y0 + (yLane - y0) * 1.333;
-        return {
-          d: `M ${x0},${y0} C ${x0 + span * 0.22},${yc} ${xEnd - span * 0.22},${yc} ${xEnd},${y0}`,
-          peakX: (x0 + xEnd) / 2,
-          peakY: yLane,
-          tipX: xEnd,
-          tipY: y0,
-        };
-      }
-      const xRise = Math.min(x0 + 62, (x0 + xEnd) / 2);
-      const xFall = Math.max(xEnd - 62, (x0 + xEnd) / 2);
-      return {
-        d: `M ${x0},${y0} C ${x0 + 34},${y0} ${xRise - 28},${yLane} ${xRise},${yLane} L ${xFall},${yLane} C ${xFall + 28},${yLane} ${xEnd - 34},${y0} ${xEnd},${y0}`,
-        peakX: (xRise + xFall) / 2,
-        peakY: yLane,
-        tipX: xEnd,
-        tipY: y0,
-      };
+      const endX = xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex));
+      const apexX = (startX + endX) / 2;
+      const apexY = laneY;
+      const cp1X = startX + (apexX - startX) * 0.55;
+      const cp2X = apexX + (endX - apexX) * 0.45;
+      const openD = `M ${startX} ${MAIN_Y} C ${cp1X} ${MAIN_Y}, ${cp1X} ${apexY}, ${apexX} ${apexY}`;
+      const closeD = `M ${apexX} ${apexY} C ${cp2X} ${apexY}, ${cp2X} ${MAIN_Y}, ${endX} ${MAIN_Y}`;
+      const areaD = `${openD} C ${cp2X} ${apexY}, ${cp2X} ${MAIN_Y}, ${endX} ${MAIN_Y} Z`;
+      return { startX, endX, apexX, apexY, openD, closeD, areaD };
     }
 
-    const defaultTipX = Math.max(x0 + 115, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)) - 20);
-    const tipX = tipXOverride !== null ? tipXOverride : defaultTipX;
-    const tipY = tipYOverride !== null ? tipYOverride : yLane;
+    const defaultApexX = Math.max(startX + 145, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)) - 12);
+    const apexX = tipXOverride !== null ? tipXOverride : defaultApexX;
+    const apexY = tipYOverride !== null ? tipYOverride : laneY;
+    const cp1X = startX + (apexX - startX) * 0.55;
+    const openD = `M ${startX} ${MAIN_Y} C ${cp1X} ${MAIN_Y}, ${cp1X} ${apexY}, ${apexX} ${apexY}`;
+    return { startX, endX: null, apexX, apexY, openD, closeD: null, areaD: null };
+  }
 
-    if (state.geomMode === 'arch' || tipXOverride !== null) {
-      const dx = tipX - x0;
-      return {
-        d: `M ${x0},${y0} C ${x0 + dx * 0.42},${y0} ${tipX - dx * 0.42},${tipY} ${tipX},${tipY}`,
-        peakX: x0 + dx * 0.55,
-        peakY: (y0 + tipY) / 2,
-        tipX,
-        tipY,
-      };
-    }
+  function branchToneClass(b) {
+    if (b.pr?.ci?.state === 'FAILURE') return 'ci-fail';
+    if (b.conflict?.hasConflict && !b.conflict.resolved) return 'conflict';
+    if (b.state === 'merged') return 'merged';
+    if (b.originGone || b.state === 'gone') return 'gone';
+    return b.hemisphere === 'lower' ? 'lower-open' : 'upper-open';
+  }
 
-    const xRise = Math.min(x0 + 66, tipX - 18);
-    return {
-      d: `M ${x0},${y0} C ${x0 + 36},${y0} ${xRise - 28},${tipY} ${xRise},${tipY} L ${tipX},${tipY}`,
-      peakX: (xRise + tipX) / 2,
-      peakY: tipY,
-      tipX,
-      tipY,
-    };
+  function branchStrokeColor(b) {
+    if (b.pr?.ci?.state === 'FAILURE') return '#f85149';
+    if (b.conflict?.hasConflict && !b.conflict.resolved) return '#f97316';
+    if (b.state === 'merged') return '#3fb950';
+    if (b.originGone || b.state === 'gone') return '#d29922';
+    return b.hemisphere === 'lower' ? '#a371f7' : '#58a6ff';
   }
 
   function renderSVG() {
@@ -613,176 +624,158 @@
 
     const nodes = snap.nodes || [];
     const branches = snap.branches || [];
-    const maxSpineIdx = Math.max(nodes.length - 1, ...branches.map((b) => b.endSpineIndex || 0), 6);
-    const sceneW = Math.max(1240, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 120);
-    const sceneH = 680;
+    const visibleBranches = branches.filter((b) => state.showMergedArches || b.state !== 'merged');
+
+    const maxSpineIdx = Math.max(nodes.length - 1, ...visibleBranches.map((b) => b.endSpineIndex || 0), 6);
+    const maxUpperLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'upper').map((b) => b.lane || 1));
+    const maxLowerLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'lower').map((b) => b.lane || 1));
+
+    const minY = Math.min(0, MAIN_Y - LANE_BASE_OFFSET - (maxUpperLane - 1) * LANE_STEP_Y - 140);
+    const maxY = Math.max(620, MAIN_Y + LANE_BASE_OFFSET + (maxLowerLane - 1) * LANE_STEP_Y + 150);
+    const sceneW = Math.max(1260, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140);
+    const sceneH = maxY - minY;
 
     const viewW = sceneW / state.zoom;
     const viewH = sceneH / state.zoom;
-    el.svg.setAttribute('viewBox', `${state.panX} ${state.panY} ${viewW} ${viewH}`);
+    el.svg.setAttribute('viewBox', `${state.panX} ${minY + state.panY} ${viewW} ${viewH}`);
     el.zoomReset.textContent = `${Math.round(state.zoom * 100)}%`;
 
     el.svg.innerHTML = '';
 
-    // 1. Hemisphere background bands
-    el.svg.appendChild(svgEl('rect', { x: -400, y: -200, width: sceneW + 800, height: SPINE_Y + 200, class: 'svg-hemisphere-band-upper' }));
-    el.svg.appendChild(svgEl('rect', { x: -400, y: SPINE_Y, width: sceneW + 800, height: sceneH - SPINE_Y + 400, class: 'svg-hemisphere-band-lower' }));
+    // 1. SVG <defs> (glow filters + main gradient from parabolic.html)
+    const defs = svgEl('defs');
+    defs.innerHTML = `
+      <filter id="glow-green" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="4" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-red" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="4.5" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <linearGradient id="main-rail-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#238636" stop-opacity="0.45"/>
+        <stop offset="20%" stop-color="#3fb950" stop-opacity="0.95"/>
+        <stop offset="85%" stop-color="#3fb950" stop-opacity="1"/>
+        <stop offset="100%" stop-color="#58a6ff" stop-opacity="0.45"/>
+      </linearGradient>
+    `;
+    el.svg.appendChild(defs);
 
-    // 2. Central Spine Drop Zone (shown while dragging a capsule)
-    const dropZone = svgEl('rect', {
-      id: 'spine-dropzone',
-      x: 40,
-      y: SPINE_Y - 38,
-      width: sceneW - 80,
-      height: 76,
-      rx: 18,
-      class: 'svg-spine-dropzone',
-    });
-    el.svg.appendChild(dropZone);
+    // 2. Background horizontal dashed guide rails (Upper Remote + Lower Local)
+    el.svg.appendChild(svgEl('line', { x1: 40, y1: MAIN_Y - LANE_BASE_OFFSET, x2: sceneW - 40, y2: MAIN_Y - LANE_BASE_OFFSET, class: 'svg-guide-line' }));
+    el.svg.appendChild(svgEl('line', { x1: 40, y1: MAIN_Y + LANE_BASE_OFFSET, x2: sceneW - 40, y2: MAIN_Y + LANE_BASE_OFFSET, class: 'svg-guide-line' }));
 
-    const dropLabel = svgEl('text', {
-      id: 'spine-drop-label',
-      x: sceneW / 2,
-      y: SPINE_Y - 46,
-      class: 'svg-spine-drop-label',
-    }, '');
-    el.svg.appendChild(dropLabel);
-
-    // 3. Central Main Spine Line + Sync Skew Capsule
-    const spineStartX = 64;
-    const spineEndX = xOfSpine(maxSpineIdx) + 90;
-    el.svg.appendChild(svgEl('line', {
-      x1: spineStartX,
-      y1: SPINE_Y,
-      x2: spineEndX,
-      y2: SPINE_Y,
-      class: 'svg-spine-line',
-    }));
-
-    const syncX = spineEndX - 18;
-    const ahead = snap.repo.ahead || 0;
-    const behind = snap.repo.behind || 0;
-    const remoteName = snap.repo.remoteName || 'origin';
-    const defBranch = snap.repo.defaultBranch || 'main';
-    const syncText = (ahead === 0 && behind === 0)
-      ? `${remoteName}/${defBranch} ✓ eşit`
-      : `${remoteName}/${defBranch}  ↑${ahead} · ↓${behind}`;
-    const syncW = Math.max(152, syncText.length * 7.2 + 20);
-    const syncGroup = svgEl('g', {});
-    const syncRect = svgEl('rect', {
-      x: syncX,
-      y: SPINE_Y - 14,
-      width: syncW,
-      height: 28,
-      rx: 14,
-      class: `svg-sync-pill-bg ${(ahead > 0 || behind > 0) ? 'skewed' : ''}`,
-    });
-    syncRect.addEventListener('click', () => handleSyncSpine());
-    syncGroup.appendChild(syncRect);
-    syncGroup.appendChild(svgEl('text', { x: syncX + syncW / 2, y: SPINE_Y + 4, class: 'svg-sync-pill-txt' }, syncText));
-    el.svg.appendChild(syncGroup);
-
-    // 4. Merged Arches first (background layer), then Open Parabolas (foreground layer)
+    // 3. Parabolic Curves Layer (Merged arches behind, open half-parabolas in front)
     const arcLayer = svgEl('g', { id: 'arc-layer' });
     const capsuleLayer = svgEl('g', { id: 'capsule-layer' });
-    const badgeLayer = svgEl('g', { id: 'badge-layer' });
 
-    const ordered = [...branches].sort((a, b) => (a.state === 'merged' ? 0 : 1) - (b.state === 'merged' ? 0 : 1));
+    const ordered = [...visibleBranches].sort((a, b) => (a.state === 'merged' ? 0 : 1) - (b.state === 'merged' ? 0 : 1));
     ordered.forEach((b) => {
-      const geom = buildArcPath(b);
+      const geom = computeBranchGeometry(b);
       const visible = matchesFilter(b);
       const isSelected = state.selectedBranchId === b.id;
-      const isFail = b.pr?.ci?.state === 'FAILURE';
-      const hasConf = b.conflict?.hasConflict && !b.conflict.resolved;
+      const tone = branchToneClass(b);
+      const strokeColor = branchStrokeColor(b);
 
-      const classes = ['svg-arc-path'];
-      if (b.state === 'merged') classes.push('merged');
-      else if (b.originGone || b.state === 'gone') classes.push('gone');
-      else if (b.hemisphere === 'lower') classes.push('lower-open');
-      else classes.push('upper-open');
+      if (b.state === 'merged' && geom.areaD) {
+        arcLayer.appendChild(svgEl('path', {
+          d: geom.areaD,
+          fill: strokeColor,
+          class: `svg-arc-area ${isSelected ? 'selected' : ''} ${visible ? '' : 'dimmed'}`,
+        }));
+      }
 
-      if (hasConf) classes.push('conflict');
-      if (isFail) classes.push('ci-fail');
-      if (isSelected) classes.push('selected');
-      if (!visible) classes.push('dimmed');
-
-      const pathEl = svgEl('path', { d: geom.d, class: classes.join(' ') });
-      pathEl.addEventListener('click', (ev) => {
+      const openCls = ['svg-arc-path', tone];
+      if (isSelected) openCls.push('selected');
+      if (!visible) openCls.push('dimmed');
+      const openAttrs = { d: geom.openD, class: openCls.join(' ') };
+      if (b.pr?.ci?.state === 'FAILURE') openAttrs.filter = 'url(#glow-red)';
+      const openPath = svgEl('path', openAttrs);
+      openPath.addEventListener('click', (ev) => {
         ev.stopPropagation();
         selectBranch(b.id);
       });
-      arcLayer.appendChild(pathEl);
+      arcLayer.appendChild(openPath);
 
-      // Merged arch crest label
-      if (b.state === 'merged') {
-        const labelTxt = `${b.pr ? '#' + b.pr.number + ' ' : ''}${truncate(b.name, 22)}${b.originGone ? ' · gone' : ''}`;
-        const lw = Math.max(120, labelTxt.length * 6.6 + 18);
-        const crestG = svgEl('g', { class: visible ? '' : 'dimmed' });
-        const crestRect = svgEl('rect', {
-          x: geom.peakX - lw / 2,
-          y: geom.peakY - 12,
-          width: lw,
-          height: 22,
-          rx: 11,
-          class: `svg-arch-label-bg ${b.originGone ? 'gone' : ''}`,
-        });
-        crestRect.addEventListener('click', (ev) => {
+      if (b.state === 'merged' && geom.closeD) {
+        const closePath = svgEl('path', { d: geom.closeD, class: openCls.join(' ') });
+        closePath.addEventListener('click', (ev) => {
           ev.stopPropagation();
           selectBranch(b.id);
         });
-        crestG.appendChild(crestRect);
-        crestG.appendChild(svgEl('text', { x: geom.peakX, y: geom.peakY + 2.5, class: 'svg-arch-label-txt' }, labelTxt));
-        badgeLayer.appendChild(crestG);
-        return;
+        arcLayer.appendChild(closePath);
+      } else {
+        // Open half-parabola dashed tail extending past the apex
+        arcLayer.appendChild(svgEl('line', {
+          x1: geom.apexX,
+          y1: geom.apexY,
+          x2: geom.apexX + 95,
+          y2: geom.apexY,
+          class: `svg-open-tail ${tone} ${visible ? '' : 'dimmed'}`,
+        }));
       }
 
-      // Floating conflict & Cross-PR badges along the parabola
-      let badgeOffsetY = b.hemisphere === 'lower' ? 22 : -22;
-      if (hasConf) {
-        const txt = b.conflict.isChangelogOrLock ? '⚠ CHANGELOG / Lockfile Çakışması' : '⚠ Merge Çakışması';
-        const bw = txt.length * 6.6 + 18;
-        const bx = geom.peakX - 18;
-        const by = geom.peakY + badgeOffsetY;
-        const bg = svgEl('rect', { x: bx - bw / 2, y: by - 11, width: bw, height: 20, rx: 10, class: 'arc-warn-badge-bg' });
-        bg.addEventListener('click', (ev) => { ev.stopPropagation(); selectBranch(b.id); });
-        badgeLayer.appendChild(bg);
-        badgeLayer.appendChild(svgEl('text', { x: bx, y: by + 2.5, class: 'arc-warn-badge-txt' }, txt));
-        badgeOffsetY += b.hemisphere === 'lower' ? 22 : -22;
-      }
-      if (b.crossPr?.length) {
-        const peers = b.crossPr.map((c) => c.otherPrNumber ? '#' + c.otherPrNumber : c.otherBranch).join(', ');
-        const txt = `⇄ Cross-PR ${peers}`;
-        const bw = txt.length * 6.6 + 18;
-        const bx = geom.peakX + 26;
-        const by = geom.peakY + badgeOffsetY;
-        const bg = svgEl('rect', { x: bx - bw / 2, y: by - 11, width: bw, height: 20, rx: 10, class: 'arc-cross-badge-bg' });
-        bg.addEventListener('click', (ev) => { ev.stopPropagation(); selectBranch(b.id); });
-        badgeLayer.appendChild(bg);
-        badgeLayer.appendChild(svgEl('text', { x: bx, y: by + 2.5, class: 'arc-cross-badge-txt' }, txt));
-      }
+      // Apex commit dot
+      const dot = svgEl('circle', {
+        cx: geom.apexX,
+        cy: geom.apexY,
+        r: isSelected ? 6 : 4.5,
+        class: `svg-apex-dot ${tone}`,
+      });
+      dot.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        selectBranch(b.id);
+      });
+      arcLayer.appendChild(dot);
 
-      // Unified Branch Pair Capsule at tip
-      const capX = geom.tipX;
-      const capY = geom.tipY - CAPSULE_H / 2;
-      const capG = buildBranchPairCapsule(b, capX, capY, isSelected, visible, isFail, hasConf);
-      capsuleLayer.appendChild(capG);
+      // Apex Capsule Card via <foreignObject>
+      const fo = buildCapsuleForeignObject(b, geom, isSelected, visible, tone);
+      capsuleLayer.appendChild(fo);
     });
 
     el.svg.appendChild(arcLayer);
 
+    // 4. Central Main Spine Drop Zone + Glowing Gradient Line
+    const spineEndX = Math.max(xOfSpine(maxSpineIdx) + 140, 1140);
+    el.svg.appendChild(svgEl('rect', {
+      id: 'svg-main-drop-rect',
+      x: 50,
+      y: MAIN_Y - 24,
+      width: spineEndX - 40,
+      height: 48,
+      rx: 24,
+      class: 'svg-main-drop-rect',
+    }));
+
+    el.svg.appendChild(svgEl('line', {
+      x1: 72,
+      y1: MAIN_Y,
+      x2: spineEndX - 15,
+      y2: MAIN_Y,
+      stroke: 'url(#main-rail-grad)',
+      filter: 'url(#glow-green)',
+      class: 'svg-spine-line',
+    }));
+
+    const defBranch = snap.repo.defaultBranch || 'main';
+    const mainTagW = Math.max(58, defBranch.length * 8 + 22);
+    el.svg.appendChild(svgEl('rect', { x: 22, y: MAIN_Y - 13, width: mainTagW, height: 26, rx: 8, class: 'svg-main-tag-bg' }));
+    el.svg.appendChild(svgEl('text', { x: 22 + mainTagW / 2, y: MAIN_Y + 4, class: 'svg-main-tag-txt' }, defBranch));
+
     // 5. Commit Nodes on the Central Spine
     const nodeLayer = svgEl('g', { id: 'node-layer' });
-    nodes.forEach((n) => {
+    nodes.forEach((n, idx) => {
       const cx = xOfSpine(n.spineIndex);
-      const cy = SPINE_Y;
+      const isLatest = idx === nodes.length - 1;
       const cls = ['svg-node-circle'];
       if (n.isMerge) cls.push('merge-node');
-      if (n.isHead) cls.push('head-node');
+      if (n.isHead || isLatest) cls.push('head-node');
 
       const circle = svgEl('circle', {
         cx,
-        cy,
-        r: n.isMerge ? 8 : 6.5,
+        cy: MAIN_Y,
+        r: isLatest ? 8.5 : (n.isMerge ? 7 : 5.5),
         class: cls.join(' '),
       });
       circle.addEventListener('click', (ev) => {
@@ -795,133 +788,149 @@
 
       nodeLayer.appendChild(svgEl('text', {
         x: cx,
-        y: cy + 23,
-        class: 'svg-node-sha',
+        y: MAIN_Y - 14,
+        class: `svg-node-sha ${isLatest ? 'latest' : ''}`,
       }, n.shortSha));
+
+      nodeLayer.appendChild(svgEl('text', {
+        x: cx,
+        y: MAIN_Y + 23,
+        class: 'svg-node-label',
+      }, truncate(n.subject, 22)));
 
       if (n.tag) {
         const tw = n.tag.length * 6.8 + 14;
-        nodeLayer.appendChild(svgEl('rect', {
-          x: cx - tw / 2,
-          y: cy - 31,
-          width: tw,
-          height: 17,
-          rx: 5,
-          class: 'svg-node-tag-bg',
-        }));
-        nodeLayer.appendChild(svgEl('text', {
-          x: cx,
-          y: cy - 19,
-          class: 'svg-node-tag-txt',
-        }, n.tag));
+        nodeLayer.appendChild(svgEl('rect', { x: cx - tw / 2, y: MAIN_Y - 40, width: tw, height: 17, rx: 5, class: 'svg-node-tag-bg' }));
+        nodeLayer.appendChild(svgEl('text', { x: cx, y: MAIN_Y - 28, class: 'svg-node-tag-txt' }, n.tag));
       }
     });
 
     el.svg.appendChild(nodeLayer);
     el.svg.appendChild(capsuleLayer);
-    el.svg.appendChild(badgeLayer);
-
-    // Drag preview curve layer
     el.svg.appendChild(svgEl('path', { id: 'drag-preview-path', class: 'svg-drag-preview', d: '' }));
   }
 
-  function buildBranchPairCapsule(b, x, y, isSelected, visible, isFail, hasConf) {
-    const g = svgEl('g', {
-      class: `capsule-group ${visible ? '' : 'dimmed'}`,
-      transform: `translate(${x}, ${y})`,
+  function capsulePositionForApex(b, apexX, apexY) {
+    const x = apexX - FO_W / 2;
+    const y = b.hemisphere === 'lower' ? apexY + 14 : apexY - FO_H + 12;
+    return { x, y };
+  }
+
+  function buildCapsuleForeignObject(b, geom, isSelected, visible, tone) {
+    const pos = capsulePositionForApex(b, geom.apexX, geom.apexY);
+    const fo = svgEl('foreignObject', {
+      x: pos.x,
+      y: pos.y,
+      width: FO_W,
+      height: FO_H,
+      class: `fo-capsule ${visible ? '' : 'dimmed'}`,
       'data-branch-id': b.id,
     });
 
-    const cardCls = ['capsule-card'];
-    if (isSelected) cardCls.push('selected');
-    if (isFail) cardCls.push('ci-fail');
-    if (hasConf) cardCls.push('conflict');
+    const isMerged = b.state === 'merged';
+    const isLower = b.hemisphere === 'lower';
+    const isFailed = b.pr?.ci?.state === 'FAILURE';
+    const hasConflict = Boolean(b.conflict?.hasConflict && !b.conflict.resolved);
+    const isLive = state.snapshot?.repo?.mode === 'live';
 
-    // Outer card
-    g.appendChild(svgEl('rect', {
-      x: 0,
-      y: 0,
-      width: CAPSULE_W,
-      height: CAPSULE_H,
-      rx: 10,
-      class: cardCls.join(' '),
-    }));
+    let badgeTone = 'sky';
+    let badgeText = b.pr ? `PR #${b.pr.number} · ${b.pr.reviewState}` : 'Remote Ray';
+    if (isMerged) {
+      badgeTone = 'emerald';
+      badgeText = `Tam Parabol${b.pr ? ' · #' + b.pr.number : ''} · Merged`;
+    } else if (isFailed) {
+      badgeTone = 'danger';
+      badgeText = `PR #${b.pr.number} · CI Failed`;
+    } else if (hasConflict) {
+      badgeTone = 'warn';
+      badgeText = b.pr ? `PR #${b.pr.number} · Çakışma` : 'Merge Çakışması';
+    } else if (b.originGone || b.state === 'gone') {
+      badgeTone = 'warn';
+      badgeText = 'origin: gone';
+    } else if (isLower) {
+      badgeTone = 'purple';
+      badgeText = 'Yarım Parabol · Local';
+    }
 
-    // Upper background band (Remote / PR / CI)
-    g.appendChild(svgEl('rect', {
-      x: 1,
-      y: 1,
-      width: CAPSULE_W - 2,
-      height: 31,
-      rx: 9,
-      class: 'cap-upper-bg',
-    }));
+    const subText = b.lastCommitMsg
+      ? b.lastCommitMsg
+      : (isLower ? `↑${b.aheadMain || 0} yerel · ${b.uncommittedCount || 0} dirty` : `↑${b.aheadMain || 0} ↓${b.behindMain || 0}`);
 
-    // Divider line between Remote (top) and Local (bottom)
-    g.appendChild(svgEl('line', {
-      x1: 0,
-      y1: 33,
-      x2: CAPSULE_W,
-      y2: 33,
-      class: 'capsule-divider',
-    }));
+    const card = document.createElementNS(XHTML_NS, 'div');
+    card.className = `cap-card ${tone} ${isSelected ? 'selected' : ''}`;
 
-    // Upper Layer Content: PR & CI
-    if (b.pr) {
-      g.appendChild(svgEl('text', { x: 10, y: 21, class: 'cap-txt-pr' }, `PR #${b.pr.number}`));
+    let alertsHtml = '';
+    if (hasConflict) {
+      alertsHtml += `<span class="cap-alert-pill conflict">${b.conflict.isChangelogOrLock ? '⚠ CHANGELOG / Lock' : '⚠ Conflict'}</span>`;
+    }
+    if (b.crossPr?.length) {
+      alertsHtml += `<span class="cap-alert-pill cross">⇄ Cross-PR ${b.crossPr.map((c) => '#' + (c.otherPrNumber || '?')).join(',')}</span>`;
+    }
 
-      // Review pill
-      const revLabel = b.pr.reviewState === 'APPROVED' ? '✓ OK'
-        : b.pr.reviewState === 'CHANGES_REQUESTED' ? '✎ Fix'
-          : '◔ Rev';
-      const revCls = b.pr.reviewState === 'APPROVED' ? 'cap-pill-ok'
-        : b.pr.reviewState === 'CHANGES_REQUESTED' ? 'cap-pill-warn'
-          : 'cap-pill-run';
-      g.appendChild(svgEl('rect', { x: 64, y: 8, width: 46, height: 18, rx: 9, class: revCls }));
-      g.appendChild(svgEl('text', { x: 87, y: 20, class: `${revCls}-txt` }, revLabel));
-
-      // CI pill
-      const ciState = b.pr.ci?.state || 'SUCCESS';
-      const ciLabel = ciState === 'FAILURE' ? '● CI FAIL' : ciState === 'RUNNING' ? '◐ CI RUN' : '● CI PASS';
-      const ciCls = ciState === 'FAILURE' ? 'cap-pill-fail' : ciState === 'RUNNING' ? 'cap-pill-run' : 'cap-pill-ok';
-      g.appendChild(svgEl('rect', { x: 118, y: 8, width: 94, height: 18, rx: 9, class: ciCls }));
-      g.appendChild(svgEl('text', { x: 165, y: 20, class: `${ciCls}-txt` }, ciLabel));
-    } else if (b.originGone) {
-      g.appendChild(svgEl('text', { x: 10, y: 21, class: 'cap-txt-muted' }, 'origin: gone (silinmiş)'));
+    let actionRowHtml = '';
+    if (isMerged) {
+      actionRowHtml = `<button type="button" class="cap-btn amber" data-act="delete">🧹 Dalı Sil / Temizle</button>`;
+    } else if (isFailed) {
+      actionRowHtml = `
+        <button type="button" class="cap-btn danger" data-act="inspect">🔍 Hatayı Gör</button>
+        <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+      `;
+    } else if (hasConflict && !isLive) {
+      actionRowHtml = `
+        <button type="button" class="cap-btn amber" data-act="resolve">✦ Auto-Resolve</button>
+        <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+      `;
+    } else if (isLower) {
+      const isWorkingTreeWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
+      if (isWorkingTreeWip) {
+        actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🔍 Yerel Farkı Gör</button>`;
+      } else {
+        actionRowHtml = `
+          <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
+          <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>
+          <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+        `;
+      }
     } else {
-      g.appendChild(svgEl('text', { x: 10, y: 21, class: 'cap-txt-muted' }, 'local-only · PR açılmadı'));
+      actionRowHtml = `
+        <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge (Parabolü Kapat)</button>
+        <button type="button" class="cap-btn-del" data-act="delete" title="Dalı Sil">🗑️</button>
+      `;
     }
 
-    // Lower Layer Content: Local branch, HEAD, dirty files
-    g.appendChild(svgEl('text', { x: 10, y: 53, class: 'cap-txt-branch' }, truncate(b.name, 20)));
+    card.innerHTML = `
+      <div class="cap-top-row">
+        <span class="cap-badge ${badgeTone}">${esc(badgeText)}</span>
+        ${b.isHead ? '<span class="cap-head-pill">HEAD</span>' : ''}
+      </div>
+      <div class="cap-name">${esc(b.name)}</div>
+      <div class="cap-sub">${esc(truncate(subText, 34))}${b.uncommittedCount > 0 ? ` · ●${b.uncommittedCount} dirty` : ''}</div>
+      ${alertsHtml ? `<div class="cap-alerts">${alertsHtml}</div>` : ''}
+      <div class="cap-actions">${actionRowHtml}</div>
+    `;
 
-    let badgeRightX = CAPSULE_W - 8;
-    if (b.uncommittedCount > 0) {
-      const dt = `●${b.uncommittedCount} dirty`;
-      const dw = 50;
-      badgeRightX -= dw;
-      g.appendChild(svgEl('rect', { x: badgeRightX, y: 40, width: dw, height: 18, rx: 9, class: 'cap-pill-dirty' }));
-      g.appendChild(svgEl('text', { x: badgeRightX + dw / 2, y: 52, class: 'cap-pill-dirty-txt' }, dt));
-      badgeRightX -= 5;
-    }
-
-    if (b.isHead) {
-      const hw = 36;
-      badgeRightX -= hw;
-      g.appendChild(svgEl('rect', { x: badgeRightX, y: 40, width: hw, height: 18, rx: 9, class: 'cap-pill-head' }));
-      g.appendChild(svgEl('text', { x: badgeRightX + hw / 2, y: 52, class: 'cap-pill-head-txt' }, 'HEAD'));
-    } else if ((b.aheadMain || 0) > 0) {
-      g.appendChild(svgEl('text', { x: badgeRightX - 24, y: 53, class: 'cap-txt-meta' }, `↑${b.aheadMain}`));
-    }
-
-    // Drag & Select Pointer Handling
-    g.addEventListener('pointerdown', (ev) => {
-      if (ev.button !== 0) return;
-      ev.stopPropagation();
-      startCapsulePointer(ev, b, g);
+    // Button clicks stop drag propagation and invoke action directly
+    card.querySelectorAll('button[data-act]').forEach((btn) => {
+      btn.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const act = btn.getAttribute('data-act');
+        if (act === 'inspect') selectBranch(b.id);
+        else if (act === 'merge') handleMergeBranch(b.id);
+        else if (act === 'promote') handlePromoteBranch(b.id);
+        else if (act === 'resolve') handleResolveConflict(b.id);
+        else if (act === 'delete') handleDeleteBranch(b.id);
+      });
     });
 
-    return g;
+    card.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0 || ev.target.closest('button')) return;
+      ev.stopPropagation();
+      startCapsulePointer(ev, b, fo, card);
+    });
+
+    fo.appendChild(card);
+    return fo;
   }
 
   function clientToSvg(clientX, clientY) {
@@ -933,20 +942,22 @@
     return pt.matrixTransform(ctm.inverse());
   }
 
-  function startCapsulePointer(ev, branch, groupEl) {
+  function startCapsulePointer(ev, branch, foEl, cardEl) {
     const startPt = clientToSvg(ev.clientX, ev.clientY);
-    const geom = buildArcPath(branch);
-    const canDragMerge = branch.state === 'open';
+    const geom = computeBranchGeometry(branch);
+    const isVirtualWip = branch.id === 'local-wip-working-tree' || branch.id.startsWith('local-wip-');
+    const canDragMerge = branch.state === 'open' && !isVirtualWip;
 
     state.drag = {
       branch,
-      groupEl,
+      foEl,
+      cardEl,
       startClientX: ev.clientX,
       startClientY: ev.clientY,
       startSvgX: startPt.x,
       startSvgY: startPt.y,
-      baseTipX: geom.tipX,
-      baseTipY: geom.tipY,
+      baseApexX: geom.apexX,
+      baseApexY: geom.apexY,
       active: false,
       canDragMerge,
     };
@@ -966,10 +977,8 @@
     const dist = Math.hypot(ev.clientX - state.drag.startClientX, ev.clientY - state.drag.startClientY);
     if (!state.drag.active && dist >= 7 && state.drag.canDragMerge) {
       state.drag.active = true;
-      state.drag.groupEl.classList.add('dragging');
-      document.getElementById('spine-dropzone')?.classList.add('visible');
-      const lbl = document.getElementById('spine-drop-label');
-      if (lbl) lbl.textContent = `MERGE ETMEK İÇİN MAIN OMURGASINA BIRAK: ${state.drag.branch.name}`;
+      state.drag.cardEl.classList.add('dragging');
+      document.getElementById('svg-main-drop-rect')?.classList.add('visible');
       el.dragHint.classList.add('active-drop');
     }
 
@@ -977,16 +986,19 @@
       const pt = clientToSvg(ev.clientX, ev.clientY);
       const dx = pt.x - state.drag.startSvgX;
       const dy = pt.y - state.drag.startSvgY;
-      const curTipX = state.drag.baseTipX + dx;
-      const curTipY = state.drag.baseTipY + dy;
+      const curApexX = state.drag.baseApexX + dx;
+      const curApexY = state.drag.baseApexY + dy;
 
-      state.drag.groupEl.setAttribute('transform', `translate(${curTipX}, ${curTipY - CAPSULE_H / 2})`);
-      const preview = buildArcPath(state.drag.branch, curTipX, curTipY);
-      document.getElementById('drag-preview-path')?.setAttribute('d', preview.d);
+      const pos = capsulePositionForApex(state.drag.branch, curApexX, curApexY);
+      state.drag.foEl.setAttribute('x', String(pos.x));
+      state.drag.foEl.setAttribute('y', String(pos.y));
 
-      const overSpine = Math.abs(curTipY - SPINE_Y) < 60;
+      const preview = computeBranchGeometry(state.drag.branch, curApexX, curApexY);
+      document.getElementById('drag-preview-path')?.setAttribute('d', preview.openD);
+
+      const overSpine = Math.abs(curApexY - MAIN_Y) < 68;
       state.drag.overSpine = overSpine;
-      document.getElementById('spine-dropzone')?.classList.toggle('hot', overSpine);
+      document.getElementById('svg-main-drop-rect')?.classList.toggle('hot', overSpine);
     }
   });
 
@@ -1000,12 +1012,10 @@
     const d = state.drag;
     state.drag = null;
 
-    document.getElementById('spine-dropzone')?.classList.remove('visible', 'hot');
-    const lbl = document.getElementById('spine-drop-label');
-    if (lbl) lbl.textContent = '';
+    document.getElementById('svg-main-drop-rect')?.classList.remove('visible', 'hot');
     document.getElementById('drag-preview-path')?.setAttribute('d', '');
     el.dragHint.classList.remove('active-drop');
-    d.groupEl.classList.remove('dragging');
+    d.cardEl.classList.remove('dragging');
 
     if (!d.active) {
       selectBranch(d.branch.id);
@@ -1056,15 +1066,16 @@
 
     const b = snap.branches.find((x) => x.id === state.selectedBranchId);
     if (!b) {
-      el.detail.innerHTML = '<div class="empty-detail">Bir dal kapsülüne, parabol kemere veya radar uyarısına tıklayın.</div>';
+      el.detail.innerHTML = '<div class="empty-detail">İncelemek için soldaki parabolik grafikten bir dal kapsülü veya düğüm seçin.</div>';
       return;
     }
 
     const isLive = snap.repo.mode === 'live';
     const hasConflict = b.conflict?.hasConflict && !b.conflict.resolved;
     const isOpen = b.state === 'open';
-    const canPromote = isOpen && b.hemisphere === 'lower';
-    const canMerge = isOpen && !hasConflict;
+    const isVirtualWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
+    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip;
+    const canMerge = isOpen && !hasConflict && !isVirtualWip;
 
     const ciState = b.pr?.ci?.state;
     const ciChip = ciState === 'FAILURE' ? '<span class="chip danger">CI: FAILURE</span>'
@@ -1075,7 +1086,7 @@
       <div class="det-header">
         <div class="det-title-row">
           <h3 class="det-branch-name">${esc(b.name)}</h3>
-          <span class="chip ${b.state === 'merged' ? 'ok' : 'accent'}">${b.state === 'merged' ? 'Tam Kemer' : b.hemisphere === 'lower' ? 'Yerel Ray' : 'PR Rayı'}</span>
+          <span class="chip ${b.state === 'merged' ? 'ok' : (b.hemisphere === 'lower' ? 'purple' : 'accent')}">${b.state === 'merged' ? 'Tam Parabol' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR'}</span>
         </div>
         <div class="det-badges">
           ${b.pr ? `<span class="chip accent">PR #${b.pr.number}</span>` : ''}
@@ -1084,26 +1095,27 @@
           ${b.originGone ? '<span class="chip warn">origin: gone</span>' : ''}
         </div>
         <div class="det-actions">
-          ${canPromote ? `<button type="button" class="btn primary sm" id="act-promote">↑ Push &amp; PR Aç</button>` : ''}
-          ${isOpen ? `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⇄ Main'e Merge Et</button>` : ''}
+          ${canPromote ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
+          ${isOpen && !isVirtualWip ? `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Main'e Merge Et</button>` : ''}
           ${!isLive && hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">✦ Auto-Resolve</button>` : ''}
+          ${!isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-delete">🧹 Sil / Temizle</button>` : ''}
         </div>
       </div>
 
       <div class="det-grid">
         <div class="layer-box">
-          <h3>Üst Katman · Remote / PR</h3>
+          <h3>Üst Ray · Remote / PR</h3>
           ${b.pr ? `
             <div class="layer-line">PR #${b.pr.number} · ${esc(b.pr.reviewState)}</div>
             <div class="layer-line">${esc(truncate(b.pr.title, 48))}</div>
             <div class="layer-line">CI: ${esc(b.pr.ci?.workflow || 'ci.yml')} (${esc(b.pr.ci?.duration || '—')})</div>
           ` : `
-            <div class="layer-line">${b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz pushlanmadı'}</div>
-            <div class="layer-line">Alt yarı-kürede izole çalışma</div>
+            <div class="layer-line">${b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok'}</div>
+            <div class="layer-line">Alt rayda yerel çalışma</div>
           `}
         </div>
         <div class="layer-box">
-          <h3>Alt Katman · Local</h3>
+          <h3>Alt Ray · Local</h3>
           <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
           <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
           <div class="layer-line">Uncommitted: ${b.uncommittedCount || 0} dosya</div>
@@ -1111,7 +1123,6 @@
       </div>
     `;
 
-    // Conflict Card (git merge-tree --write-tree)
     if (b.conflict) {
       const resolved = b.conflict.resolved;
       html += `
@@ -1127,7 +1138,6 @@
       `;
     }
 
-    // Cross-PR Collision Card
     if (b.crossPr?.length) {
       html += `
         <div class="diag-card cross">
@@ -1139,10 +1149,8 @@
       `;
     }
 
-    // Noise-Free CI Failure Log Extractor
     if (b.pr?.ci?.state === 'FAILURE') {
       const extracts = b.pr.ci.extracts || [];
-      const firstRepro = extracts.find((x) => x.reproCmd)?.reproCmd || 'go test -v ./...';
       const localRunOut = state.localRunOutput[b.id] || '';
       html += `
         <div class="diag-card ci">
@@ -1171,7 +1179,6 @@
       `;
     }
 
-    // Changed Files
     if (b.changedFiles?.length) {
       html += `
         <div class="diag-card">
@@ -1188,11 +1195,11 @@
 
     el.detail.innerHTML = html;
 
-    // Bind detail action buttons
     document.getElementById('act-promote')?.addEventListener('click', () => handlePromoteBranch(b.id));
     document.getElementById('act-merge')?.addEventListener('click', () => handleMergeBranch(b.id));
     document.getElementById('act-resolve')?.addEventListener('click', () => handleResolveConflict(b.id));
     document.getElementById('act-resolve-card')?.addEventListener('click', () => handleResolveConflict(b.id));
+    document.getElementById('act-delete')?.addEventListener('click', () => handleDeleteBranch(b.id));
     document.getElementById('act-copy-log')?.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(b.pr.ci.rawLog || '');
@@ -1202,7 +1209,7 @@
       }
     });
     document.getElementById('act-run-local')?.addEventListener('click', () => {
-      const cmd = b.pr.ci.extracts?.[0]?.reproCmd || 'go test -v ./internal/shellgold';
+      const cmd = b.pr.ci.extracts?.[0]?.reproCmd || 'go test -v ./...';
       handleLocalTestRun(b.id, cmd);
     });
   }
@@ -1225,7 +1232,7 @@
         ? LocalFallbackEngine.mergeBranch(branchId)
         : await apiCall('/api/branch/merge', 'POST', { branchId });
       applySnapshot(snap);
-      showToast('Dal merkez main omurgasına merge edildi (tam parabol kemer!)', 'ok');
+      showToast('Dal merkez main omurgasına birleşti — Tam parabol tamamlandı!', 'ok');
     } catch (err) {
       showToast(err.message, 'warn');
       renderSVG();
@@ -1238,7 +1245,7 @@
         ? LocalFallbackEngine.promoteBranch(branchId)
         : await apiCall('/api/branch/promote', 'POST', { branchId });
       applySnapshot(snap);
-      showToast('Dal origin’e pushlandı ve PR açılarak üst yarı-küreye taşındı', 'ok');
+      showToast('Dal origin’e pushlandı ve PR açılarak üst raya taşındı!', 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }
@@ -1251,6 +1258,18 @@
         : await apiCall('/api/branch/resolve', 'POST', { branchId });
       applySnapshot(snap);
       showToast('CHANGELOG / Lockfile çakışması otomatik çözüldü; artık merge edilebilir', 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  }
+
+  async function handleDeleteBranch(branchId) {
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.deleteBranch(branchId)
+        : await apiCall('/api/branch/delete', 'POST', { branchId });
+      applySnapshot(snap);
+      showToast('Dal kaldırıldı', 'warn');
     } catch (err) {
       showToast(err.message, 'danger');
     }
@@ -1313,7 +1332,7 @@
     }
   }
 
-  // Toolbar & Viewport Events
+  // Toolbar, Modal & Viewport Events
   el.repoSelect.addEventListener('change', async () => {
     const repoId = el.repoSelect.value;
     if (state.offlineMode) return;
@@ -1328,46 +1347,43 @@
     }
   });
 
-  document.getElementById('geom-viaduct').addEventListener('click', (ev) => {
-    state.geomMode = 'viaduct';
-    ev.currentTarget.classList.add('active');
-    document.getElementById('geom-arch').classList.remove('active');
+  el.toggleMerged.addEventListener('change', () => {
+    state.showMergedArches = el.toggleMerged.checked;
     renderSVG();
   });
 
-  document.getElementById('geom-arch').addEventListener('click', (ev) => {
-    state.geomMode = 'arch';
-    ev.currentTarget.classList.add('active');
-    document.getElementById('geom-viaduct').classList.remove('active');
-    renderSVG();
-  });
+  el.spineSyncBadge.addEventListener('click', handleSyncSpine);
 
-  document.getElementById('btn-new-branch').addEventListener('click', () => {
-    el.popover.hidden = !el.popover.hidden;
-    if (!el.popover.hidden) {
-      el.newBranchName.focus();
-    }
-  });
+  function openNewBranchModal() {
+    el.modal.hidden = false;
+    el.newBranchName.focus();
+  }
 
-  document.getElementById('pop-close').addEventListener('click', () => { el.popover.hidden = true; });
-  document.getElementById('pop-cancel').addEventListener('click', () => { el.popover.hidden = true; });
+  function closeNewBranchModal() {
+    el.modal.hidden = true;
+  }
+
+  document.getElementById('btn-new-branch').addEventListener('click', openNewBranchModal);
+  document.getElementById('modal-close').addEventListener('click', closeNewBranchModal);
+  document.getElementById('modal-cancel').addEventListener('click', closeNewBranchModal);
 
   el.newBranchForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const name = el.newBranchName.value.trim();
-    const hemisphere = el.newBranchHemi.value;
+    const checkedRadio = document.querySelector('input[name="branch-mode"]:checked');
+    const hemisphere = checkedRadio ? checkedRadio.value : 'lower';
     const fromSha = el.newBranchBase.value;
     if (!name) return;
     try {
       const snap = state.offlineMode
         ? LocalFallbackEngine.createBranch(name, hemisphere, fromSha)
         : await apiCall('/api/branch/create', 'POST', { name, hemisphere, fromSha });
-      el.popover.hidden = true;
+      closeNewBranchModal();
       el.newBranchName.value = '';
       const created = snap.branches.find((b) => b.name === name);
       if (created) state.selectedBranchId = created.id;
       applySnapshot(snap);
-      showToast(`${name} dalı ${hemisphere === 'upper' ? 'üst' : 'alt'} yarı-kürede açıldı`, 'ok');
+      showToast(`'${name}' dalı ${hemisphere === 'upper' ? 'üst rayda (PR)' : 'alt rayda (yerel kesikli parabol)'} açıldı!`, 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }
@@ -1425,7 +1441,7 @@
   }, { passive: false });
 
   el.viewport.addEventListener('pointerdown', (ev) => {
-    if (ev.target.closest('.capsule-group') || ev.target.closest('.svg-node-circle') || ev.target.closest('.svg-sync-pill-bg')) return;
+    if (ev.target.closest('.fo-capsule') || ev.target.closest('.svg-node-circle')) return;
     state.panning = { x: ev.clientX, y: ev.clientY, panX: state.panX, panY: state.panY };
     el.viewport.classList.add('panning');
   });

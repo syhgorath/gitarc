@@ -11,17 +11,15 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
-          <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
-            <path d="M3 19H25" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-            <path d="M5 19C9 19 9 8 14 8C19 8 19 19 23 19" stroke="#6366f1" stroke-width="2.4" stroke-linecap="round"/>
-            <path d="M9 19C12 19 13 24 18 24" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 2"/>
-            <circle cx="5" cy="19" r="2.2" fill="currentColor"/>
-            <circle cx="23" cy="19" r="2.2" fill="#34d399"/>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M3 17c4 0 5-10 9-10s5 10 9 10" stroke="#3fb950" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M9 17c3 0 4 4 8 4" stroke="#a371f7" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 2"/>
+            <path d="M3 17h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
           </svg>
         </div>
         <div class="brand-copy">
-          <span class="brand-title">GitArc</span>
-          <span class="brand-sub" id="mode-badge">KeyLab Kardeş Kokpit</span>
+          <span class="brand-title">GitArc <span class="brand-accent">SVG</span></span>
+          <span class="brand-sub" id="mode-badge">Parabolik Topoloji</span>
         </div>
       </div>
 
@@ -30,17 +28,22 @@
         <select id="repo-select" class="select-control" aria-label="Depo seçici"></select>
       </div>
 
-      <div class="seg-control" role="group" aria-label="Geometri modu">
-        <button type="button" class="seg-btn active" id="geom-viaduct" data-geom="viaduct">Viyadük S-Ray</button>
-        <button type="button" class="seg-btn" id="geom-arch" data-geom="arch">Saf Parabol</button>
+      <div class="legend-bar" aria-label="Ray renk açıklamaları">
+        <span class="leg-chip leg-sky"><i class="leg-line sky"></i> Üst Ray: GitHub Remote / PR</span>
+        <span class="leg-chip leg-purple"><i class="leg-line dashed-purple"></i> Alt Ray: Yerel (Local Only)</span>
+        <span class="leg-chip leg-green"><i class="leg-ring green"></i> Tam Parabol = Merged</span>
       </div>
 
       <div class="topbar-spacer"></div>
 
       <div class="toolbar-actions">
-        <button type="button" class="btn primary" id="btn-new-branch" title="En güncel main düğümünden yeni parabol aç">+ Yeni Dal</button>
-        <button type="button" class="btn ghost" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">Temizle <span class="badge-count" id="prune-count">0</span></button>
+        <label class="check-pill" title="Birleşmiş tam parabol kemerlerini göster veya gizle">
+          <input type="checkbox" id="toggle-merged-arches" checked>
+          <span>Birleşmiş Parabolleri Göster</span>
+        </label>
+        <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-sync-spine" title="main ile origin/main arasındaki farkı eşitle">Sync ↑↓</button>
+        <button type="button" class="btn emerald" id="btn-new-branch" title="main omurgasından yeni parabolik dal aç">+ Yeni Dal Aç</button>
         <button type="button" class="btn ghost" id="btn-reset-sim" title="Simülasyon sahnesini sıfırla">Sıfırla</button>
         <button type="button" class="icon-btn" id="btn-theme" title="Tema değiştir (Koyu / Açık)" aria-label="Tema değiştir">◐</button>
       </div>
@@ -48,19 +51,14 @@
 
     <section class="kpi-strip" aria-label="Kokpit durumu">
       <div class="kpi-pills" id="kpi-pills"></div>
-      <div class="legend-inline">
-        <span class="leg-item"><i class="leg-dot leg-upper"></i> Üst: Remote / PR / CI</span>
-        <span class="leg-item"><i class="leg-dot leg-spine"></i> Merkez: main</span>
-        <span class="leg-item"><i class="leg-dot leg-lower"></i> Alt: Yerel (Pushlanmamış)</span>
-        <span class="leg-item"><i class="leg-dot leg-fail"></i> Nabız: CI Hatası</span>
-      </div>
+      <div class="drag-hint" id="drag-hint">💡 Açık bir dal kapsülünü ortadaki <strong>main</strong> hattına sürükleyip bırakarak parabolü kapatabilirsin</div>
     </section>
 
     <main class="workspace">
-      <section class="canvas-pane" aria-label="Parabolik Git SVG Tuvali">
+      <section class="canvas-pane dot-grid-canvas" aria-label="Parabolik Git SVG Tuvali">
         <div class="canvas-overlay-top">
-          <div class="hemi-pill upper-pill">▲ REMOTE · PULL REQUEST · GITHUB ACTIONS</div>
-          <div class="drag-hint" id="drag-hint">İpucu: Açık bir dal kapsülünü merkezdeki <strong>main</strong> hattına sürükleyip bırakarak merge edin</div>
+          <div class="hemi-pill upper-pill">▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS</div>
+          <div class="spine-sync-badge" id="spine-sync-badge">main ↔ origin/main</div>
         </div>
 
         <div class="svg-viewport" id="svg-viewport">
@@ -68,40 +66,12 @@
         </div>
 
         <div class="canvas-overlay-bottom">
-          <div class="hemi-pill lower-pill">▼ LOCAL · UNPUSHED WORKTREE</div>
+          <div class="hemi-pill lower-pill">▼ ALT RAY · LOCAL ONLY (KESİKLİ MOR PARABOL)</div>
           <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
             <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
             <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>
             <button type="button" class="z-btn" id="zoom-in" title="Yakınlaştır">+</button>
           </div>
-        </div>
-
-        <div class="new-branch-popover" id="new-branch-popover" hidden>
-          <div class="pop-head">
-            <strong>Yeni Dal Filizlendir</strong>
-            <button type="button" class="icon-close" id="pop-close" aria-label="Kapat">✕</button>
-          </div>
-          <form id="new-branch-form" class="pop-form">
-            <label class="field-label">
-              <span>Dal Adı</span>
-              <input type="text" id="new-branch-name" class="input-control" placeholder="feat/keychain-biometric" required autocomplete="off">
-            </label>
-            <label class="field-label">
-              <span>Yarı-Küre (Hedef Ray)</span>
-              <select id="new-branch-hemi" class="select-control">
-                <option value="lower">Alt Yarı-Küre (Yerel / Unpushed)</option>
-                <option value="upper">Üst Yarı-Küre (Remote / Taslak PR)</option>
-              </select>
-            </label>
-            <label class="field-label">
-              <span>Kaynak Spine Commit</span>
-              <select id="new-branch-base" class="select-control"></select>
-            </label>
-            <div class="pop-actions">
-              <button type="button" class="btn ghost" id="pop-cancel">Vazgeç</button>
-              <button type="submit" class="btn primary">Dal Aç</button>
-            </div>
-          </form>
         </div>
       </section>
 
@@ -115,10 +85,61 @@
         </div>
 
         <div class="panel-section detail-section" id="inspector-detail">
-          <div class="empty-detail">Bir dal kapsülüne, parabol kemere veya radar uyarısına tıklayın.</div>
+          <div class="empty-detail">İncelemek için soldaki parabolik grafikten bir dal kapsülü veya düğüm seçin.</div>
+        </div>
+
+        <div class="inspector-foot">
+          <span>Parabolik Topoloji Motoru</span>
+          <span class="foot-ready" id="engine-status">● Hazır</span>
         </div>
       </aside>
     </main>
+
+    <!-- MODAL: + YENİ PARABOLİK DAL AÇ -->
+    <div class="modal-backdrop" id="create-branch-modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <h3 id="modal-title"><span class="modal-dot"></span>Yeni Parabolik Dal Aç (Branch from main)</h3>
+          <button type="button" class="icon-close" id="modal-close" aria-label="Kapat">✕</button>
+        </div>
+        <form id="new-branch-form" class="modal-body">
+          <label class="field-label">
+            <span>Dal Adı (Branch Name)</span>
+            <input type="text" id="new-branch-name" class="input-control mono" placeholder="örn: feat/zero-copy" required autocomplete="off">
+          </label>
+
+          <div class="field-label">
+            <span>Başlangıç Modu (Hangi Rayda Açılsın?)</span>
+            <div class="mode-grid">
+              <label class="mode-choice local-choice">
+                <input type="radio" name="branch-mode" value="lower" checked>
+                <div>
+                  <div class="mode-title purple">Sadece Yerel (Local)</div>
+                  <div class="mode-desc">Alt rayda kesikli mor yarım parabol olarak başlar</div>
+                </div>
+              </label>
+              <label class="mode-choice remote-choice">
+                <input type="radio" name="branch-mode" value="upper">
+                <div>
+                  <div class="mode-title sky">Push &amp; PR Aç</div>
+                  <div class="mode-desc">Üst rayda GitHub PR &amp; CI aktif açılır</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <label class="field-label">
+            <span>Kaynak main Commit Düğümü</span>
+            <select id="new-branch-base" class="select-control mono"></select>
+          </label>
+
+          <div class="modal-foot">
+            <button type="button" class="btn ghost" id="modal-cancel">İptal</button>
+            <button type="submit" class="btn emerald">Dal Aç &amp; Eğriyi Çiz</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
   </div>

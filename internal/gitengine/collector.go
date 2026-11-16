@@ -542,6 +542,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch string, n
 
 	var branches []model.BranchArc
 	lastSpine := len(nodes) - 1
+	headOnDefault := false
 	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -551,14 +552,17 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch string, n
 			continue
 		}
 		name := parts[0]
-		if name == defaultBranch {
-			continue
-		}
 		localSHA := parts[1]
 		upstream := parts[2]
 		track := parts[3]
 		isHead := strings.TrimSpace(parts[4]) == "*"
 		subject := parts[5]
+		if name == defaultBranch {
+			if isHead {
+				headOnDefault = true
+			}
+			continue
+		}
 
 		startIdx := lastSpine - 1
 		if startIdx < 0 {
@@ -593,16 +597,18 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch string, n
 
 		remoteAhead, remoteBehind, originGone := parseUpstreamTrack(track)
 		hasRemote := upstream != "" && !originGone
-		hemisphere := "lower"
-		if hasRemote || originGone {
-			hemisphere = "upper"
-		}
 		var prPtr *model.PRStatus
 		if prVal, ok := ghPRs[name]; ok {
 			p := prVal
 			prPtr = &p
-			hemisphere = "upper"
 			hasRemote = true
+		}
+
+		// Lower hemisphere rule: branches without an open PR or unpushed to remote
+		// open downwards on the local track.
+		hemisphere := "lower"
+		if prPtr != nil || originGone {
+			hemisphere = "upper"
 		}
 
 		state := "open"
@@ -653,6 +659,50 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch string, n
 			LastCommitMsg:    subject,
 			ChangedFiles:     changed,
 			Conflict:         conflict,
+		})
+
+		// If an open PR branch also has unpushed local commits or uncommitted files,
+		// spawn a companion lower-hemisphere local parabola to visualize local divergence.
+		if hemisphere == "upper" && state == "open" && (remoteAhead > 0 || uncommitted > 0) {
+			branches = append(branches, model.BranchArc{
+				ID:               "local-wip-" + sanitizeID(name),
+				Name:             name + " (yerel)",
+				Hemisphere:       "lower",
+				State:            "open",
+				StartSpineIndex:  startIdx,
+				EndSpineIndex:    endIdx,
+				BaseSHA:          baseSHA,
+				HasRemote:        false,
+				HasLocal:         true,
+				LocalSHA:         localSHA,
+				IsHEAD:           isHead,
+				AheadMain:        remoteAhead,
+				BehindMain:       remoteBehind,
+				RemoteAhead:      remoteAhead,
+				RemoteBehind:     remoteBehind,
+				UncommittedCount: uncommitted,
+				LastCommitMsg:    fmt.Sprintf("Pushlanmamış yerel çalışma (%d commit, %d dirty)", remoteAhead, uncommitted),
+			})
+		}
+	}
+
+	if headOnDefault && dirtyCount > 0 && lastSpine >= 0 {
+		branches = append(branches, model.BranchArc{
+			ID:               "local-wip-working-tree",
+			Name:             "wip/working-tree",
+			Hemisphere:       "lower",
+			State:            "open",
+			StartSpineIndex:  lastSpine,
+			EndSpineIndex:    lastSpine + 1,
+			BaseSHA:          nodes[lastSpine].ShortSHA,
+			HasRemote:        false,
+			HasLocal:         true,
+			LocalSHA:         nodes[lastSpine].ShortSHA,
+			IsHEAD:           true,
+			AheadMain:        0,
+			BehindMain:       0,
+			UncommittedCount: dirtyCount,
+			LastCommitMsg:    fmt.Sprintf("%s üzerinde %d uncommitted değişiklik", defaultBranch, dirtyCount),
 		})
 	}
 	return branches
