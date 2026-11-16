@@ -134,15 +134,7 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 				return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi: %s", branchName, strings.TrimSpace(out))
 			}
 		} else {
-			targetBase := "origin/" + defBranch
-			if _, _, err := runCmd(ctx, live.path, "git", "rev-parse", "--verify", "--quiet", targetBase); err != nil {
-				targetBase = defBranch
-			}
-			out, _, cbErr := runCmd(ctx, live.path, "git", "switch", "-c", branchName, targetBase)
-			if cbErr != nil {
-				// Fallback to basic checkout -b if switch from targetBase fails
-				out, _, cbErr = runCmd(ctx, live.path, "git", "checkout", "-b", branchName)
-			}
+			out, _, cbErr := runCmd(ctx, live.path, "git", "checkout", "-b", branchName)
 			if cbErr != nil {
 				return model.CockpitSnapshot{}, fmt.Errorf("%s dalı açılamadı: %s", branchName, strings.TrimSpace(out))
 			}
