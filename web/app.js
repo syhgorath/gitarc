@@ -968,9 +968,10 @@
       if (isWorkingTreeWip) {
         actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🚀 Commit &amp; PR Stüdyosu</button>`;
       } else {
+        const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
         actionRowHtml = `
           <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
-          <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>
+          ${hasOpenPR ? `<button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>` : ''}
           ${checkoutBtn}
           <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
         `;
@@ -1008,7 +1009,7 @@
         if (act === 'inspect') selectBranch(b.id);
         else if (act === 'checkout') handleCheckoutBranch(b.id);
         else if (act === 'merge') handleMergeBranch(b.id);
-        else if (act === 'promote') handlePromoteBranch(b.id);
+        else if (act === 'promote') handlePromoteBranch(b.id, undefined, undefined, btn);
         else if (act === 'resolve') openConflictStudio(b.id);
         else if (act === 'delete') handleDeleteBranch(b.id);
       });
@@ -1198,6 +1199,65 @@
     return `${candidateBase}-${n}`;
   }
 
+  function wireProposalActions() {
+    document.getElementById('act-proposal-dismiss')?.addEventListener('click', async () => {
+      try {
+        const res = state.offlineMode
+          ? LocalFallbackEngine.dismissProposal()
+          : await apiCall('/api/proposal/dismiss', 'POST', {});
+        applySnapshot(res);
+        showToast('Öneri kartı kapatıldı', 'info');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    });
+
+    document.getElementById('act-proposal-approve')?.addEventListener('click', async () => {
+      const prop = state.snapshot?.pendingProposal;
+      if (!prop) return;
+      const btn = document.getElementById('act-proposal-approve');
+
+      if (prop.countCheckMatch === false) {
+        const mismatchConfirm = window.confirm(
+          `${prop.countCheckMessage}\n\nMesajdaki dosya sayısı ile seçilen dosya sayısı uyuşmuyor. Yine de devam etmek istiyor musunuz?`,
+        );
+        if (!mismatchConfirm) return;
+      } else {
+        const countMatch = prop.message.match(/(\d+)\s+dosya/i) || prop.message.match(/update\s+(\d+)\s+files/i);
+        if (countMatch && parseInt(countMatch[1], 10) !== prop.files.length) {
+          const mismatchConfirm = window.confirm(
+            `⚠️ UYARI: Commit mesajında belirtilen sayı (${countMatch[1]}) ile commitlenecek gerçek dosya sayısı (${prop.files.length}) uyuşmuyor!\n\nDevam etmek istiyor musunuz?`,
+          );
+          if (!mismatchConfirm) return;
+        }
+      }
+
+      if (prop.isLargeDiff || prop.filesChanged > 10 || prop.totalLines >= 1000) {
+        const largeConfirm = window.confirm(
+          `🚨 DİKKAT: BÜYÜK DEĞİŞİKLİK TESPİT EDİLDİ!\n\nBu öneri ${prop.filesChanged} adet dosya ve ${prop.totalLines} satır değişiklik içermektedir!\nHalka açık depoya yanlışlıkla büyük veri, gizli anahtarlar veya istemediğiniz dosyaları itmediğinizden kesinlikle emin misiniz?\n\nYine de devam etmek istiyor musunuz?`,
+        );
+        if (!largeConfirm) return;
+      }
+
+      const firstLine = (prop.message || '').split('\n')[0].replace(/"/g, '\\"');
+      const cmd = `git switch -c ${prop.branchName} ${prop.baseBranch || 'origin/main'} && git add -- ${prop.files.join(' ')} && git commit -m "${firstLine}" && git push -u origin ${prop.branchName} && gh pr create --head ${prop.branchName} --title "${prop.prTitle || firstLine}"`;
+      const confirmed = window.confirm(
+        `🤖 CLAUDE ÖNERİSİNİ ONAYLA:\n\nÖnerilen dal: ${prop.branchName} (${prop.baseBranch})\nCommitlenecek Dosyalar (${prop.files.length} adet):\n${prop.files.map((f) => ' • ' + f).join('\n')}\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
+      );
+      if (!confirmed) return;
+
+      await handleCommitWorkingTree(prop.branchName, prop.message, prop.prTitle, prop.prBody, true, btn, prop.files);
+      if (!state.offlineMode) {
+        try {
+          const dismissedSnap = await apiCall('/api/proposal/dismiss', 'POST', {});
+          applySnapshot(dismissedSnap);
+        } catch (_) {}
+      } else {
+        LocalFallbackEngine.dismissProposal();
+      }
+    });
+  }
+
   function renderInspector() {
     const snap = state.snapshot;
     if (!snap) return;
@@ -1226,31 +1286,6 @@
         return;
       }
     }
-
-    const b = snap.branches.find((x) => x.id === state.selectedBranchId);
-    if (!b) {
-      el.detail.innerHTML = '<div class="empty-detail">İncelemek için soldaki parabolik grafikten bir dal kapsülü veya düğüm seçin.</div>';
-      return;
-    }
-
-    const isLive = snap.repo.mode === 'live';
-    const hasConflict = b.conflict?.hasConflict && !b.conflict.resolved;
-    const isOpen = b.state === 'open';
-    const isRemoteOnly = !b.hasLocal && b.hasRemote;
-    const isVirtualWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-');
-    const ciState = b.pr?.ci?.state;
-    const isRunning = ciState === 'RUNNING';
-    const isQueued = Boolean(state.pendingAutoMerge[b.id]);
-    const canCommitWorkingTree = isVirtualWip || (b.uncommittedCount || 0) > 0 || (b.isHead && (state.snapshot?.repo?.dirtyCount || 0) > 0);
-    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip && !canCommitWorkingTree;
-    const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
-    const canMerge = isOpen && hasOpenPR && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
-
-    const ciChip = ciState === 'FAILURE' ? '<span class="chip danger">CI: FAILURE</span>'
-      : ciState === 'RUNNING' ? '<span class="chip warn running-pulse">CI: RUNNING</span>'
-        : ciState === 'SUCCESS' ? '<span class="chip ok">CI: PASS</span>' : '';
-
-    const queuedChip = isQueued ? '<span class="chip warn running-pulse">⏳ Auto-Merge Kuyruğunda</span>' : '';
 
     let proposalHtml = '';
     if (snap.pendingProposal) {
@@ -1288,8 +1323,20 @@
           ` : ''}
 
           <div class="wt-field">
-            <label class="wt-label">Önerilen Commit Mesajı</label>
-            <div class="layer-line mono"><strong>${esc(prop.message)}</strong></div>
+            <label class="wt-label">🛡️ Güvenlik Kalkanı Kontrolü</label>
+            <div class="layer-line ok"><strong>${esc(prop.shieldResult || '✓ 0 secret, 0 özel anahtar, 0 .gitignore ihlali (Tüm dosyalar güvenli)')}</strong></div>
+          </div>
+
+          <div class="wt-field">
+            <label class="wt-label">📊 Dosya Sayısı &amp; Mesaj Doğrulaması</label>
+            <div class="layer-line ${prop.countCheckMatch !== false ? 'ok' : 'warn'}">
+              <strong>${esc(prop.countCheckMessage || `✓ ${prop.files?.length || 0} dosya seçildi`)}</strong>
+            </div>
+          </div>
+
+          <div class="wt-field">
+            <label class="wt-label">Önerilen Commit Mesajı &amp; Co-Authors</label>
+            <pre class="terminal-box commit-msg-box">${esc(prop.message)}</pre>
           </div>
 
           ${prop.prTitle ? `
@@ -1305,6 +1352,17 @@
           </div>
         </div>
       `;
+    }
+
+    const b = snap.branches.find((x) => x.id === state.selectedBranchId);
+    if (!b) {
+      if (proposalHtml) {
+        el.detail.innerHTML = `${proposalHtml}<div class="empty-detail">İncelemek için soldaki parabolik grafikten bir dal kapsülü veya düğüm seçin.</div>`;
+        wireProposalActions();
+        return;
+      }
+      el.detail.innerHTML = '<div class="empty-detail">İncelemek için soldaki parabolik grafikten bir dal kapsülü veya düğüm seçin.</div>';
+      return;
     }
 
     let html = `
@@ -1591,60 +1649,10 @@
 
     el.detail.innerHTML = html;
 
-    document.getElementById('act-proposal-dismiss')?.addEventListener('click', async () => {
-      try {
-        const res = state.offlineMode
-          ? LocalFallbackEngine.dismissProposal()
-          : await apiCall('/api/proposal/dismiss', 'POST', {});
-        applySnapshot(res);
-        showToast('Öneri kartı kapatıldı', 'info');
-      } catch (err) {
-        showToast(err.message, 'danger');
-      }
-    });
-
-    document.getElementById('act-proposal-approve')?.addEventListener('click', async () => {
-      const prop = state.snapshot?.pendingProposal;
-      if (!prop) return;
-      const btn = document.getElementById('act-proposal-approve');
-
-      // 1. Mesaj ve dosya sayısı eşleşme denetimi (Madde 2)
-      const countMatch = prop.message.match(/(\d+)\s+dosya/i) || prop.message.match(/update\s+(\d+)\s+files/i);
-      if (countMatch && parseInt(countMatch[1], 10) !== prop.files.length) {
-        const mismatchConfirm = window.confirm(
-          `⚠️ UYARI: Commit mesajında belirtilen sayı (${countMatch[1]}) ile commitlenecek gerçek dosya sayısı (${prop.files.length}) uyuşmuyor!\n\nDevam etmek istiyor musunuz?`,
-        );
-        if (!mismatchConfirm) return;
-      }
-
-      // 2. 10+ dosya ya da 1000+ satırda ekstra onay (Madde 5)
-      if (prop.isLargeDiff || prop.filesChanged > 10 || prop.totalLines >= 1000) {
-        const largeConfirm = window.confirm(
-          `🚨 DİKKAT: BÜYÜK DEĞİŞİKLİK TESPİT EDİLDİ!\n\nBu öneri ${prop.filesChanged} adet dosya ve ${prop.totalLines} satır değişiklik içermektedir!\nHalka açık depoya yanlışlıkla büyük veri, gizli anahtarlar veya istemediğiniz dosyaları itmediğinizden kesinlikle emin misiniz?\n\nYine de devam etmek istiyor musunuz?`,
-        );
-        if (!largeConfirm) return;
-      }
-
-      // 3. Çalıştırılacak komutları şeffafça göster
-      const cmd = `git switch -c ${prop.branchName} ${prop.baseBranch || 'origin/main'} && git add -- ${prop.files.join(' ')} && git commit -m "${prop.message}" && git push -u origin ${prop.branchName} && gh pr create --head ${prop.branchName} --title "${prop.prTitle || prop.message}"`;
-      const confirmed = window.confirm(
-        `🤖 CLAUDE ÖNERİSİNİ ONAYLA:\n\nÖnerilen dal: ${prop.branchName} (${prop.baseBranch})\nCommitlenecek Dosyalar (${prop.files.length} adet):\n${prop.files.map((f) => ' • ' + f).join('\n')}\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
-      );
-      if (!confirmed) return;
-
-      await handleCommitWorkingTree(prop.branchName, prop.message, prop.prTitle, prop.prBody, true, btn, prop.files);
-      if (!state.offlineMode) {
-        try {
-          const dismissedSnap = await apiCall('/api/proposal/dismiss', 'POST', {});
-          applySnapshot(dismissedSnap);
-        } catch (_) {}
-      } else {
-        LocalFallbackEngine.dismissProposal();
-      }
-    });
+    wireProposalActions();
 
     document.getElementById('act-checkout')?.addEventListener('click', () => handleCheckoutBranch(b.id));
-    document.getElementById('act-promote')?.addEventListener('click', () => handlePromoteBranch(b.id));
+    document.getElementById('act-promote')?.addEventListener('click', (ev) => handlePromoteBranch(b.id, undefined, undefined, ev.currentTarget));
     document.getElementById('form-commit-wt')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const bName = document.getElementById('wt-branch-name').value;
@@ -1970,7 +1978,13 @@
     );
     if (!confirmed) return;
 
-    if (btnEl) btnEl.disabled = true;
+    if (btnEl) {
+      btnEl.disabled = true;
+      btnEl.dataset.origText = btnEl.textContent;
+      btnEl.textContent = '⏳ PR Açılıyor...';
+      btnEl.classList.add('running-pulse');
+    }
+    showToast('⏳ Dal pushlanıyor ve GitHub PR oluşturuluyor...', 'info');
     try {
       const snap = state.offlineMode
         ? LocalFallbackEngine.promoteBranch(branchId, title || '', body || '')
@@ -1985,7 +1999,11 @@
     } catch (err) {
       showToast(err.message, 'danger');
     } finally {
-      if (btnEl) btnEl.disabled = false;
+      if (btnEl) {
+        btnEl.disabled = false;
+        if (btnEl.dataset.origText) btnEl.textContent = btnEl.dataset.origText;
+        btnEl.classList.remove('running-pulse');
+      }
     }
   }
 

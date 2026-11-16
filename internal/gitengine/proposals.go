@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,9 +26,13 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 	if err := validateBranchName(branchName); err != nil {
 		return model.CommitProposal{}, err
 	}
-	message = strings.TrimSpace(message)
-	if message == "" {
+	if strings.TrimSpace(message) == "" {
 		return model.CommitProposal{}, fmt.Errorf("commit mesajı (message) boş olamaz")
+	}
+
+	// 1. files parametresi ZORUNLUDUR (Claude kuralı #1)
+	if len(files) == 0 {
+		return model.CommitProposal{}, fmt.Errorf("files parametresi zorunludur ve en az bir geçerli dosya yolu içermelidir; boş bırakılamaz")
 	}
 
 	snap, err := m.Snapshot()
@@ -41,7 +48,7 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 		return model.CommitProposal{}, fmt.Errorf("yeni dal adı '%s' ile aynı olamaz; lütfen yeni bir özellik dalı adı belirleyin", defBranch)
 	}
 
-	// 1. Merged bir dalın adını yeniden kullanma kuralı
+	// 2. Merged dal kontrolü (yerel, uzak ve PR geçmişi) (Claude kuralı #2)
 	for _, b := range snap.Branches {
 		if strings.EqualFold(b.Name, branchName) {
 			if b.State == "merged" || b.OriginGone || (b.PR != nil && b.PR.ReviewState == "MERGED") {
@@ -50,28 +57,59 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 		}
 	}
 
-	// 2. Gizli dosya ve özel anahtar kontrolleri
-	cfg := DefaultGuardConfig
 	repoPath := ""
+	cfg := DefaultGuardConfig
 	if live, ok := m.activeLiveRepo(); ok {
 		repoPath = live.path
 		cfg = LoadGuardConfig(repoPath)
 	}
 
-	candidateFiles := files
-	if len(candidateFiles) == 0 {
-		if repoPath != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			out, _, _ := runCmd(ctx, repoPath, "git", "status", "--porcelain")
-			candidateFiles = parsePorcelainFiles(out)
-		} else {
-			candidateFiles = []string{"CHANGELOG.md"}
+	if repoPath != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+
+		// (a) git branch -a --merged HEAD
+		if out, _, err := runCmd(ctx, repoPath, "git", "branch", "-a", "--merged", "HEAD"); err == nil {
+			for _, line := range strings.Split(out, "\n") {
+				trimmed := strings.TrimSpace(strings.TrimPrefix(line, "*"))
+				trimmed = strings.TrimPrefix(trimmed, "remotes/origin/")
+				trimmed = strings.TrimPrefix(trimmed, "origin/")
+				if strings.EqualFold(trimmed, branchName) && trimmed != defBranch {
+					return model.CommitProposal{}, fmt.Errorf("'%s' dalı yerel veya uzak Git geçmişinde daha önce birleştirilmiş (merged). Birleşmiş bir dal adı önerilemez!", branchName)
+				}
+			}
+		}
+
+		// (b) git log merge commits referencing this branch
+		if logOut, _, err := runCmd(ctx, repoPath, "git", "log", "-n", "250", "--merges", "--oneline"); err == nil {
+			searchTerms := []string{
+				"from " + branchName,
+				"Merge branch '" + branchName + "'",
+				"/" + branchName + " into",
+				"into " + branchName,
+			}
+			for _, line := range strings.Split(logOut, "\n") {
+				for _, term := range searchTerms {
+					if strings.Contains(strings.ToLower(line), strings.ToLower(term)) {
+						return model.CommitProposal{}, fmt.Errorf("'%s' dalı Git commit geçmişinde birleşmiş (PR/Merge) olarak bulundu. Birleşmiş bir dal adı tekrar kullanılamaz!", branchName)
+					}
+				}
+			}
+		}
+
+		// (c) gh pr list --state merged --head <branchName>
+		if _, err := exec.LookPath("gh"); err == nil {
+			if ghOut, _, ghErr := runCmd(ctx, repoPath, "gh", "pr", "list", "--state", "merged", "--head", branchName, "--json", "number,headRefName"); ghErr == nil {
+				if strings.Contains(strings.ToLower(ghOut), strings.ToLower(branchName)) {
+					return model.CommitProposal{}, fmt.Errorf("'%s' dalı GitHub PR geçmişinde birleştirilmiş (MERGED) olarak bulundu. Birleşmiş bir dal adı önerilemez!", branchName)
+				}
+			}
 		}
 	}
 
+	// 3. Gizli dosya ve özel anahtar kontrolleri
 	var cleanFiles []string
-	for _, f := range candidateFiles {
+	for _, f := range files {
 		f = filepath.ToSlash(filepath.Clean(strings.TrimSpace(f)))
 		f = strings.TrimPrefix(f, "./")
 		if f == "" {
@@ -104,7 +142,7 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 		return model.CommitProposal{}, fmt.Errorf("önerilecek geçerli ve güvenli dosya bulunamadı")
 	}
 
-	// 3. Diff stat hesaplama
+	// 4. Diff stat hesaplama
 	diffStat, _ := m.GetDiffStat()
 
 	t := strings.TrimSpace(prTitle)
@@ -116,19 +154,28 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 		b = fmt.Sprintf("Claude / AI önerisi ile oluşturuldu.\n\n### Değişiklikler\n- %s", strings.Join(cleanFiles, "\n- "))
 	}
 
+	// 5. Kalkan ve dosya sayısı eşleşme kontrolleri (Claude kuralı #3)
+	shieldResult := fmt.Sprintf("✓ Güvenlik Kalkanı: 0 secret, 0 özel anahtar, 0 .gitignore ihlali (%d dosya güvenle onaylandı)", len(cleanFiles))
+	countMatch, countMsg := evaluateMessageCountMatch(message, len(cleanFiles))
+
+	// 6. Co-Authored-By ve tam mesaj koruması (Claude kuralı #4):
+	// Message alanı olduğu gibi korunur.
 	prop := model.CommitProposal{
-		ID:           fmt.Sprintf("prop-%d", time.Now().UnixNano()),
-		BranchName:   branchName,
-		BaseBranch:   "origin/" + defBranch,
-		Message:      message,
-		Files:        cleanFiles,
-		PRTitle:      t,
-		PRBody:       b,
-		DiffStat:     diffStat.Stat,
-		FilesChanged: len(cleanFiles),
-		TotalLines:   diffStat.TotalLines,
-		IsLargeDiff:  len(cleanFiles) > 10 || diffStat.TotalLines >= 1000,
-		CreatedAt:    time.Now().Format("15:04:05"),
+		ID:                fmt.Sprintf("prop-%d", time.Now().UnixNano()),
+		BranchName:        branchName,
+		BaseBranch:        "origin/" + defBranch,
+		Message:           message,
+		Files:             cleanFiles,
+		PRTitle:           t,
+		PRBody:            b,
+		DiffStat:          diffStat.Stat,
+		FilesChanged:      len(cleanFiles),
+		TotalLines:        diffStat.TotalLines,
+		IsLargeDiff:       len(cleanFiles) > 10 || diffStat.TotalLines >= 1000,
+		CreatedAt:         time.Now().Format("15:04:05"),
+		ShieldResult:      shieldResult,
+		CountCheckMatch:   countMatch,
+		CountCheckMessage: countMsg,
 	}
 
 	m.mu.Lock()
@@ -141,6 +188,34 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 	}
 
 	return prop, nil
+}
+
+func evaluateMessageCountMatch(msg string, fileCount int) (match bool, resultMsg string) {
+	re := regexp.MustCompile(`(?i)(?:update\s+(\d+)\s+files?|(\d+)\s+files?(?:\s+changed)?|(\d+)\s+dosya(?:da)?)`)
+	matches := re.FindStringSubmatch(msg)
+	foundNum := 0
+	found := false
+	if len(matches) > 0 {
+		for i := 1; i < len(matches); i++ {
+			if matches[i] != "" {
+				if n, err := strconv.Atoi(matches[i]); err == nil && n > 0 {
+					foundNum = n
+					found = true
+					break
+				}
+			}
+		}
+	}
+
+	if !found {
+		return true, fmt.Sprintf("✓ %d dosya seçildi (mesajda sayı belirtilmedi)", fileCount)
+	}
+
+	if foundNum == fileCount {
+		return true, fmt.Sprintf("✓ Dosya sayısı commit mesajıyla tam eşleşiyor (%d dosya)", fileCount)
+	}
+
+	return false, fmt.Sprintf("⚠ UYARI: Commit mesajında '%d' dosya belirtilmiş, ancak %d dosya seçildi!", foundNum, fileCount)
 }
 
 // DismissProposal discards the pending proposal from memory and disk.

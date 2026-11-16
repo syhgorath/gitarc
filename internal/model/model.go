@@ -18,18 +18,21 @@ type CockpitSnapshot struct {
 // CommitProposal represents a staged proposal created by an AI agent (e.g. via MCP).
 // It does NOT perform any commit/push until the user explicitly reviews and confirms in the UI.
 type CommitProposal struct {
-	ID           string   `json:"id"`
-	BranchName   string   `json:"branchName"`
-	BaseBranch   string   `json:"baseBranch"`
-	Message      string   `json:"message"`
-	Files        []string `json:"files"`
-	PRTitle      string   `json:"prTitle"`
-	PRBody       string   `json:"prBody"`
-	DiffStat     string   `json:"diffStat,omitempty"`
-	FilesChanged int      `json:"filesChanged"`
-	TotalLines   int      `json:"totalLines"`
-	IsLargeDiff  bool     `json:"isLargeDiff"`
-	CreatedAt    string   `json:"createdAt"`
+	ID                string   `json:"id"`
+	BranchName        string   `json:"branchName"`
+	BaseBranch        string   `json:"baseBranch"`
+	Message           string   `json:"message"`
+	Files             []string `json:"files"`
+	PRTitle           string   `json:"prTitle"`
+	PRBody            string   `json:"prBody"`
+	DiffStat          string   `json:"diffStat,omitempty"`
+	FilesChanged      int      `json:"filesChanged"`
+	TotalLines        int      `json:"totalLines"`
+	IsLargeDiff       bool     `json:"isLargeDiff"`
+	CreatedAt         string   `json:"createdAt"`
+	ShieldResult      string   `json:"shieldResult,omitempty"`
+	CountCheckMatch   bool     `json:"countCheckMatch"`
+	CountCheckMessage string   `json:"countCheckMessage,omitempty"`
 }
 
 // RepoOption describes a selectable workspace repository (live or simulated).

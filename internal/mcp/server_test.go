@@ -169,5 +169,34 @@ func TestMCPProposeCommit(t *testing.T) {
 	if dismissSnap.PendingProposal != nil {
 		t.Fatalf("expected pendingProposal to be nil after dismiss")
 	}
+
+	// 4. files boş olduğunda HATA dönmeli (Kural 1)
+	reqEmptyFiles := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"gitarc_propose_commit","arguments":{"branch_name":"feat/empty-files","message":"feat: empty","files":[]}}}` + "\n"
+	out.Reset()
+	if err := ServeStdio(strings.NewReader(reqEmptyFiles), &out, mgr); err != nil {
+		t.Fatalf("ServeStdio error: %v", err)
+	}
+	if !strings.Contains(out.String(), "files parametresi zorunludur") {
+		t.Fatalf("expected error for empty files, got: %s", out.String())
+	}
+
+	// 5. Co-Authored-By içeren çok satırlı mesaj tam olarak korunmalı (Kural 4)
+	reqCoAuthor := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"gitarc_propose_commit","arguments":{"branch_name":"feat/co-author-check","message":"feat: add co-author\n\nCo-Authored-By: Claude <noreply@anthropic.com>","files":["CHANGELOG.md"]}}}` + "\n"
+	out.Reset()
+	if err := ServeStdio(strings.NewReader(reqCoAuthor), &out, mgr); err != nil {
+		t.Fatalf("ServeStdio error: %v", err)
+	}
+	if !strings.Contains(out.String(), "Co-Authored-By: Claude") {
+		t.Fatalf("expected message to preserve Co-Authored-By line, got: %s", out.String())
+	}
+
+	// 6. Dosya sayısı eşleşmesi doğrulanmalı (Kural 3)
+	snapCoAuth, _ := mgr.Snapshot()
+	if snapCoAuth.PendingProposal == nil || !snapCoAuth.PendingProposal.CountCheckMatch {
+		t.Fatalf("expected countCheckMatch to be true, got: %+v", snapCoAuth.PendingProposal)
+	}
+	if !strings.Contains(snapCoAuth.PendingProposal.ShieldResult, "Güvenlik Kalkanı") {
+		t.Errorf("expected shieldResult to contain Güvenlik Kalkanı, got: %s", snapCoAuth.PendingProposal.ShieldResult)
+	}
 }
 

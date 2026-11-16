@@ -222,7 +222,7 @@ func listTools() []toolDefinition {
 						"description": "Önerilen GitHub PR gövde açıklaması (opsiyonel).",
 					},
 				},
-				"required": []string{"branch_name", "message"},
+				"required": []string{"branch_name", "message", "files"},
 			},
 		},
 	}
@@ -479,7 +479,15 @@ func callProposeCommit(args map[string]any, mgr *gitengine.Manager) toolResult {
 			}
 		}
 	} else if strFiles, ok := args["files"].([]string); ok {
-		files = strFiles
+		for _, s := range strFiles {
+			if strings.TrimSpace(s) != "" {
+				files = append(files, strings.TrimSpace(s))
+			}
+		}
+	}
+
+	if len(files) == 0 {
+		return errResult("files parametresi zorunludur ve en az bir geçerli dosya yolu içermelidir; boş bırakılamaz")
 	}
 
 	prop, err := mgr.ProposeCommit(branchName, message, files, prTitle, prBody)

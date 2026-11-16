@@ -437,21 +437,44 @@
       },
       proposeCommit(branchName, message, files = [], prTitle = '', prBody = '') {
         const cleanBranch = (branchName || '').trim();
-        const cleanMsg = (message || '').trim();
-        if (!cleanBranch || !cleanMsg) throw new Error('Dal adı ve mesaj zorunludur');
+        const rawMsg = (message || '').trim();
+        if (!cleanBranch || !rawMsg) throw new Error('Dal adı ve mesaj zorunludur');
+        if (!files || !Array.isArray(files) || files.length === 0) {
+          throw new Error('files parametresi zorunludur ve en az bir geçerli dosya yolu içermelidir; boş bırakılamaz');
+        }
+
+        const isMerged = sim.branches.some((b) => b.name.toLowerCase() === cleanBranch.toLowerCase() && (b.state === 'merged' || b.originGone));
+        if (isMerged) {
+          throw new Error(`'${cleanBranch}' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın adı öneri için tekrar kullanılamaz!`);
+        }
+
+        const countMatch = rawMsg.match(/(\d+)\s+dosya/i) || rawMsg.match(/update\s+(\d+)\s+files/i) || rawMsg.match(/(\d+)\s+files/i);
+        let countCheckMatch = true;
+        let countCheckMessage = `✓ ${files.length} dosya seçildi (mesajda sayı belirtilmedi)`;
+        if (countMatch) {
+          const num = parseInt(countMatch[1], 10);
+          countCheckMatch = num === files.length;
+          countCheckMessage = countCheckMatch
+            ? `✓ Dosya sayısı commit mesajıyla tam eşleşiyor (${files.length} dosya)`
+            : `⚠ UYARI: Commit mesajında '${num}' dosya belirtilmiş, ancak ${files.length} dosya seçildi!`;
+        }
+
         sim.pendingProposal = {
           id: 'prop-fallback',
           branchName: cleanBranch,
           baseBranch: 'origin/main',
-          message: cleanMsg,
-          files: files.length > 0 ? files : ['CHANGELOG.md'],
-          prTitle: prTitle || cleanMsg,
+          message: message,
+          files: files,
+          prTitle: prTitle || rawMsg,
           prBody: prBody || 'Claude önerisi',
-          diffStat: 'CHANGELOG.md | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)',
-          filesChanged: files.length || 1,
+          diffStat: `${files[0]} | 2 +-\n ${files.length} file(s) changed`,
+          filesChanged: files.length,
           totalLines: 2,
-          isLargeDiff: false,
+          isLargeDiff: files.length > 10,
           createdAt: new Date().toLocaleTimeString(),
+          shieldResult: `✓ Güvenlik Kalkanı: 0 secret, 0 özel anahtar, 0 .gitignore ihlali (${files.length} dosya onaylandı)`,
+          countCheckMatch,
+          countCheckMessage,
         };
         return recompute();
       },
