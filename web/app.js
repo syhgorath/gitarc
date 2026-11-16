@@ -1082,6 +1082,41 @@
     renderInspector();
   }
 
+  function suggestCommitAndPR(b) {
+    const files = b.changedFiles || [];
+    if (files.length === 0) {
+      return {
+        commitMsg: 'feat: çalışma dizini güncellemeleri',
+        prTitle: 'feat: çalışma dizini güncellemeleri',
+        prBody: 'GitArc kokpitinden oluşturuldu.',
+      };
+    }
+    const first = files[0].toLowerCase();
+    let prefix = 'feat';
+    let summary = 'değişiklikleri kaydet';
+    if (first.endsWith('.md') || first.startsWith('docs/')) {
+      prefix = 'docs';
+      summary = 'belgeleri güncelle';
+    } else if (first.includes('gitignore')) {
+      prefix = 'chore';
+      summary = 'gitignore kurallarını güncelle';
+    } else if (first.includes('test')) {
+      prefix = 'test';
+      summary = 'testleri güncelle';
+    } else if (first.endsWith('.css') || first.endsWith('.html')) {
+      prefix = 'style';
+      summary = 'arayüz stil ve şablonlarını güncelle';
+    } else if (first.endsWith('.json') || first.endsWith('.yml') || first.endsWith('.yaml') || first.endsWith('.toml')) {
+      prefix = 'chore';
+      summary = 'yapılandırma dosyalarını güncelle';
+    }
+    const baseName = files[0].split('/').pop().replace(/^\./, '');
+    const commitMsg = `${prefix}: ${summary} (${baseName})`;
+    const prTitle = `${prefix}: ${summary}`;
+    const prBody = `### Değişiklikler\n- ${files.slice(0, 5).join('\n- ')}\n\n### Doğrulama\nYerel kontroller yapıldı.`;
+    return { commitMsg, prTitle, prBody };
+  }
+
   function suggestUniqueBranchName(b, snap) {
     const files = b.changedFiles || [];
     let prefix = 'feat';
@@ -1094,10 +1129,12 @@
         prefix = 'test';
       } else if (first.endsWith('.css') || first.endsWith('.html')) {
         prefix = 'style';
+      } else if (first.includes('gitignore') || first.endsWith('.json') || first.endsWith('.lock') || first.endsWith('.yml') || first.endsWith('.yaml')) {
+        prefix = 'chore';
       }
-      const base = first.split('/').pop().replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      if (base && base !== 'index' && base !== 'main') {
-        slug = `${base}-update`;
+      const rawBase = first.split('/').pop().replace(/^\./, '').replace(/\.[^.]+$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (rawBase && rawBase !== 'index' && rawBase !== 'main') {
+        slug = `${rawBase}-guncel`;
       }
     }
     const candidateBase = `${prefix}/${slug}`.slice(0, 40);
@@ -1290,17 +1327,33 @@
     }
 
     if (canCommitWorkingTree) {
-      const defaultWtBranch = isVirtualWip ? suggestUniqueBranchName(b, snap) : b.name;
-      const defaultCommitMsg = b.lastCommitMsg || b.draftPrTitle || 'feat: cockpit workflow updates';
-      const defaultPrTitle = b.draftPrTitle || b.lastCommitMsg || defaultCommitMsg;
-      const defaultPrBody = b.draftPrBody || '';
+      const isMerged = isMergedOrGone(b) || b.state === 'merged' || b.pr?.reviewState === 'MERGED';
+      let defaultWtBranch = b.name;
+      let defaultCommitMsg = b.lastCommitMsg || 'feat: cockpit workflow updates';
+      let defaultPrTitle = b.draftPrTitle || b.lastCommitMsg || defaultCommitMsg;
+      let defaultPrBody = b.draftPrBody || '';
+
+      if (isVirtualWip || isMerged) {
+        defaultWtBranch = suggestUniqueBranchName(b, snap);
+        const suggested = suggestCommitAndPR(b);
+        defaultCommitMsg = suggested.commitMsg;
+        defaultPrTitle = suggested.prTitle;
+        defaultPrBody = suggested.prBody;
+      }
+      const defBranch = snap.repo?.defaultBranch || 'main';
+      const wtNote = isMerged
+        ? `Bu dal (<strong>${esc(b.name)}</strong>) birleşmiş (merged/gone). Kaydedilmemiş değişiklikleriniz korunarak <strong>origin/${esc(defBranch)}</strong> tabanlı yeni bir dala aktarılacaktır.`
+        : (isVirtualWip
+          ? `Şu an <strong>${esc(defBranch)}</strong> üzerindeki kaydedilmemiş değişiklikleri görüyorsunuz. Terminal açmadan yeni dal açabilir, commit atabilir ve doğrudan push + PR oluşturabilirsiniz.`
+          : 'Bu daldaki kaydedilmemiş değişiklikleri konsol kullanmadan yerelde commitleyin veya tek tıkla pushlayıp PR açın.');
+
       html += `
         <div class="diag-card">
           <h4>
             <span>🚀 Konsolsuz Dal Aç, Commit &amp; PR Oluştur</span>
-            <span class="chip accent">${b.uncommittedCount || 0} dosya</span>
+            <span class="chip accent">${b.uncommittedCount || (b.isHead ? snap.repo?.dirtyCount : 0) || 0} dosya</span>
           </h4>
-          <div class="wt-note">${isVirtualWip ? 'Şu an <strong>main</strong> üzerindeki kaydedilmemiş değişiklikleri görüyorsunuz. Terminal açmadan yeni dal açabilir, commit atabilir ve doğrudan push + PR oluşturabilirsiniz.' : 'Bu daldaki kaydedilmemiş değişiklikleri konsol kullanmadan yerelde commitleyin veya tek tıkla pushlayıp PR açın.'}</div>
+          <div class="wt-note">${wtNote}</div>
           <form id="form-commit-wt" class="edit-form">
             <div class="wt-field">
               <label class="wt-label" for="wt-branch-name">Özellik Dalı Adı</label>
@@ -1616,18 +1669,36 @@
       showToast('Özellik dalı adı ve commit mesajı zorunludur', 'warn');
       return;
     }
+
+    const existingBranch = (state.snapshot?.branches || []).find((x) => x.name === cleanBranch);
+    if (pushAndPr && existingBranch && isMergedOrGone(existingBranch)) {
+      showToast(`'${cleanBranch}' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın üzerine push yapılamaz! Lütfen yeni bir dal adı belirleyin.`, 'warn');
+      return;
+    }
+
+    const curBranch = state.snapshot?.branches?.find((x) => x.isHead)?.name || '';
+    const defBranch = state.snapshot?.repo?.defaultBranch || 'main';
+    const isNewBranch = cleanBranch !== curBranch;
+    const switchCmd = isNewBranch ? `git switch -c ${cleanBranch} origin/${defBranch}` : '';
+    const commitCmd = `git add -A && git commit -m "${cleanCommit}"`;
+
     if (!pushAndPr) {
       state.draftPrEdits[cleanBranch] = {
         title: (prTitle || '').trim() || cleanCommit,
         body: (prBody || '').trim(),
       };
+      const fullCmd = [switchCmd, commitCmd].filter(Boolean).join(' && ');
+      const confirmed = window.confirm(
+        `💾 COMMIT ONAYI:\nÇalışma dizini '${cleanBranch}' dalına kaydedilecektir.\n\nÇalıştırılacak Komut:\n${fullCmd}\n\nBu işlemi onaylıyor musunuz?`,
+      );
+      if (!confirmed) return;
     } else {
       delete state.draftPrEdits[cleanBranch];
-    }
-    if (pushAndPr) {
-      const cmd = `git switch -c ${cleanBranch} && git add -A && git commit -m "${cleanCommit}" && git push -u origin ${cleanBranch} && gh pr create --head ${cleanBranch} --title "${prTitle || cleanCommit}"`;
+      const pushCmd = `git push -u origin ${cleanBranch}`;
+      const prCmd = `gh pr create --head ${cleanBranch} --title "${prTitle || cleanCommit}"`;
+      const fullCmd = [switchCmd, commitCmd, pushCmd, prCmd].filter(Boolean).join(' && ');
       const confirmed = window.confirm(
-        `⚠️ PUSH & PR ONAYI:\nÇalışma dizini kaydedilip doğrudan uzak sunucuya pushlanacak ve GitHub PR açılacaktır.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
+        `⚠️ PUSH & PR ONAYI:\nÇalışma dizini kaydedilip doğrudan uzak sunucuya pushlanacak ve GitHub PR açılacaktır.\n\nÇalıştırılacak Komut:\n${fullCmd}\n\nBu işlemi onaylıyor musunuz?`,
       );
       if (!confirmed) return;
     }
@@ -2005,6 +2076,8 @@
       warningText = `\n\n🚨 DİKKAT: "${branchName}" şu an aktif dal (HEAD) ve çalışma ağacında ${dirtyCount} adet kaydedilmemiş (staged / takipsiz) dosya var!\nDalı silmeden önce değişikliklerinizi commitlemeniz veya saklamanız (stash) gerekir, aksi takdirde veriler kaybolur.`;
     } else if (isHead) {
       warningText = `\n\nℹ️ Bu dal şu an aktif (HEAD) olduğu için doğrudan silinemez. Komut önce "git switch ${defBranch}" ile ana omurgaya geçecek, ardından dalı silecektir.`;
+    } else if (dirty) {
+      warningText = `\n\n⚠️ UYARI: Çalışma ağacında ${dirtyCount} adet kaydedilmemiş (staged / takipsiz) dosya bulunmaktadır.`;
     }
 
     const confirmed = window.confirm(
@@ -2024,9 +2097,14 @@
   }
 
   async function handlePruneGone() {
+    const dirtyCount = state.snapshot?.repo?.dirtyCount || 0;
+    let warningText = '';
+    if (dirtyCount > 0) {
+      warningText = `\n\n🚨 UYARI: Çalışma ağacında ${dirtyCount} adet kaydedilmemiş (staged / takipsiz) dosya bulunmaktadır! Temizlik öncesi değişikliklerinizi commitlemeniz önerilir.`;
+    }
     const cmd = "git fetch --prune && git branch -vv | grep ': gone]' | awk '{print $1}' | xargs -r git branch -D";
     const confirmed = window.confirm(
-      `⚠️ KALINTI TEMİZLİĞİ ONAYI:\nUzak sunucuda birleşmiş veya silinmiş (gone) tüm yerel dallar temizlenecektir.\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu temizlik işlemini onaylıyor musunuz?`,
+      `⚠️ KALINTI TEMİZLİĞİ ONAYI:\nUzak sunucuda birleşmiş veya silinmiş (gone) tüm yerel dallar temizlenecektir.${warningText}\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu temizlik işlemini onaylıyor musunuz?`,
     );
     if (!confirmed) return;
 

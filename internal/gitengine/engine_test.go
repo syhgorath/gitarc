@@ -1209,3 +1209,49 @@ func TestRealWorldSquashCrossPRAndProtectionAccuracy(t *testing.T) {
 		t.Fatalf("expected direct git branch -D for non-HEAD branch, got: %q", cmdNotHead)
 	}
 }
+
+func TestCommitWorkingTreeMergedBranchProtectionAndSwitchOriginMain(t *testing.T) {
+	m := NewManager("") // simulation manager
+
+	// 1. Simülasyonda birleşmiş (merged) bir dal üzerine pushAndPR denemesi engellenmeli
+	snap, err := m.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot failed: %v", err)
+	}
+	var mergedBranchName string
+	for _, b := range snap.Branches {
+		if b.State == "merged" {
+			mergedBranchName = b.Name
+			break
+		}
+	}
+	if mergedBranchName != "" {
+		_, errPushMerged := m.CommitWorkingTree(mergedBranchName, "yeni commit", "pr title", "pr body", true)
+		if errPushMerged == nil {
+			t.Fatalf("expected error when pushing to merged branch %s, got nil", mergedBranchName)
+		}
+		if !strings.Contains(errPushMerged.Error(), "zaten birleşmiş") {
+			t.Fatalf("expected 'zaten birleşmiş' in error message, got: %v", errPushMerged)
+		}
+	}
+
+	// 2. Yeni bir dal adı ile commit oluşturma başarılı olmalı
+	newSnap, errNew := m.CommitWorkingTree("feat/yeni-ozellik-dal", "feat: yeni ozellik", "Yeni Ozellik", "", false)
+	if errNew != nil {
+		t.Fatalf("expected commit on new branch to succeed, got: %v", errNew)
+	}
+	found := false
+	for _, b := range newSnap.Branches {
+		if b.Name == "feat/yeni-ozellik-dal" {
+			found = true
+			if !b.IsHEAD {
+				t.Errorf("newly committed branch should be HEAD")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected feat/yeni-ozellik-dal to be created")
+	}
+}
+

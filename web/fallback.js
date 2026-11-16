@@ -367,6 +367,12 @@
         const cleanBranch = (branchName || '').trim() || 'feat/working-tree';
         const cleanCommit = (commitMsg || '').trim();
         if (!cleanCommit) throw new Error('Commit mesajı boş olamaz');
+        if (pushAndPr) {
+          const existing = sim.branches.find((x) => x.name === cleanBranch);
+          if (existing && (existing.state === 'merged' || existing.originGone || existing.state === 'gone')) {
+            throw new Error(`'${cleanBranch}' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın üzerine push yapılamaz! Lütfen yeni bir dal adı belirleyin.`);
+          }
+        }
         const startIdx = Math.max(0, sim.nodes.length - 1);
         const baseSha = sim.nodes[startIdx]?.shortSha || '9f10b77';
         seq++;
