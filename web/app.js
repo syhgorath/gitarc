@@ -5,14 +5,14 @@
   const XHTML_NS = 'http://www.w3.org/1999/xhtml';
   const MAIN_Y = 300;
   const SPINE_START_X = 140;
-  const SPINE_STEP_X = 168;
-  const LANE_BASE_OFFSET = 108;
-  const LANE_STEP_Y = 106;
-  const FO_W = 244;
-  const FO_H = 122;
-  const MERGED_FO_W = 204;
-  const MERGED_FO_H = 38;
-  const OPEN_CAPSULE_MIN_GAP_X = 264;
+  const SPINE_STEP_X = 156;
+  const LANE_BASE_OFFSET = 100;
+  const LANE_STEP_Y = 98;
+  const FO_W = 222;
+  const FO_H = 114;
+  const MERGED_FO_W = 188;
+  const MERGED_FO_H = 34;
+  const OPEN_CAPSULE_MIN_GAP_X = 238;
   const REPO_STORAGE_KEY = 'gitarc_repo_id';
 
   const state = {
