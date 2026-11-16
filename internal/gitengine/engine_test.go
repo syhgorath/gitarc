@@ -533,3 +533,126 @@ func TestCollectLiveRepoRemoteOnlyAndConflictMutations(t *testing.T) {
 		t.Fatalf("expected refs/heads/feat/stale-merged-remote to be deleted in bare origin repo after PruneGone")
 	}
 }
+
+func TestConflictStudioAndLiveWorktreeResolution(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not installed")
+	}
+
+	originDir := t.TempDir()
+	workDir := t.TempDir()
+
+	runGitIn := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Tester",
+			"GIT_AUTHOR_EMAIL=tester@example.com",
+			"GIT_COMMITTER_NAME=Tester",
+			"GIT_COMMITTER_EMAIL=tester@example.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v in %s failed: %v\n%s", args, dir, err, string(out))
+		}
+	}
+
+	runGitIn(originDir, "init", "--bare", "-b", "main")
+	runGitIn(workDir, "init", "-b", "main")
+	runGitIn(workDir, "config", "user.name", "Tester")
+	runGitIn(workDir, "config", "user.email", "tester@example.com")
+	runGitIn(workDir, "remote", "add", "origin", originDir)
+
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- init\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# Repo\ninitial\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "add", "CHANGELOG.md", "README.md")
+	runGitIn(workDir, "commit", "-m", "chore: init")
+	runGitIn(workDir, "push", "-u", "origin", "main")
+
+	// Çakışacak özellik dalı -> origin'e pushla ve yerelden sil
+	runGitIn(workDir, "checkout", "-b", "feat/conflict-studio")
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- feat branch change\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "feat: studio branch change")
+	runGitIn(workDir, "push", "-u", "origin", "feat/conflict-studio")
+	runGitIn(workDir, "checkout", "main")
+	runGitIn(workDir, "branch", "-D", "feat/conflict-studio")
+
+	// main üzerinde çakışma üret
+	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- main branch change\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "chore: main release change")
+	runGitIn(workDir, "push", "origin", "main")
+
+	// Aktif çalışma dizininde (main) uncommitted kirli dosya bırak
+	dirtyText := "# Repo\nuncommitted work on main must stay intact\n"
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte(dirtyText), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(workDir)
+	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
+		t.Fatalf("SwitchRepo(live-custom) failed: %v", err)
+	}
+
+	studio, err := mgr.InspectConflictStudio("remote-feat-conflict-studio")
+	if err != nil {
+		t.Fatalf("InspectConflictStudio failed: %v", err)
+	}
+	if len(studio.Files) != 1 || studio.Files[0].Path != "CHANGELOG.md" {
+		t.Fatalf("expected 1 conflicted file CHANGELOG.md, got %+v", studio.Files)
+	}
+	fDiff := studio.Files[0]
+	if !strings.Contains(fDiff.ConflictHunks, "<<<<<<<") || fDiff.UnionPreview == "" || fDiff.OursPreview == "" || fDiff.TheirsPreview == "" {
+		t.Fatalf("expected populated ConflictHunks and all 3 previews, got %+v", fDiff)
+	}
+	if !strings.Contains(fDiff.OursPreview, "main branch change") || strings.Contains(fDiff.OursPreview, "feat branch change") {
+		t.Fatalf("unexpected OursPreview content: %q", fDiff.OursPreview)
+	}
+	if !strings.Contains(fDiff.TheirsPreview, "feat branch change") || strings.Contains(fDiff.TheirsPreview, "main branch change") {
+		t.Fatalf("unexpected TheirsPreview content: %q", fDiff.TheirsPreview)
+	}
+
+	// Çözüm metninde <<<<<<< işareti kalırsa hata dönmeli
+	if _, err := mgr.ResolveBranchConflict("remote-feat-conflict-studio", "custom", map[string]string{
+		"CHANGELOG.md": "<<<<<<< bad\nfoo\n=======\nbar\n>>>>>>> bad",
+	}, true); err == nil {
+		t.Fatalf("expected stray conflict markers in custom content to be rejected")
+	}
+
+	// İzole worktree üzerinde "ours" (main'i baz al) ile çöz
+	snap, err := mgr.ResolveBranchConflict("remote-feat-conflict-studio", "ours", nil, true)
+	if err != nil {
+		t.Fatalf("ResolveBranchConflict(ours) failed: %v", err)
+	}
+
+	// Açık çalışma dizinindeki dirty dosya bozulmamış olmalı
+	gotDirty, err := os.ReadFile(filepath.Join(workDir, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotDirty) != dirtyText {
+		t.Fatalf("expected dirty README.md to remain untouched; got %q, want %q", string(gotDirty), dirtyText)
+	}
+
+	var resolvedBranch *model.BranchArc
+	for i := range snap.Branches {
+		if snap.Branches[i].Name == "feat/conflict-studio" {
+			cp := snap.Branches[i]
+			resolvedBranch = &cp
+			break
+		}
+	}
+	if resolvedBranch == nil {
+		t.Fatalf("expected feat/conflict-studio to still exist as resolved open branch")
+	}
+	if resolvedBranch.Conflict != nil && resolvedBranch.Conflict.HasConflict {
+		t.Fatalf("expected feat/conflict-studio conflict to be cleared after worktree resolution, got %+v", resolvedBranch.Conflict)
+	}
+}

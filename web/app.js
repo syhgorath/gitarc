@@ -30,6 +30,7 @@
     panning: null,
     drag: null,
     localRunOutput: {},
+    studio: null,
   };
 
   const el = {
@@ -52,6 +53,18 @@
     newBranchName: document.getElementById('new-branch-name'),
     newBranchBase: document.getElementById('new-branch-base'),
     toastStack: document.getElementById('toast-stack'),
+    conflictStudioModal: document.getElementById('conflict-studio-modal'),
+    studioBranchBadge: document.getElementById('studio-branch-badge'),
+    studioFileTabs: document.getElementById('studio-file-tabs'),
+    studioStrategyBar: document.getElementById('studio-strategy-bar'),
+    studioLineBadge: document.getElementById('studio-line-badge'),
+    studioModeBadge: document.getElementById('studio-mode-badge'),
+    studioLeftConflict: document.getElementById('studio-left-conflict'),
+    studioRightPreview: document.getElementById('studio-right-preview'),
+    studioRunVet: document.getElementById('studio-run-vet'),
+    studioApplyBtn: document.getElementById('studio-apply'),
+    mcpModal: document.getElementById('mcp-connect-modal'),
+    mcpConfigSnippet: document.getElementById('mcp-config-snippet'),
   };
 
   // Fallback simulation engine for standalone file:// opening without Go server
@@ -388,13 +401,50 @@
         }
         return recompute();
       },
-      resolveConflict(branchId) {
-        const b = sim.branches.find((x) => x.id === branchId);
+      inspectConflict(branchId) {
+        const b = sim.branches.find((x) => x.id === branchId || x.name === branchId);
+        if (!b || !b.conflict || !b.conflict.hasConflict) {
+          throw new Error('Aktif çakışma bulunamadı');
+        }
+        const files = (b.conflict.files || []).map((f) => {
+          if (f.toLowerCase().includes('changelog')) {
+            return {
+              path: f,
+              startLine: 1,
+              endLine: 10,
+              conflictHunks: `<<<<<<< origin/main\n## [4.0.16] - 2026-11-15\n- utility 0.2.0 lockfile updated\n=======\n## [Unreleased] - ${b.name}\n- terminal-audit.log CSV & JSON export\n>>>>>>> ${b.name}`,
+              unionPreview: '## [4.0.16] - 2026-11-15\n- utility 0.2.0 lockfile updated\n## [Unreleased]\n- terminal-audit.log CSV & JSON export',
+              oursPreview: '## [4.0.16] - 2026-11-15\n- utility 0.2.0 lockfile updated',
+              theirsPreview: `## [Unreleased] - ${b.name}\n- terminal-audit.log CSV & JSON export`,
+            };
+          }
+          return {
+            path: f,
+            startLine: 1,
+            endLine: 6,
+            conflictHunks: `<<<<<<< origin/main\nutility 0.2.0 sha256:9f82c10d\n=======\naudit-exporter 0.1.0 sha256:44a1e8b2\n>>>>>>> ${b.name}`,
+            unionPreview: 'utility 0.2.0 sha256:9f82c10d\naudit-exporter 0.1.0 sha256:44a1e8b2',
+            oursPreview: 'utility 0.2.0 sha256:9f82c10d',
+            theirsPreview: 'audit-exporter 0.1.0 sha256:44a1e8b2',
+          };
+        });
+        return {
+          branchId: b.id,
+          branchName: b.name,
+          baseRef: 'origin/main',
+          recommended: b.conflict.isChangelogOrLock ? 'union' : 'ours',
+          aiPrompt: `GitArc Çakışma Çözümü İsteği (${b.name} ↔ origin/main)\n${files.map((x) => `${x.path}:\n${x.conflictHunks}`).join('\n\n')}`,
+          files,
+        };
+      },
+      resolveConflict(branchId, strategy = 'union') {
+        const b = sim.branches.find((x) => x.id === branchId || x.name === branchId);
         if (b?.conflict) {
           b.conflict.hasConflict = false;
           b.conflict.resolved = true;
-          b.conflict.resolvedNote = 'Union merge uygulandı; her iki tarafın girdileri korundu.';
-          b.conflict.previewUnified = '✓ CHANGELOG.md & components.lock birleştirildi.\n✓ git merge-tree --write-tree: exit 0';
+          b.conflict.strategy = strategy || 'union';
+          b.conflict.resolvedNote = `Çakışma (${strategy}) ile çözüldü; çalışma dizini temiz.`;
+          b.conflict.previewUnified = `✓ Çakışma Çözüm Stüdyosu (${strategy}) uygulandı.\n✓ git merge-tree --write-tree: exit 0`;
           b.behindMain = 0;
         }
         return recompute();
@@ -993,7 +1043,6 @@
     const isLower = b.hemisphere === 'lower';
     const isFailed = b.pr?.ci?.state === 'FAILURE';
     const hasConflict = Boolean(b.conflict?.hasConflict && !b.conflict.resolved);
-    const isLive = state.snapshot?.repo?.mode === 'live';
     const isRemoteOnly = !b.hasLocal && b.hasRemote && b.state === 'open';
     const delTitle = isRemoteOnly ? 'PR Kapat &amp; Uzak Dalı Sil' : 'Dalı Sil';
 
@@ -1044,9 +1093,9 @@
         ${checkoutBtn}
         <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
       `;
-    } else if (hasConflict && !isLive) {
+    } else if (hasConflict) {
       actionRowHtml = `
-        <button type="button" class="cap-btn amber" data-act="resolve">✦ Auto-Resolve</button>
+        <button type="button" class="cap-btn amber" data-act="resolve">⚡ Çakışma Stüdyosu</button>
         ${checkoutBtn}
         <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
       `;
@@ -1089,7 +1138,7 @@
         else if (act === 'checkout') handleCheckoutBranch(b.id);
         else if (act === 'merge') handleMergeBranch(b.id);
         else if (act === 'promote') handlePromoteBranch(b.id);
-        else if (act === 'resolve') handleResolveConflict(b.id);
+        else if (act === 'resolve') openConflictStudio(b.id);
         else if (act === 'delete') handleDeleteBranch(b.id);
       });
     });
@@ -1281,7 +1330,7 @@
               <button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>
             </div>
           ` : ''}
-          ${!isLive && hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">✦ Auto-Resolve</button>` : ''}
+          ${hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">⚡ Çakışma Stüdyosunu Aç</button>` : ''}
           ${!isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
         </div>
       </div>
@@ -1323,7 +1372,7 @@
           </h4>
           <div class="layer-line">${resolved ? esc(b.conflict.resolvedNote) : `git merge-tree --write-tree: ${esc((b.conflict.files || []).join(', '))}`}</div>
           <pre class="terminal-box">${esc(b.conflict.previewUnified || '')}</pre>
-          ${!resolved && !isLive ? `<div class="det-actions"><button type="button" class="btn warn sm" id="act-resolve-card">✦ Her İki Tarafı Koru (Auto-Resolve)</button></div>` : ''}
+          ${!resolved ? `<div class="det-actions"><button type="button" class="btn warn sm" id="act-resolve-card">⚡ Çakışma Stüdyosunu Aç (Sol: Olan / Sağ: Olacak)</button></div>` : ''}
         </div>
       `;
     }
@@ -1435,8 +1484,8 @@
       state.mergeStrategy = ev.target.value;
     });
     document.getElementById('act-merge')?.addEventListener('click', () => handleMergeBranch(b.id));
-    document.getElementById('act-resolve')?.addEventListener('click', () => handleResolveConflict(b.id));
-    document.getElementById('act-resolve-card')?.addEventListener('click', () => handleResolveConflict(b.id));
+    document.getElementById('act-resolve')?.addEventListener('click', () => openConflictStudio(b.id));
+    document.getElementById('act-resolve-card')?.addEventListener('click', () => openConflictStudio(b.id));
     document.getElementById('act-fix-ci')?.addEventListener('click', () => handleFixCI(b.id));
     document.getElementById('act-delete')?.addEventListener('click', () => handleDeleteBranch(b.id));
     document.getElementById('form-edit-pr')?.addEventListener('submit', (ev) => {
@@ -1546,16 +1595,149 @@
     }
   }
 
-  async function handleResolveConflict(branchId) {
+  const STUDIO_MODE_LABELS = {
+    union: '1. Union (Her İkisini Koru)',
+    ours: '2. Ours (Main Bazlı)',
+    theirs: '3. Theirs (Dal Bazlı)',
+    custom: '4. AI / Elle Düzenlendi',
+  };
+
+  async function openConflictStudio(branchId) {
     try {
-      const snap = state.offlineMode
-        ? LocalFallbackEngine.resolveConflict(branchId)
-        : await apiCall('/api/branch/resolve', 'POST', { branchId });
-      applySnapshot(snap);
-      showToast('CHANGELOG / Lockfile çakışması otomatik çözüldü; artık merge edilebilir', 'ok');
+      const payload = state.offlineMode
+        ? LocalFallbackEngine.inspectConflict(branchId)
+        : await apiCall('/api/conflict/inspect', 'POST', { branchId });
+      if (!payload.files || payload.files.length === 0) {
+        showToast('Bu dalda incelenecek aktif çakışma dosyası bulunamadı', 'warn');
+        return;
+      }
+      state.studio = {
+        payload,
+        activeFileIdx: 0,
+        strategy: payload.recommended || 'union',
+        customByPath: {},
+      };
+      el.studioRunVet.checked = true;
+      renderConflictStudio();
+      el.conflictStudioModal.hidden = false;
     } catch (err) {
       showToast(err.message, 'danger');
     }
+  }
+
+  function closeConflictStudio() {
+    el.conflictStudioModal.hidden = true;
+    state.studio = null;
+  }
+
+  function getActiveStudioFile() {
+    if (!state.studio) return null;
+    const files = state.studio.payload.files || [];
+    return files[state.studio.activeFileIdx] || files[0] || null;
+  }
+
+  function studioPreviewForStrategy(file, strat, customByPath) {
+    if (!file) return '';
+    if (strat === 'custom') {
+      return customByPath[file.path] !== undefined ? customByPath[file.path] : (file.unionPreview || '');
+    }
+    if (strat === 'ours') return file.oursPreview || '';
+    if (strat === 'theirs') return file.theirsPreview || '';
+    return file.unionPreview || '';
+  }
+
+  function renderConflictStudio() {
+    const st = state.studio;
+    if (!st) return;
+    const { payload, activeFileIdx, strategy, customByPath } = st;
+    const files = payload.files || [];
+    const curFile = files[activeFileIdx] || files[0];
+
+    el.studioBranchBadge.textContent = `${payload.branchName} ↔ ${payload.baseRef}`;
+
+    el.studioFileTabs.innerHTML = '';
+    files.forEach((f, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `studio-file-tab ${idx === activeFileIdx ? 'active' : ''}`;
+      btn.textContent = `📄 ${f.path}`;
+      btn.addEventListener('click', () => {
+        if (st.strategy === 'custom' && curFile) {
+          st.customByPath[curFile.path] = el.studioRightPreview.value;
+        }
+        st.activeFileIdx = idx;
+        renderConflictStudio();
+      });
+      el.studioFileTabs.appendChild(btn);
+    });
+
+    el.studioStrategyBar.querySelectorAll('.strat-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-strat') === strategy);
+    });
+
+    if (curFile) {
+      el.studioLineBadge.textContent = `Satır ${curFile.startLine || 1}-${curFile.endLine || 1}`;
+      el.studioLeftConflict.textContent = curFile.conflictHunks || '';
+      el.studioRightPreview.value = studioPreviewForStrategy(curFile, strategy, customByPath);
+    }
+    el.studioModeBadge.textContent = STUDIO_MODE_LABELS[strategy] || strategy;
+  }
+
+  async function applyConflictStudio() {
+    const st = state.studio;
+    if (!st) return;
+    const curFile = getActiveStudioFile();
+    if (st.strategy === 'custom' && curFile) {
+      st.customByPath[curFile.path] = el.studioRightPreview.value;
+    }
+
+    const customFiles = st.strategy === 'custom' ? st.customByPath : undefined;
+    const runVet = Boolean(el.studioRunVet.checked);
+
+    el.studioApplyBtn.disabled = true;
+    el.studioApplyBtn.textContent = 'Uygulanıyor...';
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.resolveConflict(st.payload.branchId, st.strategy)
+        : await apiCall('/api/branch/resolve', 'POST', {
+          branchId: st.payload.branchId,
+          strategy: st.strategy,
+          customFiles,
+          runVet,
+        });
+      closeConflictStudio();
+      applySnapshot(snap);
+      showToast(`Çakışma (${st.strategy}) ile çözüldü ve güncellendi!`, 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    } finally {
+      el.studioApplyBtn.disabled = false;
+      el.studioApplyBtn.textContent = '✅ Çözümü Uygula & Pushla';
+    }
+  }
+
+  function buildMCPConfigText() {
+    const repoPath = state.snapshot?.repo?.mode === 'live' && state.snapshot?.repo?.path
+      ? state.snapshot.repo.path
+      : '/Users/ziyayesilbahce/Developer/GitArc';
+    const binPath = `${repoPath.replace(/\/$/, '')}/gitarc`;
+    return JSON.stringify({
+      mcpServers: {
+        gitarc: {
+          command: binPath,
+          args: ['-mcp', '-repo', repoPath],
+        },
+      },
+    }, null, 2);
+  }
+
+  function openMCPConnectModal() {
+    el.mcpConfigSnippet.textContent = buildMCPConfigText();
+    el.mcpModal.hidden = false;
+  }
+
+  function closeMCPConnectModal() {
+    el.mcpModal.hidden = true;
   }
 
   async function handleFixCI(branchId) {
@@ -1699,7 +1881,61 @@
   });
 
   document.getElementById('btn-prune-gone').addEventListener('click', handlePruneGone);
+  document.getElementById('btn-mcp-connect').addEventListener('click', openMCPConnectModal);
   document.getElementById('btn-sync-spine').addEventListener('click', handleSyncSpine);
+
+  document.getElementById('studio-close').addEventListener('click', closeConflictStudio);
+  document.getElementById('studio-cancel').addEventListener('click', closeConflictStudio);
+  document.getElementById('studio-apply').addEventListener('click', applyConflictStudio);
+  document.getElementById('studio-copy-ai').addEventListener('click', async () => {
+    const promptTxt = state.studio?.payload?.aiPrompt;
+    if (!promptTxt) return;
+    try {
+      await navigator.clipboard.writeText(promptTxt);
+      showToast('AI / MCP çözüm istemi panoya kopyalandı', 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
+  el.studioStrategyBar.querySelectorAll('.strat-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!state.studio) return;
+      const curFile = getActiveStudioFile();
+      if (state.studio.strategy === 'custom' && curFile) {
+        state.studio.customByPath[curFile.path] = el.studioRightPreview.value;
+      }
+      state.studio.strategy = btn.getAttribute('data-strat') || 'union';
+      renderConflictStudio();
+      if (state.studio.strategy === 'custom') {
+        el.studioRightPreview.focus();
+      }
+    });
+  });
+  el.studioRightPreview.addEventListener('input', () => {
+    if (!state.studio) return;
+    const curFile = getActiveStudioFile();
+    if (curFile) {
+      state.studio.customByPath[curFile.path] = el.studioRightPreview.value;
+    }
+    if (state.studio.strategy !== 'custom') {
+      state.studio.strategy = 'custom';
+      el.studioStrategyBar.querySelectorAll('.strat-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-strat') === 'custom');
+      });
+      el.studioModeBadge.textContent = STUDIO_MODE_LABELS.custom;
+    }
+  });
+
+  document.getElementById('mcp-close').addEventListener('click', closeMCPConnectModal);
+  document.getElementById('mcp-close-btn').addEventListener('click', closeMCPConnectModal);
+  document.getElementById('mcp-copy-json').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(buildMCPConfigText());
+      showToast('MCP konfigürasyonu panoya kopyalandı', 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
 
   document.getElementById('btn-reset-sim').addEventListener('click', async () => {
     try {

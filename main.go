@@ -167,6 +167,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/branch/checkout", a.guard(a.handleCheckoutBranch))
 	mux.HandleFunc("/api/branch/merge", a.guard(a.handleMergeBranch))
 	mux.HandleFunc("/api/branch/promote", a.guard(a.handlePromoteBranch))
+	mux.HandleFunc("/api/conflict/inspect", a.guard(a.handleInspectConflict))
 	mux.HandleFunc("/api/branch/resolve", a.guard(a.handleResolveConflict))
 	mux.HandleFunc("/api/branch/fix-ci", a.guard(a.handleFixCI))
 	mux.HandleFunc("/api/branch/delete", a.guard(a.handleDeleteBranch))
@@ -303,14 +304,36 @@ func (a *App) handlePromoteBranch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
-func (a *App) handleResolveConflict(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleInspectConflict(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		BranchID string `json:"branchId"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
 	}
-	snap, err := a.mgr.AutoResolveConflict(req.BranchID)
+	payload, err := a.mgr.InspectConflictStudio(req.BranchID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func (a *App) handleResolveConflict(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID    string            `json:"branchId"`
+		Strategy    string            `json:"strategy"`
+		CustomFiles map[string]string `json:"customFiles"`
+		RunVet      *bool             `json:"runVet"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	runVet := true
+	if req.RunVet != nil {
+		runVet = *req.RunVet
+	}
+	snap, err := a.mgr.ResolveBranchConflict(req.BranchID, req.Strategy, req.CustomFiles, runVet)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

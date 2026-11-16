@@ -42,6 +42,7 @@
           <span>Birleşmiş Parabolleri Göster</span>
         </label>
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
+        <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP Bağla</button>
         <button type="button" class="btn ghost" id="btn-sync-spine" title="main ile origin/main arasındaki farkı eşitle">Sync ↑↓</button>
         <button type="button" class="btn emerald" id="btn-new-branch" title="main omurgasından yeni parabolik dal aç">+ Yeni Dal Aç</button>
         <button type="button" class="btn ghost" id="btn-reset-sim" title="Simülasyon sahnesini sıfırla">Sıfırla</button>
@@ -138,6 +139,86 @@
             <button type="submit" class="btn emerald">Dal Aç &amp; Eğriyi Çiz</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- MODAL: ÇAKIŞMA ÇÖZÜM STÜDYOSU (SOL: OLAN / SAĞ: OLACAK) -->
+    <div class="modal-backdrop" id="conflict-studio-modal" hidden>
+      <div class="modal-card modal-xl" role="dialog" aria-modal="true" aria-labelledby="studio-title">
+        <div class="modal-head">
+          <div class="studio-head-meta">
+            <h3 id="studio-title"><span class="modal-dot warn"></span>⚡ Çakışma Çözüm Stüdyosu</h3>
+            <span class="chip accent mono" id="studio-branch-badge"></span>
+          </div>
+          <button type="button" class="icon-close" id="studio-close" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="studio-file-tabs" id="studio-file-tabs"></div>
+
+          <div class="strat-tabs" id="studio-strategy-bar" role="group" aria-label="4 adımlı çakışma çözüm yöntemleri">
+            <button type="button" class="strat-btn" data-strat="union">1. ✦ Her İkisini Koru (Union)</button>
+            <button type="button" class="strat-btn" data-strat="ours">2. 🛡️ Main'i Baz Al (Ours)</button>
+            <button type="button" class="strat-btn" data-strat="theirs">3. 🚀 Dalı Baz Al (Theirs)</button>
+            <button type="button" class="strat-btn" data-strat="custom">4. 🤖 AI / Elle Düzenle</button>
+          </div>
+
+          <div class="studio-split-grid">
+            <div class="studio-pane">
+              <div class="studio-pane-head left">
+                <span>🔴 ŞU AN OLAN — Çakışan Bloklar</span>
+                <span class="chip mono" id="studio-line-badge">Satır 1</span>
+              </div>
+              <pre class="terminal-box studio-code-pane" id="studio-left-conflict"></pre>
+            </div>
+            <div class="studio-pane">
+              <div class="studio-pane-head right">
+                <span>🟢 OLACAK OLAN — Çözüm Önizleme &amp; Editör</span>
+                <span class="chip ok" id="studio-mode-badge">Union</span>
+              </div>
+              <textarea class="textarea-control studio-code-pane mono" id="studio-right-preview" spellcheck="false" aria-label="Olacak olan çözüm önizlemesi ve editör"></textarea>
+            </div>
+          </div>
+
+          <div class="modal-foot studio-foot">
+            <div class="studio-foot-left">
+              <button type="button" class="btn sm" id="studio-copy-ai">🤖 AI Çözüm İstemi Kopyala (MCP)</button>
+              <label class="check-pill" title="Commit/Push öncesi izole worktree içinde go vet ./... çalıştırır">
+                <input type="checkbox" id="studio-run-vet" checked>
+                <span>go vet Doğrulama Kilidi</span>
+              </label>
+            </div>
+            <div class="studio-foot-right">
+              <button type="button" class="btn ghost" id="studio-cancel">İptal</button>
+              <button type="button" class="btn emerald" id="studio-apply">✅ Çözümü Uygula &amp; Pushla</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: MCP & AI BAĞLANTI MERKEZİ -->
+    <div class="modal-backdrop" id="mcp-connect-modal" hidden>
+      <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">
+        <div class="modal-head">
+          <h3 id="mcp-modal-title"><span class="modal-dot"></span>🔌 MCP &amp; AI Bağlantı Merkezi</h3>
+          <button type="button" class="icon-close" id="mcp-close" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="det-badges">
+            <span class="chip ok">✓ Antigravity Workspace Eklentisi Aktif (.agents/plugins/gitarc/mcp_config.json)</span>
+            <span class="chip accent">JSON-RPC 2.0 Stdio · Evrensel MCP</span>
+          </div>
+          <div class="layer-line">Antigravity Global (<code>~/.gemini/config/mcp_config.json</code>), Claude Code, Cursor veya Windsurf içine aşağıdaki bloğu ekleyerek GitArc'ı doğrudan AI aracınıza bağlayabilirsiniz:</div>
+          <pre class="terminal-box studio-mcp-json" id="mcp-config-snippet"></pre>
+          <div class="diag-card">
+            <h4>Etkin MCP Araçları (5 Araç)</h4>
+            <div class="layer-line"><code>gitarc_status</code> · <code>gitarc_check_conflicts</code> · <code>gitarc_ci_failure_digest</code> · <code>gitarc_sync_main</code> · <code>gitarc_resolve_conflict</code></div>
+          </div>
+          <div class="modal-foot">
+            <button type="button" class="btn primary" id="mcp-copy-json">📋 Konfigürasyonu Kopyala</button>
+            <button type="button" class="btn ghost" id="mcp-close-btn">Kapat</button>
+          </div>
+        </div>
       </div>
     </div>
 
