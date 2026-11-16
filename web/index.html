@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitArc — Parabolik Git &amp; PR Yaşam Döngüsü Kokpiti</title>
+  <link rel="stylesheet" href="tasarim.css">
+</head>
+<body>
+  <div class="shell" id="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
+            <path d="M3 19H25" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M5 19C9 19 9 8 14 8C19 8 19 19 23 19" stroke="#6366f1" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M9 19C12 19 13 24 18 24" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 2"/>
+            <circle cx="5" cy="19" r="2.2" fill="currentColor"/>
+            <circle cx="23" cy="19" r="2.2" fill="#34d399"/>
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <span class="brand-title">GitArc</span>
+          <span class="brand-sub" id="mode-badge">KeyLab Kardeş Kokpit</span>
+        </div>
+      </div>
+
+      <div class="repo-picker">
+        <label class="sr-only" for="repo-select">Depo Seç</label>
+        <select id="repo-select" class="select-control" aria-label="Depo seçici"></select>
+      </div>
+
+      <div class="seg-control" role="group" aria-label="Geometri modu">
+        <button type="button" class="seg-btn active" id="geom-viaduct" data-geom="viaduct">Viyadük S-Ray</button>
+        <button type="button" class="seg-btn" id="geom-arch" data-geom="arch">Saf Parabol</button>
+      </div>
+
+      <div class="topbar-spacer"></div>
+
+      <div class="toolbar-actions">
+        <button type="button" class="btn primary" id="btn-new-branch" title="En güncel main düğümünden yeni parabol aç">+ Yeni Dal</button>
+        <button type="button" class="btn ghost" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">Temizle <span class="badge-count" id="prune-count">0</span></button>
+        <button type="button" class="btn ghost" id="btn-sync-spine" title="main ile origin/main arasındaki farkı eşitle">Sync ↑↓</button>
+        <button type="button" class="btn ghost" id="btn-reset-sim" title="Simülasyon sahnesini sıfırla">Sıfırla</button>
+        <button type="button" class="icon-btn" id="btn-theme" title="Tema değiştir (Koyu / Açık)" aria-label="Tema değiştir">◐</button>
+      </div>
+    </header>
+
+    <section class="kpi-strip" aria-label="Kokpit durumu">
+      <div class="kpi-pills" id="kpi-pills"></div>
+      <div class="legend-inline">
+        <span class="leg-item"><i class="leg-dot leg-upper"></i> Üst: Remote / PR / CI</span>
+        <span class="leg-item"><i class="leg-dot leg-spine"></i> Merkez: main</span>
+        <span class="leg-item"><i class="leg-dot leg-lower"></i> Alt: Yerel (Pushlanmamış)</span>
+        <span class="leg-item"><i class="leg-dot leg-fail"></i> Nabız: CI Hatası</span>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <section class="canvas-pane" aria-label="Parabolik Git SVG Tuvali">
+        <div class="canvas-overlay-top">
+          <div class="hemi-pill upper-pill">▲ REMOTE · PULL REQUEST · GITHUB ACTIONS</div>
+          <div class="drag-hint" id="drag-hint">İpucu: Açık bir dal kapsülünü merkezdeki <strong>main</strong> hattına sürükleyip bırakarak merge edin</div>
+        </div>
+
+        <div class="svg-viewport" id="svg-viewport">
+          <svg id="rail-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parabolik Git Dallanma Grafiği"></svg>
+        </div>
+
+        <div class="canvas-overlay-bottom">
+          <div class="hemi-pill lower-pill">▼ LOCAL · UNPUSHED WORKTREE</div>
+          <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
+            <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
+            <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>
+            <button type="button" class="z-btn" id="zoom-in" title="Yakınlaştır">+</button>
+          </div>
+        </div>
+
+        <div class="new-branch-popover" id="new-branch-popover" hidden>
+          <div class="pop-head">
+            <strong>Yeni Dal Filizlendir</strong>
+            <button type="button" class="icon-close" id="pop-close" aria-label="Kapat">✕</button>
+          </div>
+          <form id="new-branch-form" class="pop-form">
+            <label class="field-label">
+              <span>Dal Adı</span>
+              <input type="text" id="new-branch-name" class="input-control" placeholder="feat/keychain-biometric" required autocomplete="off">
+            </label>
+            <label class="field-label">
+              <span>Yarı-Küre (Hedef Ray)</span>
+              <select id="new-branch-hemi" class="select-control">
+                <option value="lower">Alt Yarı-Küre (Yerel / Unpushed)</option>
+                <option value="upper">Üst Yarı-Küre (Remote / Taslak PR)</option>
+              </select>
+            </label>
+            <label class="field-label">
+              <span>Kaynak Spine Commit</span>
+              <select id="new-branch-base" class="select-control"></select>
+            </label>
+            <div class="pop-actions">
+              <button type="button" class="btn ghost" id="pop-cancel">Vazgeç</button>
+              <button type="submit" class="btn primary">Dal Aç</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <aside class="inspector-pane" aria-label="Akıllı Teşhis ve Yaşam Döngüsü Paneli">
+        <div class="panel-section radar-section">
+          <div class="panel-head">
+            <h2>Akıllı Hata Radarı</h2>
+            <span class="radar-counter" id="radar-count">0 uyarı</span>
+          </div>
+          <div class="radar-list" id="radar-list"></div>
+        </div>
+
+        <div class="panel-section detail-section" id="inspector-detail">
+          <div class="empty-detail">Bir dal kapsülüne, parabol kemere veya radar uyarısına tıklayın.</div>
+        </div>
+      </aside>
+    </main>
+
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

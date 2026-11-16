@@ -1,0 +1,9 @@
+# Compiled binary & test artifacts
+/gitarc
+*.test
+*.out
+
+# macOS / Editor
+.DS_Store
+.idea/
+.vscode/
