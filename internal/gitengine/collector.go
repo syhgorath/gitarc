@@ -1114,7 +1114,8 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 		// (aheadMain > 0 olsa bile) PR 'merged' ise dalı "birleşmiş (squash)" say:
 		// çakışma, Cross-PR ve uyarı hesaplarına katma; yalnız temizleme adayı göster.
 		mergedPR, isGHMerged := mergedPRs[name]
-		if prPtr == nil && (isGHMerged || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)) || (aheadMain == 0 && uncommitted == 0 && !isHead)) {
+		isActuallyMerged := isGHMerged || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)) || (originGone && aheadMain == 0)
+		if prPtr == nil && isActuallyMerged {
 			if archIdx, exists := mergedArchByName[name]; exists {
 				mergedArches[archIdx].HasLocal = true
 				mergedArches[archIdx].LocalSHA = localSHA

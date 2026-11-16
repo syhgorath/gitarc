@@ -925,12 +925,18 @@
       badgeText = 'origin: gone';
     } else if (isLower) {
       badgeTone = 'purple';
-      badgeText = isWorkingTreeWip ? 'Yerel Taslak · Uncommitted' : 'Yarım Parabol · Local';
+      const isFreshLocal = b.aheadMain === 0 && (b.uncommittedCount === 0 || !b.isHead);
+      badgeText = isWorkingTreeWip
+        ? 'Yerel Taslak · Uncommitted'
+        : (isFreshLocal ? '🌱 Yeni Yerel Dal' : 'Yarım Parabol · Local');
     }
 
-    const subText = b.lastCommitMsg
-      ? b.lastCommitMsg
-      : (isLower ? `↑${b.aheadMain || 0} yerel · ${b.uncommittedCount || 0} dirty` : `↑${b.aheadMain || 0} ↓${b.behindMain || 0}`);
+    const isFreshLocal = isLower && !isWorkingTreeWip && b.aheadMain === 0;
+    const subText = isWorkingTreeWip
+      ? `${b.uncommittedCount || 0} dosya bekliyor · İncelemek için tıklayın`
+      : (isFreshLocal
+        ? 'main omurgasında taze dal · İlk commitinizi bekliyor'
+        : (b.lastCommitMsg ? b.lastCommitMsg : (isLower ? `↑${b.aheadMain || 0} yerel · ${b.uncommittedCount || 0} dirty` : `↑${b.aheadMain || 0} ↓${b.behindMain || 0}`)));
 
     const card = document.createElementNS(XHTML_NS, 'div');
     card.className = `cap-card ${tone} ${isSelected ? 'selected' : ''}`;
@@ -1163,12 +1169,21 @@
     return { commitMsg, prTitle, prBody };
   }
 
-  function suggestUniqueBranchName(b, snap) {
-    const files = b.changedFiles || [];
+  function suggestUniqueBranchName(arg1, arg2, arg3) {
     let prefix = 'feat';
-    let slug = 'cockpit-update';
+    let files = [];
+    let snap = state.snapshot;
+    if (typeof arg1 === 'string') {
+      prefix = arg1;
+      files = Array.isArray(arg2) ? arg2 : [];
+      snap = arg3 || state.snapshot;
+    } else if (arg1 && typeof arg1 === 'object') {
+      files = arg1.changedFiles || [];
+      snap = arg2 || state.snapshot;
+    }
+    let slug = 'new-feature';
     if (files.length > 0) {
-      const first = files[0].toLowerCase();
+      const first = (files[0] || '').toLowerCase();
       if (first.endsWith('.md') || first.startsWith('docs/')) {
         prefix = 'docs';
       } else if (first.includes('test')) {
@@ -1184,11 +1199,11 @@
       }
     }
     const candidateBase = `${prefix}/${slug}`.slice(0, 40);
-    const existing = new Set((snap.branches || []).map((x) => (x.name || '').toLowerCase()));
+    const existing = new Set((snap?.branches || []).map((x) => (x.name || '').toLowerCase()));
     if (!existing.has(candidateBase)) {
       return candidateBase;
     }
-    const shortSha = (snap.nodes?.[snap.nodes.length - 1]?.shortSha || '').slice(0, 5);
+    const shortSha = (snap?.nodes?.[snap.nodes.length - 1]?.shortSha || '').slice(0, 5);
     if (shortSha && !existing.has(`${candidateBase}-${shortSha}`.toLowerCase())) {
       return `${candidateBase}-${shortSha}`;
     }
@@ -1430,7 +1445,7 @@
         <div class="det-title-row">
           <h3 class="det-branch-name">${isVirtualWip ? '✏️ Çalışma Alanı (Kaydedilmemiş Değişiklikler)' : esc(b.name)}</h3>
           <span class="chip ${b.state === 'merged' ? 'ok' : (isVirtualWip ? 'purple' : (b.hemisphere === 'lower' ? 'purple' : 'accent'))}">
-            ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR')}
+            ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : (b.hemisphere === 'lower' && b.aheadMain === 0 ? '🌱 Yeni Yerel Dal' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR'))}
           </span>
         </div>
         <div class="det-badges">
@@ -1485,7 +1500,7 @@
             <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
             <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
           ` : `
-            ${b.state === 'merged' ? '<div class="layer-line">⚠ Birleşmiş yerel kalıntı (tek tıkla temizlenebilir)</div>' : ''}
+            ${b.state === 'merged' ? '<div class="layer-line">⚠ Birleşmiş yerel kalıntı (tek tıkla temizlenebilir)</div>' : (b.aheadMain === 0 && !isVirtualWip ? '<div class="layer-line">🌱 main omurgasında taze dal (ilk commitinizi bekliyor)</div>' : '')}
             <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
             <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
             <div class="layer-line">Uncommitted (Staged + Untracked): ${b.uncommittedCount || (b.isHead ? state.snapshot?.repo?.dirtyCount : 0) || 0} dosya</div>
@@ -1641,7 +1656,7 @@
           <form id="form-promote-pr" class="edit-form">
             <div class="wt-field">
               <label class="wt-label" for="promote-pr-title">PR Başlığı</label>
-              <input type="text" id="promote-pr-title" class="input-control mono" value="${esc(promoteTitle)}" placeholder="Örn: feat(ui): Add cockpit workflow" required>
+              <input type="text" id="promote-pr-title" class="input-control mono" value="${esc(promoteTitle)}" placeholder="Örn: feat(ui): add new feature" required>
             </div>
             <div class="wt-field">
               <label class="wt-label" for="promote-pr-body">PR Açıklaması</label>
@@ -1729,7 +1744,12 @@
     });
     document.getElementById('form-commit-wt')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
-      const bName = document.getElementById('wt-branch-name').value;
+      const bName = document.getElementById('wt-branch-name').value.trim();
+      const existing = (state.snapshot?.branches || []).find((x) => x.name.toLowerCase() === bName.toLowerCase());
+      if (existing && (existing.state === 'merged' || existing.originGone)) {
+        showToast(`⚠️ '${bName}' dalı daha önce birleşmiş (merged/gone). Lütfen benzersiz bir dal adı belirleyin.`, 'warn');
+        return;
+      }
       const cMsg = document.getElementById('wt-commit-msg').value;
       const pTitle = document.getElementById('wt-pr-title').value;
       const pBody = document.getElementById('wt-pr-body').value;
@@ -1739,7 +1759,12 @@
     document.getElementById('act-wt-commit-push')?.addEventListener('click', () => {
       const form = document.getElementById('form-commit-wt');
       if (form && form.reportValidity && !form.reportValidity()) return;
-      const bName = document.getElementById('wt-branch-name').value;
+      const bName = document.getElementById('wt-branch-name').value.trim();
+      const existing = (state.snapshot?.branches || []).find((x) => x.name.toLowerCase() === bName.toLowerCase());
+      if (existing && (existing.state === 'merged' || existing.originGone)) {
+        showToast(`⚠️ '${bName}' dalı daha önce birleşmiş (merged/gone). Lütfen benzersiz bir dal adı belirleyin.`, 'warn');
+        return;
+      }
       const cMsg = document.getElementById('wt-commit-msg').value;
       const pTitle = document.getElementById('wt-pr-title').value;
       const pBody = document.getElementById('wt-pr-body').value;
@@ -2518,6 +2543,13 @@
   el.newBranchForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const name = el.newBranchName.value.trim();
+    if (!name) return;
+    const existing = (state.snapshot?.branches || []).find((b) => b.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      const statusTxt = existing.state === 'merged' ? 'daha önce birleşmiş/kalıntı' : 'zaten açık';
+      showToast(`⚠️ '${name}' dalı depoda ${statusTxt}. Lütfen benzersiz bir dal adı belirleyin.`, 'warn');
+      return;
+    }
     const checkedRadio = document.querySelector('input[name="branch-mode"]:checked');
     const hemisphere = checkedRadio ? checkedRadio.value : 'lower';
     const fromSha = el.newBranchBase.value;
