@@ -329,6 +329,9 @@ func (m *Manager) MergeBranch(branchID string) (model.CockpitSnapshot, error) {
 	if b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved {
 		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında çözülmemiş çakışma var; önce Auto-Resolve çalıştırın", b.Name)
 	}
+	if b.PR != nil && b.PR.CI != nil && b.PR.CI.State == "FAILURE" {
+		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında CI testleri başarısız; merge öncesi hatayı düzeltin", b.Name)
+	}
 
 	m.nextSeq++
 	newIdx := len(m.simRepo.nodes)
@@ -403,6 +406,34 @@ func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) 
 					Duration: "1m 18s",
 				},
 			}
+			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
+		}
+	}
+	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+}
+
+// FixCI simulates resolving a failing CI check and re-running tests to green.
+func (m *Manager) FixCI(branchID string) (model.CockpitSnapshot, error) {
+	if _, ok := m.activeLiveRepo(); ok {
+		return model.CockpitSnapshot{}, fmt.Errorf("canlı modda otomatik kod düzeltmesi kapalıdır; hatayı yerelde düzeltip pushlayın")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i := range m.simRepo.branches {
+		b := &m.simRepo.branches[i]
+		if b.ID == branchID {
+			if b.PR != nil && b.PR.CI != nil {
+				b.PR.CI.State = "SUCCESS"
+				b.PR.CI.FailedStep = ""
+				b.PR.CI.RawLog = ""
+				b.PR.CI.Extracts = nil
+				b.PR.CI.Duration = "0m 52s"
+				b.PR.ReviewState = "APPROVED"
+			}
+			b.LastCommitMsg = "fix(shellgold): guard slice upper bound & update golden"
+			b.UncommittedCount = 0
 			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 		}
 	}
@@ -901,27 +932,40 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID string) (model.Cockp
 	if b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved {
 		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında git merge-tree çakışması tespit edildi; önce çakışmayı çözün", b.Name)
 	}
+	if b.PR != nil && b.PR.CI != nil && b.PR.CI.State == "FAILURE" {
+		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında GitHub Actions CI başarısız; merge öncesi testleri düzeltin", b.Name)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
+
+	defBranch := snap.Repo.DefaultBranch
+	if defBranch == "" {
+		defBranch = "main"
+	}
 
 	if b.PR != nil && b.PR.Number > 0 {
 		if _, err := exec.LookPath("gh"); err != nil {
 			return model.CockpitSnapshot{}, fmt.Errorf("PR merge için gh CLI gerekli")
+		}
+		curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
+		curBranch := strings.TrimSpace(curOut)
+		if curBranch == b.Name && snap.Repo.DirtyCount == 0 {
+			_, _, _ = runCmd(ctx, live.path, "git", "checkout", defBranch)
+			curBranch = defBranch
 		}
 		out, _, err := runCmd(ctx, live.path, "gh", "pr", "merge", strconv.Itoa(b.PR.Number), "--merge", "--delete-branch")
 		if err != nil {
 			return model.CockpitSnapshot{}, fmt.Errorf("PR #%d merge edilemedi: %s", b.PR.Number, strings.TrimSpace(out))
 		}
 		_, _, _ = runCmd(ctx, live.path, "git", "fetch", "--prune", "origin")
+		if curBranch == defBranch && snap.Repo.DirtyCount == 0 {
+			_, _, _ = runCmd(ctx, live.path, "git", "merge", "--ff-only", "origin/"+defBranch)
+		}
 		return m.Snapshot()
 	}
 
 	if snap.Repo.DirtyCount > 0 {
 		return model.CockpitSnapshot{}, fmt.Errorf("çalışma dizininde %d uncommitted değişiklik var; yerel merge öncesi commit veya stash yapın", snap.Repo.DirtyCount)
-	}
-	defBranch := snap.Repo.DefaultBranch
-	if defBranch == "" {
-		defBranch = "main"
 	}
 	if cur, _, err := runCmd(ctx, live.path, "git", "branch", "--show-current"); err == nil && strings.TrimSpace(cur) != defBranch {
 		if out, _, err := runCmd(ctx, live.path, "git", "checkout", defBranch); err != nil {

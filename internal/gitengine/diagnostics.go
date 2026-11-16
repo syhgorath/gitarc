@@ -11,12 +11,18 @@ import (
 )
 
 var (
-	reGoFailTest  = regexp.MustCompile(`---\s+FAIL:\s+([A-Za-z0-9_./-]+)\s+\(([^)]+)\)`)
-	rePanic       = regexp.MustCompile(`(?i)^.*panic:\s+(.+)$`)
-	reFileLine    = regexp.MustCompile(`([a-zA-Z0-9_./-]+\.(?:go|js|ts|py|sh|yml|yaml)):(\d+)`)
-	reGoCompError = regexp.MustCompile(`^([a-zA-Z0-9_./-]+\.go:\d+(?::\d+)?):\s+(.+)$`)
-	reCrossMarker = regexp.MustCompile(`(?:❌|FAIL\s+[a-zA-Z0-9_./-]+)`)
+	reISOTimestamp = regexp.MustCompile(`^(?:.*?\t)?\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s*`)
+	reGoFailTest   = regexp.MustCompile(`---\s+FAIL:\s+([A-Za-z0-9_./-]+)\s+\(([^)]+)\)`)
+	rePanic        = regexp.MustCompile(`(?i)^.*panic:\s+(.+)$`)
+	reFileLine     = regexp.MustCompile(`([a-zA-Z0-9_./-]+\.(?:go|js|ts|py|sh|yml|yaml)):(\d+)`)
+	reGoCompError  = regexp.MustCompile(`^([a-zA-Z0-9_./-]+\.go:\d+:\d+):\s+(.+)$`)
+	reCrossMarker  = regexp.MustCompile(`(?:❌|FAIL\s+[a-zA-Z0-9_./-]+)`)
 )
+
+func cleanCILogLine(raw string) string {
+	s := reISOTimestamp.ReplaceAllString(raw, "")
+	return strings.TrimSpace(s)
+}
 
 // ExtractCILog parses noisy CI / Go test logs into concise actionable error extracts.
 func ExtractCILog(rawLog string) []model.CIFailExtract {
@@ -24,15 +30,32 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 		return nil
 	}
 
-	lines := strings.Split(rawLog, "\n")
+	rawLines := strings.Split(rawLog, "\n")
+	lines := make([]string, len(rawLines))
+	for i, r := range rawLines {
+		lines[i] = cleanCILogLine(r)
+	}
+
 	var extracts []model.CIFailExtract
 	seen := make(map[string]bool)
 
 	var lastFileLine string
 	var lastPkg string
 
-	for i, raw := range lines {
-		line := strings.TrimSpace(raw)
+	findUpcomingPkg := func(from int) string {
+		for k := from; k < len(lines) && k <= from+15; k++ {
+			l := lines[k]
+			if strings.HasPrefix(l, "FAIL\t") || strings.HasPrefix(l, "FAIL ") {
+				fields := strings.Fields(l)
+				if len(fields) >= 2 && strings.Contains(fields[1], "/") {
+					return normalizeGoPkg(fields[1])
+				}
+			}
+		}
+		return lastPkg
+	}
+
+	for i, line := range lines {
 		if line == "" {
 			continue
 		}
@@ -40,8 +63,9 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 		if strings.HasPrefix(line, "FAIL\t") || strings.HasPrefix(line, "FAIL ") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 && strings.Contains(fields[1], "/") {
-				lastPkg = fields[1]
+				lastPkg = normalizeGoPkg(fields[1])
 			}
+			continue
 		}
 
 		if m := reFileLine.FindStringSubmatch(line); len(m) == 3 {
@@ -60,12 +84,13 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 						break
 					}
 				}
+				pkg := inferPackageFromFileLine(fl, findUpcomingPkg(i+1))
 				extracts = append(extracts, model.CIFailExtract{
 					Kind:     "panic",
 					Symbol:   "panic",
 					FileLine: fl,
 					Message:  strings.TrimSpace(m[1]),
-					ReproCmd: buildGoReproCmd(lastPkg, ""),
+					ReproCmd: buildGoReproCmd(pkg, ""),
 				})
 			}
 			continue
@@ -78,7 +103,7 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 			fl := lastFileLine
 			// Inspect preceding lines for the assertion location & error message
 			for k := i - 1; k >= 0 && k >= i-5; k-- {
-				prev := strings.TrimSpace(lines[k])
+				prev := lines[k]
 				if prev == "" || strings.HasPrefix(prev, "===") {
 					continue
 				}
@@ -94,7 +119,7 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 			key := "test:" + testName
 			if !seen[key] {
 				seen[key] = true
-				pkg := inferPackageFromFileLine(fl, lastPkg)
+				pkg := inferPackageFromFileLine(fl, findUpcomingPkg(i+1))
 				extracts = append(extracts, model.CIFailExtract{
 					Kind:     "test_fail",
 					Symbol:   testName,
@@ -110,7 +135,7 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 			key := "compile:" + m[1]
 			if !seen[key] {
 				seen[key] = true
-				pkg := inferPackageFromFileLine(m[1], lastPkg)
+				pkg := inferPackageFromFileLine(m[1], findUpcomingPkg(i+1))
 				extracts = append(extracts, model.CIFailExtract{
 					Kind:     "compile_error",
 					Symbol:   filepath.Base(strings.Split(m[1], ":")[0]),
@@ -122,7 +147,7 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 			continue
 		}
 
-		if reCrossMarker.MatchString(line) && !strings.HasPrefix(line, "FAIL") {
+		if reCrossMarker.MatchString(line) {
 			key := "marker:" + line
 			if !seen[key] && len(extracts) < 6 {
 				seen[key] = true
@@ -139,6 +164,17 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 	return extracts
 }
 
+func normalizeGoPkg(rawPkg string) string {
+	// Convert "keylab/internal/shellgold" or "github.com/org/repo/internal/x" into "./internal/..."
+	if idx := strings.Index(rawPkg, "/internal/"); idx >= 0 {
+		return "." + rawPkg[idx:]
+	}
+	if idx := strings.Index(rawPkg, "/cmd/"); idx >= 0 {
+		return "." + rawPkg[idx:]
+	}
+	return rawPkg
+}
+
 func inferPackageFromFileLine(fl, fallback string) string {
 	if fl == "" {
 		if fallback != "" {
@@ -149,6 +185,9 @@ func inferPackageFromFileLine(fl, fallback string) string {
 	clean := strings.Split(fl, ":")[0]
 	dir := filepath.Dir(clean)
 	if dir == "." || dir == "" {
+		if fallback != "" {
+			return fallback
+		}
 		return "./..."
 	}
 	dir = strings.TrimPrefix(dir, "go/")

@@ -40,24 +40,27 @@ func TestAssignLanesIntervalPacking(t *testing.T) {
 }
 
 func TestExtractCILog(t *testing.T) {
-	raw := `2026-11-16T07:12:05Z === RUN   TestShellGoldCompare
-    compare_test.go:118: mismatch on key 'hardening_pve_apply'
---- FAIL: TestShellGoldCompare (0.42s)
-panic: runtime error: index out of range [3] with length 3
-	go/internal/shellgold/compare.go:94 +0x1b4
-FAIL	keylab/internal/shellgold	0.614s`
+	raw := `2026-11-16T07:12:05.110Z === RUN   TestShellGoldCompare
+2026-11-16T07:12:06.489Z     compare_test.go:118: mismatch on key 'hardening_pve_apply'
+2026-11-16T07:12:06.520Z --- FAIL: TestShellGoldCompare (0.42s)
+2026-11-16T07:12:06.529Z panic: runtime error: index out of range [3] with length 3
+2026-11-16T07:12:06.531Z 	go/internal/shellgold/compare.go:94 +0x1b4
+2026-11-16T07:12:06.532Z FAIL	keylab/internal/shellgold	0.614s`
 
 	extracts := ExtractCILog(raw)
-	if len(extracts) < 2 {
-		t.Fatalf("expected at least 2 extracts (fail + panic), got %d: %+v", len(extracts), extracts)
+	if len(extracts) != 2 {
+		t.Fatalf("expected exactly 2 extracts (fail + panic, no false lint_fail), got %d: %+v", len(extracts), extracts)
 	}
 
 	var sawFail, sawPanic bool
 	for _, ex := range extracts {
+		if strings.Contains(ex.Message, "2026-11-16T") {
+			t.Errorf("expected ISO timestamp stripped from message, got %q", ex.Message)
+		}
 		if ex.Kind == "test_fail" && ex.Symbol == "TestShellGoldCompare" && strings.Contains(ex.FileLine, "compare_test.go:118") {
 			sawFail = true
-			if !strings.Contains(ex.ReproCmd, "TestShellGoldCompare") {
-				t.Errorf("expected reproCmd to include test filter, got %q", ex.ReproCmd)
+			if !strings.Contains(ex.ReproCmd, "TestShellGoldCompare") || !strings.Contains(ex.ReproCmd, "./internal/shellgold") {
+				t.Errorf("expected reproCmd to include package and test filter, got %q", ex.ReproCmd)
 			}
 		}
 		if ex.Kind == "panic" && strings.Contains(ex.Message, "index out of range") && strings.Contains(ex.FileLine, "compare.go:94") {
@@ -267,6 +270,29 @@ func TestSimulationDeleteBranch(t *testing.T) {
 	}
 	if _, err := mgr.DeleteBranch("non-existent"); err == nil {
 		t.Fatalf("expected error deleting unknown branch")
+	}
+}
+
+func TestFixCIAndMergeLock(t *testing.T) {
+	mgr := NewManager("")
+	if _, err := mgr.MergeBranch("br-open-422"); err == nil {
+		t.Fatalf("expected MergeBranch to fail while CI status is FAILURE")
+	}
+	snap, err := mgr.FixCI("br-open-422")
+	if err != nil {
+		t.Fatalf("FixCI failed: %v", err)
+	}
+	var fixed *model.BranchArc
+	for i := range snap.Branches {
+		if snap.Branches[i].ID == "br-open-422" {
+			fixed = &snap.Branches[i]
+		}
+	}
+	if fixed == nil || fixed.PR == nil || fixed.PR.CI == nil || fixed.PR.CI.State != "SUCCESS" {
+		t.Fatalf("expected br-open-422 CI to be SUCCESS after FixCI, got %+v", fixed)
+	}
+	if _, err := mgr.MergeBranch("br-open-422"); err != nil {
+		t.Fatalf("expected MergeBranch to succeed after FixCI, got %v", err)
 	}
 }
 
