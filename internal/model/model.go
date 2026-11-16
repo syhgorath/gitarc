@@ -99,6 +99,8 @@ type BranchArc struct {
 	CrossPR        []CrossPRWarning `json:"crossPr,omitempty"`
 	CanAmendCommit bool             `json:"canAmendCommit,omitempty"`
 	SuggestedCmd   string           `json:"suggestedCmd,omitempty"`
+	DraftPRTitle   string           `json:"draftPrTitle,omitempty"`
+	DraftPRBody    string           `json:"draftPrBody,omitempty"`
 }
 
 // PRStatus models GitHub Pull Request review & Actions CI status.

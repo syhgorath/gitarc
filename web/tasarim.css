@@ -728,6 +728,11 @@ body {
 .svg-arc-path.merged { stroke: var(--emerald); }
 .svg-arc-path.gone { stroke: var(--warn); stroke-dasharray: 5 4; opacity: 0.78; }
 .svg-arc-path.conflict { stroke: var(--warn-orange); }
+.svg-arc-path.ci-running {
+  stroke: var(--warn);
+  stroke-width: 3.3;
+  animation: ciRunningPulse 1.5s ease-in-out infinite;
+}
 .svg-arc-path.ci-fail {
   stroke: var(--danger);
   stroke-width: 3.4;
@@ -750,6 +755,7 @@ body {
 
 .svg-open-tail.upper-open { stroke: var(--sky); }
 .svg-open-tail.lower-open { stroke: var(--purple); }
+.svg-open-tail.ci-running { stroke: var(--warn); }
 .svg-open-tail.ci-fail { stroke: var(--danger); }
 .svg-open-tail.conflict { stroke: var(--warn-orange); }
 .svg-open-tail.gone { stroke: var(--warn); }
@@ -763,6 +769,7 @@ body {
 .svg-apex-dot.upper-open { stroke: var(--sky); }
 .svg-apex-dot.lower-open { stroke: var(--purple); }
 .svg-apex-dot.merged { stroke: var(--emerald); }
+.svg-apex-dot.ci-running { stroke: var(--warn); }
 .svg-apex-dot.ci-fail { stroke: var(--danger); }
 .svg-apex-dot.conflict { stroke: var(--warn-orange); }
 .svg-apex-dot.gone { stroke: var(--warn); }
@@ -778,6 +785,11 @@ body {
 @keyframes ciStrokePulse {
   0%, 100% { stroke-opacity: 1; filter: drop-shadow(0 0 2px rgba(248, 81, 73, 0.45)); }
   50% { stroke-opacity: 0.5; filter: drop-shadow(0 0 9px rgba(248, 81, 73, 0.95)); }
+}
+
+@keyframes ciRunningPulse {
+  0%, 100% { stroke-opacity: 1; filter: drop-shadow(0 0 3px rgba(210, 153, 34, 0.45)); }
+  50% { stroke-opacity: 0.62; filter: drop-shadow(0 0 11px rgba(88, 166, 255, 0.85)); }
 }
 
 /* Branch Capsule Cards inside SVG <foreignObject> */
@@ -828,6 +840,11 @@ body {
   box-shadow: 0 0 0 2px var(--emerald-weak), var(--shadow-2);
 }
 
+.cap-card.ci-running {
+  border-color: var(--warn);
+  animation: pulseRunningRing 1.7s infinite;
+}
+
 .cap-card.ci-fail {
   border-color: var(--danger);
   animation: pulseRedRing 2s infinite;
@@ -844,6 +861,16 @@ body {
 @keyframes pulseRedRing {
   0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.55), var(--shadow-2); }
   50% { box-shadow: 0 0 0 7px rgba(248, 81, 73, 0), var(--shadow-2); }
+}
+
+@keyframes pulseRunningRing {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.55), var(--shadow-2); }
+  50% { box-shadow: 0 0 0 8px rgba(88, 166, 255, 0.15), var(--shadow-2); }
+}
+
+@keyframes dotBlink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
 }
 
 .cap-top-row {
@@ -872,6 +899,24 @@ body {
 .cap-badge.emerald { background: var(--emerald-weak); border-color: var(--emerald-border); color: var(--emerald); }
 .cap-badge.danger { background: var(--danger-weak); border-color: var(--danger-border); color: var(--danger); }
 .cap-badge.warn { background: var(--warn-weak); border-color: var(--warn-border); color: var(--warn); }
+
+.cap-badge.running-pulse,
+.chip.running-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  animation: pulseRunningRing 1.7s infinite;
+}
+
+.cap-badge.running-pulse::before,
+.chip.running-pulse::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: dotBlink 1s ease-in-out infinite;
+}
 
 .cap-head-pill {
   font-family: var(--mono);
@@ -960,6 +1005,10 @@ body {
 .cap-btn.danger:hover { background: var(--danger); }
 .cap-btn.amber { background: #b45309; }
 .cap-btn.amber:hover { background: #d97706; }
+.cap-btn.amber.running-pulse,
+.btn.warn.running-pulse {
+  animation: pulseRunningRing 1.6s infinite;
+}
 
 .cap-btn-del {
   flex: 0 0 auto;
@@ -1538,6 +1587,28 @@ body {
   flex-direction: column;
   gap: 8px;
   margin-top: 6px;
+}
+
+.wt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wt-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wt-note {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 2px 0 4px;
 }
 
 .textarea-control {

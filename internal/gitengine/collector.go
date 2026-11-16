@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -18,7 +19,7 @@ import (
 
 const (
 	// AppVersion identifies the current GitArc release embedded at build time.
-	AppVersion        = "0.7.0"
+	AppVersion        = "0.8.0"
 	ghCacheTTL        = 10 * time.Second
 	maxActiveBranches = 40
 )
@@ -176,8 +177,10 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	}
 
 	dirtyCount := 0
+	var dirtyFiles []string
 	if out, _, err := runCmd(ctx, repoPath, "git", "status", "--porcelain"); err == nil && strings.TrimSpace(out) != "" {
-		dirtyCount = len(strings.Split(strings.TrimRight(out, "\n"), "\n"))
+		dirtyFiles = parsePorcelainFiles(out)
+		dirtyCount = len(dirtyFiles)
 	}
 
 	ahead, behind := 0, 0
@@ -244,7 +247,7 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 		ghPRs, mergedPRs, ghMergedArches, branchProtected, protectionSummary = fetchGHMetadataCached(ctx, repoPath, remoteName, defaultBranch, nodes, shaToIdx, mergedArches)
 		mergedArches = append(mergedArches, ghMergedArches...)
 	}
-	branches, localHits := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser, nodes, shaToIdx, dirtyCount, ghPRs, mergedPRs, mergedArches)
+	branches, localHits := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser, nodes, shaToIdx, dirtyCount, dirtyFiles, ghPRs, mergedPRs, mergedArches)
 	remoteBranches, remoteHits := collectRemoteOnlyBranches(ctx, repoPath, remoteName, defaultBranch, baseRef, baseTipSHA, nodes, shaToIdx, branches, ghPRs, mergedPRs, mergedArches)
 	cacheHits := localHits + remoteHits
 	branches = append(branches, remoteBranches...)
@@ -810,7 +813,121 @@ func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, br
 	return startIdx, baseSHA, aheadMain, behindMain, changed, conflict, false
 }
 
-func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser string, nodes []model.CommitNode, shaToIdx map[string]int, dirtyCount int, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) ([]model.BranchArc, int) {
+func parsePorcelainFiles(out string) []string {
+	var files []string
+	seen := map[string]bool{}
+	for _, rawLine := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
+		if len(rawLine) < 4 {
+			continue
+		}
+		pathPart := strings.TrimSpace(rawLine[3:])
+		if idx := strings.Index(pathPart, " -> "); idx >= 0 {
+			pathPart = pathPart[idx+4:]
+		}
+		pathPart = strings.Trim(pathPart, "\"")
+		if pathPart != "" && !seen[pathPart] {
+			seen[pathPart] = true
+			files = append(files, pathPart)
+		}
+	}
+	return files
+}
+
+func mergeUniqueFiles(a, b []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(a)+len(b))
+	for _, f := range a {
+		if f != "" && !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	for _, f := range b {
+		if f != "" && !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func buildSuggestedCommitAndPR(repoPath, branchHint string, files []string) (commitMsg, prTitle, prBody string) {
+	ver := ""
+	if rawVer, err := os.ReadFile(filepath.Join(repoPath, "VERSION")); err == nil {
+		ver = strings.TrimSpace(string(rawVer))
+	}
+	var bullets []string
+	if rawCL, err := os.ReadFile(filepath.Join(repoPath, "CHANGELOG.md")); err == nil {
+		inFirst := false
+		for _, line := range strings.Split(string(rawCL), "\n") {
+			t := strings.TrimSpace(line)
+			if strings.HasPrefix(t, "## [") {
+				if inFirst {
+					break
+				}
+				inFirst = true
+				continue
+			}
+			if inFirst && strings.HasPrefix(t, "- ") && len(bullets) < 5 {
+				bullets = append(bullets, t)
+			}
+		}
+	}
+
+	prefix := "feat"
+	if ver != "" {
+		prefix = fmt.Sprintf("feat(v%s)", ver)
+	} else if branchHint != "" && branchHint != "wip/working-tree" {
+		prefix = fmt.Sprintf("feat(%s)", branchHint)
+	}
+
+	summary := fmt.Sprintf("update %d files", len(files))
+	if len(files) == 1 {
+		summary = "update " + filepath.Base(files[0])
+	}
+	commitMsg = fmt.Sprintf("%s: %s", prefix, summary)
+	prTitle = commitMsg
+	if len(bullets) > 0 {
+		firstClean := strings.TrimPrefix(bullets[0], "- ")
+		firstClean = strings.ReplaceAll(firstClean, "**", "")
+		if idx := strings.Index(firstClean, ":"); idx > 6 && idx < 72 {
+			firstClean = strings.TrimSpace(firstClean[:idx])
+		}
+		if len(firstClean) > 10 && len(firstClean) <= 72 {
+			prTitle = fmt.Sprintf("%s: %s", prefix, firstClean)
+		}
+	}
+
+	var body strings.Builder
+	body.WriteString("## Neler Değişti?\n")
+	if len(bullets) > 0 {
+		for _, b := range bullets {
+			body.WriteString(b + "\n")
+		}
+	} else {
+		for i, f := range files {
+			if i >= 12 {
+				body.WriteString(fmt.Sprintf("- ... ve %d dosya daha\n", len(files)-12))
+				break
+			}
+			body.WriteString("- `" + f + "`\n")
+		}
+	}
+	if len(files) > 0 {
+		body.WriteString(fmt.Sprintf("\n## Etkilenen Dosyalar (%d)\n", len(files)))
+		for i, f := range files {
+			if i >= 10 {
+				body.WriteString(fmt.Sprintf("- ... toplam %d dosya\n", len(files)))
+				break
+			}
+			body.WriteString("- `" + f + "`\n")
+		}
+	}
+	prBody = strings.TrimSpace(body.String())
+	return commitMsg, prTitle, prBody
+}
+
+func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser string, nodes []model.CommitNode, shaToIdx map[string]int, dirtyCount int, dirtyFiles []string, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) ([]model.BranchArc, int) {
 	out, _, err := runCmd(ctx, repoPath, "git", "for-each-ref",
 		"--sort=-committerdate",
 		fmt.Sprintf("--count=%d", maxActiveBranches),
@@ -944,6 +1061,18 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 		}
 
 		canAmend := isHead && state == "open" && name != defaultBranch && aheadMain > 0
+		branchChanged := changed
+		draftTitle := ""
+		draftBody := ""
+		if isHead && uncommitted > 0 && len(dirtyFiles) > 0 {
+			branchChanged = mergeUniqueFiles(branchChanged, dirtyFiles)
+		}
+		if hemisphere == "lower" && state == "open" {
+			_, draftTitle, draftBody = buildSuggestedCommitAndPR(repoPath, name, branchChanged)
+			if subject != "" && (draftTitle == "" || uncommitted == 0) {
+				draftTitle = subject
+			}
+		}
 
 		branches = append(branches, model.BranchArc{
 			ID:               "local-" + sanitizeID(name),
@@ -967,9 +1096,11 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			RemoteBehind:     remoteBehind,
 			UncommittedCount: uncommitted,
 			LastCommitMsg:    subject,
-			ChangedFiles:     changed,
+			ChangedFiles:     branchChanged,
 			Conflict:         conflict,
 			CanAmendCommit:   canAmend,
+			DraftPRTitle:     draftTitle,
+			DraftPRBody:      draftBody,
 		})
 
 		// If an open PR branch also has unpushed local commits or uncommitted files,
@@ -999,6 +1130,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 	}
 
 	if headOnDefault && dirtyCount > 0 && lastSpine >= 0 {
+		commitMsg, prTitle, prBody := buildSuggestedCommitAndPR(repoPath, "wip/working-tree", dirtyFiles)
 		branches = append(branches, model.BranchArc{
 			ID:               "local-wip-working-tree",
 			Name:             "wip/working-tree",
@@ -1015,7 +1147,10 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			AheadMain:        0,
 			BehindMain:       0,
 			UncommittedCount: dirtyCount,
-			LastCommitMsg:    fmt.Sprintf("%s üzerinde %d uncommitted değişiklik", defaultBranch, dirtyCount),
+			LastCommitMsg:    commitMsg,
+			ChangedFiles:     dirtyFiles,
+			DraftPRTitle:     prTitle,
+			DraftPRBody:      prBody,
 		})
 	}
 	return branches, cacheHits
