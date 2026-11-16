@@ -75,6 +75,10 @@ func (m *Manager) createBranchLive(live *repoEntry, name, hemisphere, fromSHA st
 		}
 	}
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 
@@ -188,6 +192,10 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 	}
 
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 
@@ -239,6 +247,10 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody s
 		}
 	}
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 
@@ -309,6 +321,10 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID, strategy string) (m
 		_, _, _ = runCmd(ctx, live.path, "git", "commit", "-m", fmt.Sprintf("squash merge %s", b.Name))
 	}
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 
@@ -330,6 +346,10 @@ func (m *Manager) updatePRMetaLive(live *repoEntry, branchID, title, body string
 		return model.CockpitSnapshot{}, fmt.Errorf("PR #%d güncellenemedi: %s", b.PR.Number, strings.TrimSpace(out))
 	}
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 
@@ -352,6 +372,10 @@ func (m *Manager) amendLastCommitLive(live *repoEntry, branchID, message string)
 		}
 	}
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 
@@ -459,6 +483,10 @@ func (m *Manager) syncSpineLive(live *repoEntry) (model.CockpitSnapshot, error) 
 		return model.CockpitSnapshot{}, err
 	}
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 
@@ -527,6 +555,10 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 	}
 
 	InvalidateGHCache(live.path)
+	removeProposalFile(live.path)
+	m.mu.Lock()
+	m.pendingProposal = nil
+	m.mu.Unlock()
 	return m.Snapshot()
 }
 

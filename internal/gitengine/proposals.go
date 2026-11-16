@@ -2,7 +2,9 @@ package gitengine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -134,21 +136,70 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 	m.recordLogLocked("ok", "Öneri Kartı (MCP)", branchName, fmt.Sprintf("%s dalı için %d dosyalık öneri oluşturuldu (Kullanıcı onayı bekleniyor)", branchName, len(cleanFiles)), "")
 	m.mu.Unlock()
 
+	if repoPath != "" {
+		saveProposalToFile(repoPath, prop)
+	}
+
 	return prop, nil
 }
 
-// DismissProposal discards the pending proposal from memory.
+// DismissProposal discards the pending proposal from memory and disk.
 func (m *Manager) DismissProposal() (model.CockpitSnapshot, error) {
 	m.mu.Lock()
 	m.pendingProposal = nil
 	m.recordLogLocked("ok", "Öneri Kapatıldı", "", "Bekleyen öneri kartı kullanıcı tarafından reddedildi/kapatıldı", "")
 	m.mu.Unlock()
+
+	if live, ok := m.activeLiveRepo(); ok {
+		removeProposalFile(live.path)
+	}
 	return m.Snapshot()
 }
 
-// GetPendingProposal returns active proposal or nil.
+// GetPendingProposal returns active proposal or loads it from .git IPC file.
 func (m *Manager) GetPendingProposal() *model.CommitProposal {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.pendingProposal
+	if m.pendingProposal != nil {
+		defer m.mu.RUnlock()
+		return m.pendingProposal
+	}
+	m.mu.RUnlock()
+
+	if live, ok := m.activeLiveRepo(); ok {
+		if prop, err := loadProposalFromFile(live.path); err == nil && prop != nil {
+			m.mu.Lock()
+			m.pendingProposal = prop
+			m.mu.Unlock()
+			return prop
+		}
+	}
+	return nil
+}
+
+func proposalFilePath(repoPath string) string {
+	return filepath.Join(repoPath, ".git", "gitarc_proposal.json")
+}
+
+func saveProposalToFile(repoPath string, prop model.CommitProposal) {
+	p := proposalFilePath(repoPath)
+	if b, err := json.MarshalIndent(prop, "", "  "); err == nil {
+		_ = os.WriteFile(p, b, 0644)
+	}
+}
+
+func loadProposalFromFile(repoPath string) (*model.CommitProposal, error) {
+	p := proposalFilePath(repoPath)
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return nil, err
+	}
+	var prop model.CommitProposal
+	if err := json.Unmarshal(data, &prop); err != nil {
+		return nil, err
+	}
+	return &prop, nil
+}
+
+func removeProposalFile(repoPath string) {
+	_ = os.Remove(proposalFilePath(repoPath))
 }
