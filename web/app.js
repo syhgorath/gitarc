@@ -31,6 +31,7 @@
     drag: null,
     localRunOutput: {},
     studio: null,
+    clientLogs: [],
   };
 
   const el = {
@@ -56,15 +57,23 @@
     conflictStudioModal: document.getElementById('conflict-studio-modal'),
     studioBranchBadge: document.getElementById('studio-branch-badge'),
     studioFileTabs: document.getElementById('studio-file-tabs'),
+    studioGuideBox: document.getElementById('studio-guide-box'),
+    studioGuideText: document.getElementById('studio-guide-text'),
     studioStrategyBar: document.getElementById('studio-strategy-bar'),
     studioLineBadge: document.getElementById('studio-line-badge'),
     studioModeBadge: document.getElementById('studio-mode-badge'),
     studioLeftConflict: document.getElementById('studio-left-conflict'),
     studioRightPreview: document.getElementById('studio-right-preview'),
+    studioErrorBanner: document.getElementById('studio-error-banner'),
+    studioErrorText: document.getElementById('studio-error-text'),
     studioRunVet: document.getElementById('studio-run-vet'),
     studioApplyBtn: document.getElementById('studio-apply'),
     mcpModal: document.getElementById('mcp-connect-modal'),
     mcpConfigSnippet: document.getElementById('mcp-config-snippet'),
+    btnLogsModal: document.getElementById('btn-logs-modal'),
+    logCount: document.getElementById('log-count'),
+    logsModal: document.getElementById('logs-modal'),
+    logsList: document.getElementById('logs-list'),
   };
 
   // Fallback simulation engine for standalone file:// opening without Go server
@@ -428,11 +437,27 @@
             theirsPreview: 'audit-exporter 0.1.0 sha256:44a1e8b2',
           };
         });
+        const recommended = b.conflict.isChangelogOrLock ? 'union' : 'ours';
+        const strategies = b.conflict.isChangelogOrLock ? [
+          { strategy: 'union', badge: '★ ÖNERİLEN · Veri Kaybı Yok', tone: 'ok' },
+          { strategy: 'ours', badge: 'Daldaki Eklemeyi Atlar', tone: 'warn' },
+          { strategy: 'theirs', badge: 'Main Eklemeyi Atlar', tone: 'warn' },
+          { strategy: 'custom', badge: 'Tam Kontrol', tone: 'accent' },
+        ] : [
+          { strategy: 'union', badge: '⚠ Kodda Çift Tanım Riski', tone: 'warn' },
+          { strategy: 'ours', badge: '★ ÖNERİLEN · Main Güncel Kodu', tone: 'ok' },
+          { strategy: 'theirs', badge: '✓ Sadece Dalın Kodu', tone: 'accent' },
+          { strategy: 'custom', badge: '✓ Özgün Birleştirme', tone: 'accent' },
+        ];
         return {
           branchId: b.id,
           branchName: b.name,
           baseRef: 'origin/main',
-          recommended: b.conflict.isChangelogOrLock ? 'union' : 'ours',
+          recommended,
+          recommendationReason: b.conflict.isChangelogOrLock
+            ? "Çakışan dosya değişiklik günlüğü / kilit dosyasıdır. '1. İkisini Alt Alta Koru' seçeneği her iki tarafı da kayıpsız birleştirir."
+            : "Çakışan dosya kaynak kodudur. 'İkisini Alt Alta Koru' derleme hatası üretebilir; '2. Maindeki Güncel Kodu Kullan' önerilir.",
+          strategies,
           aiPrompt: `GitArc Çakışma Çözümü İsteği (${b.name} ↔ origin/main)\n${files.map((x) => `${x.path}:\n${x.conflictHunks}`).join('\n\n')}`,
           files,
         };
@@ -494,15 +519,59 @@
     return data;
   }
 
+  function getMergedLogs() {
+    const serverLogs = state.snapshot?.logs || [];
+    const seenMsgs = new Set(serverLogs.map((l) => `${l.level}:${l.message}`));
+    const extra = state.clientLogs.filter((l) => !seenMsgs.has(`${l.level}:${l.message}`));
+    return [...extra, ...serverLogs].slice(0, 60);
+  }
+
+  function renderLogBadge() {
+    const logs = getMergedLogs();
+    const errCount = logs.filter((l) => l.level === 'error').length;
+    el.logCount.textContent = String(errCount > 0 ? errCount : logs.length);
+    el.btnLogsModal.classList.toggle('danger', errCount > 0);
+    if (!el.logsModal.hidden) {
+      renderLogsModal();
+    }
+  }
+
+  function recordClientLog(level, action, message, detail = '') {
+    const now = new Date();
+    const ts = now.toTimeString().slice(0, 8);
+    state.clientLogs.unshift({
+      id: `cli-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: ts,
+      level,
+      action,
+      message: String(message || ''),
+      detail: String(detail || ''),
+    });
+    if (state.clientLogs.length > 40) {
+      state.clientLogs.length = 40;
+    }
+    renderLogBadge();
+  }
+
   function showToast(msg, tone = 'info') {
+    if (tone === 'danger') {
+      recordClientLog('error', 'Arayüz / API Hatası', msg);
+    }
     const t = document.createElement('div');
     t.className = `toast ${tone}`;
+    t.title = 'Metni panoya kopyalamak için tıklayın';
     t.textContent = msg;
+    t.addEventListener('click', () => {
+      navigator.clipboard?.writeText(msg).catch(() => {});
+      t.classList.add('fade-out');
+      setTimeout(() => t.remove(), 180);
+    });
     el.toastStack.appendChild(t);
+    const timeoutMs = tone === 'danger' ? 7500 : 3200;
     setTimeout(() => {
       t.classList.add('fade-out');
       setTimeout(() => t.remove(), 260);
-    }, 3100);
+    }, timeoutMs);
   }
 
   function svgEl(tag, attrs = {}, text = null) {
@@ -541,7 +610,8 @@
       b.pr?.title || '', b.pr?.body || '', b.pr?.ci?.state || '',
       b.conflict?.hasConflict ? 1 : 0,
     ].join('|')).join(';');
-    return `${r.id}:${r.ahead}:${r.behind}:${r.dirtyCount}:${snap.nodes?.length || 0}:${lastNode}:${bSig}`;
+    const logSig = `${snap.logs?.length || 0}:${snap.logs?.[0]?.id || ''}`;
+    return `${r.id}:${r.ahead}:${r.behind}:${r.dirtyCount}:${snap.nodes?.length || 0}:${lastNode}:${bSig}:${logSig}`;
   }
 
   async function bootstrap() {
@@ -567,7 +637,7 @@
 
   // 4-second silent live polling when user is idle (not dragging or typing)
   setInterval(async () => {
-    if (state.offlineMode || state.drag || state.panning || !el.modal.hidden) return;
+    if (state.offlineMode || state.drag || state.panning || !el.modal.hidden || !el.conflictStudioModal.hidden || !el.logsModal.hidden || !el.mcpModal.hidden) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     try {
@@ -630,6 +700,7 @@
     document.getElementById('btn-new-branch').disabled = false;
     document.getElementById('btn-sync-spine').disabled = snap.repo.mode !== 'live' && snap.repo.ahead === 0 && snap.repo.behind === 0;
     document.getElementById('btn-reset-sim').hidden = snap.repo.mode === 'live';
+    renderLogBadge();
 
     const ahead = snap.repo.ahead || 0;
     const behind = snap.repo.behind || 0;
@@ -1618,6 +1689,8 @@
         customByPath: {},
       };
       el.studioRunVet.checked = true;
+      el.studioErrorBanner.hidden = true;
+      el.studioErrorText.textContent = '';
       renderConflictStudio();
       el.conflictStudioModal.hidden = false;
     } catch (err) {
@@ -1672,8 +1745,24 @@
     });
 
     el.studioStrategyBar.querySelectorAll('.strat-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.getAttribute('data-strat') === strategy);
+      const stratKey = btn.getAttribute('data-strat');
+      btn.classList.toggle('active', stratKey === strategy);
+      const badgeEl = btn.querySelector('.strat-badge');
+      if (badgeEl && payload.strategies) {
+        const adv = payload.strategies.find((s) => s.strategy === stratKey);
+        if (adv) {
+          badgeEl.textContent = adv.badge;
+          badgeEl.className = `strat-badge ${adv.tone || ''}`;
+        }
+      }
     });
+
+    if (payload.recommendationReason) {
+      el.studioGuideText.textContent = payload.recommendationReason;
+      el.studioGuideBox.hidden = false;
+    } else {
+      el.studioGuideBox.hidden = true;
+    }
 
     if (curFile) {
       el.studioLineBadge.textContent = `Satır ${curFile.startLine || 1}-${curFile.endLine || 1}`;
@@ -1694,6 +1783,8 @@
     const customFiles = st.strategy === 'custom' ? st.customByPath : undefined;
     const runVet = Boolean(el.studioRunVet.checked);
 
+    el.studioErrorBanner.hidden = true;
+    el.studioErrorText.textContent = '';
     el.studioApplyBtn.disabled = true;
     el.studioApplyBtn.textContent = 'Uygulanıyor...';
     try {
@@ -1709,11 +1800,48 @@
       applySnapshot(snap);
       showToast(`Çakışma (${st.strategy}) ile çözüldü ve güncellendi!`, 'ok');
     } catch (err) {
+      el.studioErrorText.textContent = err.message || String(err);
+      el.studioErrorBanner.hidden = false;
       showToast(err.message, 'danger');
+      if (!state.offlineMode) {
+        apiCall('/api/snapshot').then(applySnapshot).catch(() => {});
+      }
     } finally {
       el.studioApplyBtn.disabled = false;
       el.studioApplyBtn.textContent = '✅ Çözümü Uygula & Pushla';
     }
+  }
+
+  function renderLogsModal() {
+    const logs = getMergedLogs();
+    el.logsList.innerHTML = '';
+    if (logs.length === 0) {
+      el.logsList.innerHTML = '<div class="empty-detail">Henüz kaydedilmiş hata veya işlem günlüğü yok.</div>';
+      return;
+    }
+    logs.forEach((item) => {
+      const card = document.createElement('div');
+      const tone = item.level === 'error' ? 'error' : (item.level === 'ok' ? 'ok' : '');
+      card.className = `log-item ${tone}`;
+      card.innerHTML = `
+        <div class="log-item-head">
+          <span>${item.level === 'error' ? '❌' : (item.level === 'ok' ? '✅' : 'ℹ️')} ${esc(item.action)}${item.branch ? ` · ${esc(item.branch)}` : ''}</span>
+          <span class="log-item-meta">${esc(item.timestamp || '')}</span>
+        </div>
+        <div class="log-item-msg">${esc(item.message)}</div>
+        ${item.detail ? `<pre class="log-item-detail">${esc(item.detail)}</pre>` : ''}
+      `;
+      el.logsList.appendChild(card);
+    });
+  }
+
+  function openLogsModal() {
+    renderLogsModal();
+    el.logsModal.hidden = false;
+  }
+
+  function closeLogsModal() {
+    el.logsModal.hidden = true;
   }
 
   function buildMCPConfigText() {
@@ -1881,12 +2009,48 @@
   });
 
   document.getElementById('btn-prune-gone').addEventListener('click', handlePruneGone);
+  el.btnLogsModal.addEventListener('click', openLogsModal);
   document.getElementById('btn-mcp-connect').addEventListener('click', openMCPConnectModal);
   document.getElementById('btn-sync-spine').addEventListener('click', handleSyncSpine);
 
   document.getElementById('studio-close').addEventListener('click', closeConflictStudio);
   document.getElementById('studio-cancel').addEventListener('click', closeConflictStudio);
   document.getElementById('studio-apply').addEventListener('click', applyConflictStudio);
+  document.getElementById('studio-copy-error').addEventListener('click', async () => {
+    const txt = el.studioErrorText.textContent;
+    if (!txt) return;
+    try {
+      await navigator.clipboard.writeText(txt);
+      showToast('Hata metni panoya kopyalandı', 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
+  document.getElementById('logs-close').addEventListener('click', closeLogsModal);
+  document.getElementById('logs-close-btn').addEventListener('click', closeLogsModal);
+  document.getElementById('logs-copy-all').addEventListener('click', async () => {
+    const text = getMergedLogs().map((l) => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.action}${l.branch ? ' (' + l.branch + ')' : ''}: ${l.message}${l.detail ? '\n  ' + l.detail : ''}`).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(text || 'Log kaydı yok.');
+      showToast('Tüm loglar panoya kopyalandı', 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
+  document.getElementById('logs-clear').addEventListener('click', async () => {
+    state.clientLogs = [];
+    if (!state.offlineMode) {
+      try {
+        const snap = await apiCall('/api/logs/clear', 'POST', {});
+        applySnapshot(snap);
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    }
+    renderLogBadge();
+    renderLogsModal();
+    showToast('Log kayıtları temizlendi', 'info');
+  });
   document.getElementById('studio-copy-ai').addEventListener('click', async () => {
     const promptTxt = state.studio?.payload?.aiPrompt;
     if (!promptTxt) return;

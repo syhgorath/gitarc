@@ -569,9 +569,22 @@ func TestConflictStudioAndLiveWorktreeResolution(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# Repo\ninitial\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	runGitIn(workDir, "add", "CHANGELOG.md", "README.md")
+	if err := os.WriteFile(filepath.Join(workDir, "app.go"), []byte("package main\nfunc val() int { return 1 }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "add", "CHANGELOG.md", "README.md", "app.go")
 	runGitIn(workDir, "commit", "-m", "chore: init")
 	runGitIn(workDir, "push", "-u", "origin", "main")
+
+	// Çakışacak Go kaynak kod dalı -> origin'e pushla ve yerelden sil
+	runGitIn(workDir, "checkout", "-b", "feat/go-code-conflict")
+	if err := os.WriteFile(filepath.Join(workDir, "app.go"), []byte("package main\nfunc val() int { return 2 }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGitIn(workDir, "commit", "-am", "feat: go code change")
+	runGitIn(workDir, "push", "-u", "origin", "feat/go-code-conflict")
+	runGitIn(workDir, "checkout", "main")
+	runGitIn(workDir, "branch", "-D", "feat/go-code-conflict")
 
 	// Çakışacak özellik dalı -> origin'e pushla ve yerelden sil
 	runGitIn(workDir, "checkout", "-b", "feat/conflict-studio")
@@ -585,6 +598,9 @@ func TestConflictStudioAndLiveWorktreeResolution(t *testing.T) {
 
 	// main üzerinde çakışma üret
 	if err := os.WriteFile(filepath.Join(workDir, "CHANGELOG.md"), []byte("# Changelog\n- main branch change\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "app.go"), []byte("package main\nfunc val() int { return 99 }\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	runGitIn(workDir, "commit", "-am", "chore: main release change")
@@ -608,6 +624,17 @@ func TestConflictStudioAndLiveWorktreeResolution(t *testing.T) {
 	if len(studio.Files) != 1 || studio.Files[0].Path != "CHANGELOG.md" {
 		t.Fatalf("expected 1 conflicted file CHANGELOG.md, got %+v", studio.Files)
 	}
+	if studio.Recommended != "union" || studio.RecommendationReason == "" || len(studio.Strategies) != 4 {
+		t.Fatalf("expected CHANGELOG conflict to recommend 'union' with guidance, got rec=%q reason=%q len=%d", studio.Recommended, studio.RecommendationReason, len(studio.Strategies))
+	}
+
+	goStudio, err := mgr.InspectConflictStudio("remote-feat-go-code-conflict")
+	if err != nil {
+		t.Fatalf("InspectConflictStudio(go) failed: %v", err)
+	}
+	if goStudio.Recommended != "ours" || goStudio.RecommendationReason == "" {
+		t.Fatalf("expected .go conflict to recommend 'ours' with reason, got rec=%q reason=%q", goStudio.Recommended, goStudio.RecommendationReason)
+	}
 	fDiff := studio.Files[0]
 	if !strings.Contains(fDiff.ConflictHunks, "<<<<<<<") || fDiff.UnionPreview == "" || fDiff.OursPreview == "" || fDiff.TheirsPreview == "" {
 		t.Fatalf("expected populated ConflictHunks and all 3 previews, got %+v", fDiff)
@@ -619,11 +646,24 @@ func TestConflictStudioAndLiveWorktreeResolution(t *testing.T) {
 		t.Fatalf("unexpected TheirsPreview content: %q", fDiff.TheirsPreview)
 	}
 
-	// Çözüm metninde <<<<<<< işareti kalırsa hata dönmeli
+	// Çözüm metninde <<<<<<< işareti kalırsa hata dönmeli ve snap.Logs'a yazılmalı
 	if _, err := mgr.ResolveBranchConflict("remote-feat-conflict-studio", "custom", map[string]string{
 		"CHANGELOG.md": "<<<<<<< bad\nfoo\n=======\nbar\n>>>>>>> bad",
 	}, true); err == nil {
 		t.Fatalf("expected stray conflict markers in custom content to be rejected")
+	}
+	errSnap, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot after failed resolve failed: %v", err)
+	}
+	hasErrLog := false
+	for _, lg := range errSnap.Logs {
+		if lg.Level == "error" && strings.Contains(lg.Message, "<<<<<<<") {
+			hasErrLog = true
+		}
+	}
+	if !hasErrLog {
+		t.Fatalf("expected error log entry in snap.Logs after failed resolution, got %+v", errSnap.Logs)
 	}
 
 	// İzole worktree üzerinde "ours" (main'i baz al) ile çöz

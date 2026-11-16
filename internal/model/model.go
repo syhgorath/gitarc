@@ -10,6 +10,7 @@ type CockpitSnapshot struct {
 	Nodes       []CommitNode     `json:"nodes"`
 	Branches    []BranchArc      `json:"branches"`
 	Diagnostics []DiagnosticItem `json:"diagnostics"`
+	Logs        []ActionLogEntry `json:"logs,omitempty"`
 	GeneratedAt time.Time        `json:"generatedAt"`
 }
 
@@ -165,12 +166,34 @@ type ConflictFileDiff struct {
 	TheirsPreview string `json:"theirsPreview"` // 3. Adım: Dalı Baz Al (Theirs)
 }
 
+// StrategyAdvice describes a conflict resolution strategy recommendation and risk badge.
+type StrategyAdvice struct {
+	Strategy string `json:"strategy"` // "union" | "ours" | "theirs" | "custom"
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle"`
+	Badge    string `json:"badge"` // "★ ÖNERİLEN" | "✓ Güvenli" | "⚠ Kodda Çift Tanım Riski"
+	Tone     string `json:"tone"`  // "ok" | "warn" | "accent"
+}
+
 // ConflictStudioPayload is returned by /api/conflict/inspect for the side-by-side Conflict Studio modal.
 type ConflictStudioPayload struct {
-	BranchID    string             `json:"branchId"`
-	BranchName  string             `json:"branchName"`
-	BaseRef     string             `json:"baseRef"`
-	Recommended string             `json:"recommended"` // "union" | "ours" | "theirs" | "custom"
-	AIPrompt    string             `json:"aiPrompt"`    // 4. Adım: Kota dostu hazır AI / MCP çözüm istemi
-	Files       []ConflictFileDiff `json:"files"`
+	BranchID             string             `json:"branchId"`
+	BranchName           string             `json:"branchName"`
+	BaseRef              string             `json:"baseRef"`
+	Recommended          string             `json:"recommended"` // "union" | "ours" | "theirs" | "custom"
+	RecommendationReason string             `json:"recommendationReason"`
+	Strategies           []StrategyAdvice   `json:"strategies,omitempty"`
+	AIPrompt             string             `json:"aiPrompt"` // 4. Adım: Kota dostu hazır AI / MCP çözüm istemi
+	Files                []ConflictFileDiff `json:"files"`
+}
+
+// ActionLogEntry records recent cockpit operations and detailed error diagnostics.
+type ActionLogEntry struct {
+	ID        string `json:"id"`
+	Timestamp string `json:"timestamp"`
+	Level     string `json:"level"`  // "info" | "ok" | "error"
+	Action    string `json:"action"` // örn. "Çakışma Çözümü", "Dal Silme", "PR Merge"
+	Branch    string `json:"branch,omitempty"`
+	Message   string `json:"message"`
+	Detail    string `json:"detail,omitempty"`
 }
