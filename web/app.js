@@ -1200,8 +1200,32 @@
   }
 
   function wireProposalActions() {
+    const prop = state.snapshot?.pendingProposal;
+    if (!prop) return;
+
+    const bIn = document.getElementById('prop-edit-branch');
+    const mIn = document.getElementById('prop-edit-message');
+    const tIn = document.getElementById('prop-edit-title');
+    const dIn = document.getElementById('prop-edit-body');
+
+    const saveDraft = () => {
+      state.proposalDraftEdits = {
+        id: prop.id,
+        branch: bIn ? bIn.value : prop.branchName,
+        message: mIn ? mIn.value : prop.message,
+        title: tIn ? tIn.value : prop.prTitle,
+        body: dIn ? dIn.value : prop.prBody,
+      };
+    };
+
+    bIn?.addEventListener('input', saveDraft);
+    mIn?.addEventListener('input', saveDraft);
+    tIn?.addEventListener('input', saveDraft);
+    dIn?.addEventListener('input', saveDraft);
+
     document.getElementById('act-proposal-dismiss')?.addEventListener('click', async () => {
       try {
+        state.proposalDraftEdits = null;
         const res = state.offlineMode
           ? LocalFallbackEngine.dismissProposal()
           : await apiCall('/api/proposal/dismiss', 'POST', {});
@@ -1213,25 +1237,28 @@
     });
 
     document.getElementById('act-proposal-approve')?.addEventListener('click', async () => {
-      const prop = state.snapshot?.pendingProposal;
-      if (!prop) return;
       const btn = document.getElementById('act-proposal-approve');
 
-      if (prop.countCheckMatch === false) {
-        const mismatchConfirm = window.confirm(
-          `${prop.countCheckMessage}\n\nMesajdaki dosya sayısı ile seçilen dosya sayısı uyuşmuyor. Yine de devam etmek istiyor musunuz?`,
-        );
-        if (!mismatchConfirm) return;
-      } else {
-        const countMatch = prop.message.match(/(\d+)\s+dosya/i) || prop.message.match(/update\s+(\d+)\s+files/i);
-        if (countMatch && parseInt(countMatch[1], 10) !== prop.files.length) {
-          const mismatchConfirm = window.confirm(
-            `⚠️ UYARI: Commit mesajında belirtilen sayı (${countMatch[1]}) ile commitlenecek gerçek dosya sayısı (${prop.files.length}) uyuşmuyor!\n\nDevam etmek istiyor musunuz?`,
-          );
-          if (!mismatchConfirm) return;
-        }
+      const finalBranch = (bIn ? bIn.value : prop.branchName).trim();
+      const finalMessage = (mIn ? mIn.value : prop.message).trim();
+      const finalTitle = (tIn ? tIn.value : prop.prTitle || finalMessage).trim();
+      const finalBody = (dIn ? dIn.value : prop.prBody || '').trim();
+
+      if (!finalBranch || !finalMessage) {
+        showToast('Dal adı ve commit mesajı boş bırakılamaz', 'warn');
+        return;
       }
 
+      // 1. Mesaj ve dosya sayısı eşleşme denetimi (Madde 2 & 3)
+      const countMatch = finalMessage.match(/(\d+)\s+dosya/i) || finalMessage.match(/update\s+(\d+)\s+files/i) || finalMessage.match(/(\d+)\s+files/i);
+      if (countMatch && parseInt(countMatch[1], 10) !== prop.files.length) {
+        const mismatchConfirm = window.confirm(
+          `⚠️ UYARI: Commit mesajında belirtilen sayı (${countMatch[1]}) ile commitlenecek gerçek dosya sayısı (${prop.files.length}) uyuşmuyor!\n\nDevam etmek istiyor musunuz?`,
+        );
+        if (!mismatchConfirm) return;
+      }
+
+      // 2. 10+ dosya ya da 1000+ satırda ekstra onay (Madde 5)
       if (prop.isLargeDiff || prop.filesChanged > 10 || prop.totalLines >= 1000) {
         const largeConfirm = window.confirm(
           `🚨 DİKKAT: BÜYÜK DEĞİŞİKLİK TESPİT EDİLDİ!\n\nBu öneri ${prop.filesChanged} adet dosya ve ${prop.totalLines} satır değişiklik içermektedir!\nHalka açık depoya yanlışlıkla büyük veri, gizli anahtarlar veya istemediğiniz dosyaları itmediğinizden kesinlikle emin misiniz?\n\nYine de devam etmek istiyor musunuz?`,
@@ -1239,14 +1266,16 @@
         if (!largeConfirm) return;
       }
 
-      const firstLine = (prop.message || '').split('\n')[0].replace(/"/g, '\\"');
-      const cmd = `git switch -c ${prop.branchName} ${prop.baseBranch || 'origin/main'} && git add -- ${prop.files.join(' ')} && git commit -m "${firstLine}" && git push -u origin ${prop.branchName} && gh pr create --head ${prop.branchName} --title "${prop.prTitle || firstLine}"`;
+      // 3. Çalıştırılacak komutları şeffafça göster
+      const firstLine = finalMessage.split('\n')[0].replace(/"/g, '\\"');
+      const cmd = `git switch -c ${finalBranch} ${prop.baseBranch || 'origin/main'} && git add -- ${prop.files.join(' ')} && git commit -m "${firstLine}" && git push -u origin ${finalBranch} && gh pr create --head ${finalBranch} --title "${finalTitle || firstLine}"`;
       const confirmed = window.confirm(
-        `🤖 CLAUDE ÖNERİSİNİ ONAYLA:\n\nÖnerilen dal: ${prop.branchName} (${prop.baseBranch})\nCommitlenecek Dosyalar (${prop.files.length} adet):\n${prop.files.map((f) => ' • ' + f).join('\n')}\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
+        `🤖 CLAUDE ÖNERİSİNİ ONAYLA:\n\nÖnerilen dal: ${finalBranch} (${prop.baseBranch})\nPR Başlığı: ${finalTitle}\nCommitlenecek Dosyalar (${prop.files.length} adet):\n${prop.files.map((f) => ' • ' + f).join('\n')}\n\nÇalıştırılacak Komut:\n${cmd}\n\nBu işlemi onaylıyor musunuz?`,
       );
       if (!confirmed) return;
 
-      await handleCommitWorkingTree(prop.branchName, prop.message, prop.prTitle, prop.prBody, true, btn, prop.files);
+      state.proposalDraftEdits = null;
+      await handleCommitWorkingTree(finalBranch, finalMessage, finalTitle, finalBody, true, btn, prop.files);
       if (!state.offlineMode) {
         try {
           const dismissedSnap = await apiCall('/api/proposal/dismiss', 'POST', {});
@@ -1290,6 +1319,14 @@
     let proposalHtml = '';
     if (snap.pendingProposal) {
       const prop = snap.pendingProposal;
+      const edits = (state.proposalDraftEdits && state.proposalDraftEdits.id === prop.id)
+        ? state.proposalDraftEdits
+        : null;
+      const branchVal = edits ? edits.branch : prop.branchName;
+      const msgVal = edits ? edits.message : prop.message;
+      const titleVal = edits ? edits.title : (prop.prTitle || '');
+      const bodyVal = edits ? edits.body : (prop.prBody || '');
+
       proposalHtml = `
         <div class="diag-card proposal-card">
           <div class="proposal-head">
@@ -1300,12 +1337,12 @@
             <span class="proposal-time">${esc(prop.createdAt || '')}</span>
           </div>
           <div class="wt-note">
-            Claude bir commit ve PR önerisi hazırladı. Bu öneri <strong>${esc(prop.baseBranch || 'origin/main')}</strong> tabanlı yeni bir dal açacak, yalnız aşağıdaki açık dosyaları stage edecek ve PR oluşturacaktır. İnceleyip onaylayabilirsiniz.
+            Claude bir commit ve PR önerisi hazırladı. Bu öneri <strong>${esc(prop.baseBranch || 'origin/main')}</strong> tabanlı yeni bir dal açacak, yalnız aşağıdaki açık dosyaları stage edecek ve PR oluşturacaktır. İnceleyip onaylayabilir veya başlık/açıklama alanlarını doğrudan düzenleyebilirsiniz.
           </div>
 
           <div class="wt-field">
-            <label class="wt-label">Önerilen Dal Adı</label>
-            <div class="layer-line mono"><strong>${esc(prop.branchName)}</strong> <span class="chip ok">${esc(prop.baseBranch || 'origin/main')} tabanlı</span></div>
+            <label class="wt-label" for="prop-edit-branch">Önerilen Dal Adı <span class="chip ok">${esc(prop.baseBranch || 'origin/main')} tabanlı</span></label>
+            <input type="text" class="input-control mono" id="prop-edit-branch" value="${esc(branchVal)}" />
           </div>
 
           <div class="wt-field">
@@ -1335,16 +1372,19 @@
           </div>
 
           <div class="wt-field">
-            <label class="wt-label">Önerilen Commit Mesajı &amp; Co-Authors</label>
-            <pre class="terminal-box commit-msg-box">${esc(prop.message)}</pre>
+            <label class="wt-label" for="prop-edit-message">Commit Mesajı &amp; Co-Authors (Düzenlenebilir)</label>
+            <textarea class="textarea-control commit-msg-box" id="prop-edit-message" rows="4">${esc(msgVal)}</textarea>
           </div>
 
-          ${prop.prTitle ? `
-            <div class="wt-field">
-              <label class="wt-label">PR Başlığı</label>
-              <div class="layer-line">${esc(prop.prTitle)}</div>
-            </div>
-          ` : ''}
+          <div class="wt-field">
+            <label class="wt-label" for="prop-edit-title">PR Başlığı (Düzenlenebilir)</label>
+            <input type="text" class="input-control" id="prop-edit-title" value="${esc(titleVal)}" placeholder="GitHub PR başlığı belirleyin" />
+          </div>
+
+          <div class="wt-field">
+            <label class="wt-label" for="prop-edit-body">PR Açıklaması (Düzenlenebilir)</label>
+            <textarea class="textarea-control" id="prop-edit-body" rows="4" placeholder="GitHub PR açıklama metni belirleyin">${esc(bodyVal)}</textarea>
+          </div>
 
           <div class="det-actions">
             <button type="button" class="btn ok sm" id="act-proposal-approve">✅ İncele &amp; Onayla (Commit + Push + PR)</button>
