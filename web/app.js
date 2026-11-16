@@ -19,7 +19,8 @@
     snapshot: null,
     selectedBranchId: null,
     selectedNodeSha: null,
-    filter: 'all', // 'all' | 'issues' | 'ci_fail' | 'lower' | 'gone'
+    filter: 'all', // 'all' | 'mine' | 'issues' | 'ci_fail' | 'lower' | 'gone'
+    pathLens: '',
     showMergedArches: true,
     mergeStrategy: 'merge',
     offlineMode: false,
@@ -74,6 +75,17 @@
     logCount: document.getElementById('log-count'),
     logsModal: document.getElementById('logs-modal'),
     logsList: document.getElementById('logs-list'),
+    btnProtectBranch: document.getElementById('btn-protect-branch'),
+    btnUpdateCheck: document.getElementById('btn-update-check'),
+    lensPathInput: document.getElementById('lens-path-input'),
+    perfCacheBadge: document.getElementById('perf-cache-badge'),
+    securityUpdateModal: document.getElementById('security-update-modal'),
+    secProtBadge: document.getElementById('sec-prot-badge'),
+    secProtSummary: document.getElementById('sec-prot-summary'),
+    btnEnableProtection: document.getElementById('btn-enable-protection'),
+    secTeamChip: document.getElementById('sec-team-chip'),
+    secUpdateStatus: document.getElementById('sec-update-status'),
+    secUpdateCmd: document.getElementById('sec-update-cmd'),
   };
 
   // Fallback simulation engine for standalone file:// opening without Go server
@@ -483,6 +495,20 @@
         sim.branches = sim.branches.filter((b) => !b.originGone && b.state !== 'gone' && b.state !== 'merged');
         return { snapshot: recompute(), removed: before - sim.branches.length };
       },
+      protectBranch() {
+        sim.repo.branchProtected = true;
+        sim.repo.protectionSummary = 'PR Zorunlu + CI Status Checks + Force-Push Kilitli';
+        return recompute();
+      },
+      checkUpdates() {
+        return {
+          currentVersion: sim.repo.appVersion || '0.7.0',
+          latestVersion: sim.repo.appVersion || '0.7.0',
+          updateAvailable: false,
+          updateCommand: 'git pull --ff-only origin main && go build -o gitarc .',
+          teamMode: Boolean(sim.repo.teamMode),
+        };
+      },
       syncSpine() {
         if (sim.repo.behind > 0) {
           seq++;
@@ -637,7 +663,7 @@
 
   // 4-second silent live polling when user is idle (not dragging or typing)
   setInterval(async () => {
-    if (state.offlineMode || state.drag || state.panning || !el.modal.hidden || !el.conflictStudioModal.hidden || !el.logsModal.hidden || !el.mcpModal.hidden) return;
+    if (state.offlineMode || state.drag || state.panning || !el.modal.hidden || !el.conflictStudioModal.hidden || !el.logsModal.hidden || !el.mcpModal.hidden || !el.securityUpdateModal.hidden) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     try {
@@ -702,6 +728,22 @@
     document.getElementById('btn-reset-sim').hidden = snap.repo.mode === 'live';
     renderLogBadge();
 
+    const isProtected = Boolean(snap.repo.branchProtected);
+    el.btnProtectBranch.textContent = isProtected ? '🛡️ main Korumalı' : '🔓 Korumasız';
+    el.btnProtectBranch.className = `btn ${isProtected ? 'ok' : 'warn'}`;
+
+    const verTxt = `v${snap.repo.appVersion || '0.7.0'}`;
+    const teamTag = snap.repo.teamMode ? ' · TEAM' : '';
+    const updTag = snap.repo.updateAvailable ? ' ⬆ Güncelle' : '';
+    el.btnUpdateCheck.textContent = verTxt + teamTag + updTag;
+    el.btnUpdateCheck.className = `btn mono ${snap.repo.updateAvailable ? 'warn' : 'ghost'}`;
+
+    el.perfCacheBadge.textContent = `⚡ ${snap.repo.cacheHits || 0} SHA hit`;
+
+    if (!el.securityUpdateModal.hidden) {
+      renderSecurityUpdateModal();
+    }
+
     const ahead = snap.repo.ahead || 0;
     const behind = snap.repo.behind || 0;
     const remoteName = snap.repo.remoteName || 'origin';
@@ -715,16 +757,26 @@
     }
   }
 
+  function isMyBranch(b) {
+    const me = (state.snapshot?.repo?.currentUser || '').trim().toLowerCase();
+    if (!me) return Boolean(b.isHead || b.hasLocal);
+    const bAuth = (b.author || '').trim().toLowerCase();
+    const prAuth = (b.pr?.author || '').trim().toLowerCase();
+    return bAuth === me || prAuth === me || Boolean(b.isHead);
+  }
+
   function renderKPIs() {
     const branches = state.snapshot?.branches || [];
     const upperCount = branches.filter((b) => b.hemisphere === 'upper' && b.state !== 'merged').length;
     const lowerCount = branches.filter((b) => b.hemisphere === 'lower' && b.state !== 'merged').length;
+    const mineCount = branches.filter((b) => b.state !== 'merged' && isMyBranch(b)).length;
     const conflictCount = branches.filter((b) => (b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length > 0)).length;
     const failCount = branches.filter((b) => b.pr?.ci?.state === 'FAILURE').length;
     const goneCount = branches.filter((b) => b.originGone || b.state === 'gone' || b.state === 'merged').length;
 
     const defs = [
       { key: 'all', label: 'Tümü', val: branches.length, tone: '' },
+      { key: 'mine', label: '👤 Benim Dallarım (@me)', val: mineCount, tone: mineCount ? 'accent' : '' },
       { key: 'lower', label: 'Alt Ray (Local)', val: lowerCount, tone: lowerCount ? 'purple' : '' },
       { key: 'issues', label: 'Çakışma / Cross-PR', val: conflictCount, tone: conflictCount ? 'warn' : '' },
       { key: 'ci_fail', label: 'CI Hatası', val: failCount, tone: failCount ? 'danger' : '' },
@@ -752,7 +804,15 @@
   }
 
   function matchesFilter(b) {
+    const q = (state.pathLens || '').trim().toLowerCase();
+    if (q) {
+      const nameHit = (b.name || '').toLowerCase().includes(q);
+      const fileHit = (b.changedFiles || []).some((f) => f.toLowerCase().includes(q));
+      if (!nameHit && !fileHit) return false;
+    }
     switch (state.filter) {
+      case 'mine':
+        return isMyBranch(b);
       case 'lower':
         return b.hemisphere === 'lower';
       case 'issues':
@@ -1389,7 +1449,7 @@
           ${b.originGone ? '<span class="chip warn">origin: gone</span>' : ''}
         </div>
         <div class="det-actions">
-          ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout">${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
+          ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout" ${snap.repo.teamMode ? 'disabled title="Team Server modunda paylaşılan HEAD kilitlidir"' : ''}>${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
           ${canPromote ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
           ${isOpen && !isVirtualWip ? `
             <div class="merge-group">
@@ -1397,6 +1457,7 @@
                 <option value="merge" ${state.mergeStrategy === 'merge' ? 'selected' : ''}>Merge</option>
                 <option value="squash" ${state.mergeStrategy === 'squash' ? 'selected' : ''}>Squash</option>
                 <option value="rebase" ${state.mergeStrategy === 'rebase' ? 'selected' : ''}>Rebase</option>
+                <option value="auto" ${state.mergeStrategy === 'auto' ? 'selected' : ''}>Auto-Merge (Queue)</option>
               </select>
               <button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>
             </div>
@@ -1844,6 +1905,69 @@
     el.logsModal.hidden = true;
   }
 
+  function renderSecurityUpdateModal() {
+    const r = state.snapshot?.repo || {};
+    const isProt = Boolean(r.branchProtected);
+    el.secProtBadge.textContent = isProt ? '🛡️ Korumalı' : '🔓 Korumasız';
+    el.secProtBadge.className = `chip ${isProt ? 'ok' : 'warn'}`;
+    el.secProtSummary.textContent = r.protectionSummary || (isProt ? 'Ana dal korumalı' : 'Doğrudan push/force-push açık');
+    el.btnEnableProtection.disabled = isProt;
+    el.secTeamChip.textContent = r.teamMode ? '🏢 Team Server (-team)' : '💻 Bireysel Masaüstü';
+    el.secTeamChip.className = `chip ${r.teamMode ? 'ok' : 'accent'} mono`;
+
+    const cur = r.appVersion || '0.7.0';
+    const lat = r.latestVersion || cur;
+    el.secUpdateStatus.textContent = r.updateAvailable
+      ? `Yeni sürüm bulundu: v${lat} (Mevcut: v${cur})`
+      : `Mevcut sürüm güncel: v${cur}${r.latestVersion ? ` (Uzak etiket: v${lat})` : ''}`;
+  }
+
+  function openSecurityUpdateModal() {
+    renderSecurityUpdateModal();
+    el.securityUpdateModal.hidden = false;
+  }
+
+  function closeSecurityUpdateModal() {
+    el.securityUpdateModal.hidden = true;
+  }
+
+  async function handleProtectBranch() {
+    el.btnEnableProtection.disabled = true;
+    try {
+      const snap = state.offlineMode
+        ? LocalFallbackEngine.protectBranch()
+        : await apiCall('/api/repo/protect', 'POST', {});
+      applySnapshot(snap);
+      renderSecurityUpdateModal();
+      showToast('Ana dal koruması (Branch Protection) etkinleştirildi!', 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    } finally {
+      if (state.snapshot?.repo) {
+        el.btnEnableProtection.disabled = Boolean(state.snapshot.repo.branchProtected);
+      }
+    }
+  }
+
+  async function handleCheckUpdates() {
+    try {
+      const res = state.offlineMode
+        ? LocalFallbackEngine.checkUpdates()
+        : await apiCall('/api/system/update-check', 'POST', {});
+      if (state.snapshot?.repo) {
+        state.snapshot.repo.latestVersion = res.latestVersion;
+        state.snapshot.repo.updateAvailable = res.updateAvailable;
+      }
+      if (res.updateCommand) {
+        el.secUpdateCmd.textContent = res.updateCommand;
+      }
+      renderTopbar();
+      showToast(res.updateAvailable ? `Yeni sürüm mevcut: v${res.latestVersion}` : `GitArc güncel (v${res.currentVersion})`, 'ok');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  }
+
   function buildMCPConfigText() {
     const repoPath = state.snapshot?.repo?.mode === 'live' && state.snapshot?.repo?.path
       ? state.snapshot.repo.path
@@ -2009,9 +2133,28 @@
   });
 
   document.getElementById('btn-prune-gone').addEventListener('click', handlePruneGone);
+  el.btnProtectBranch.addEventListener('click', openSecurityUpdateModal);
+  el.btnUpdateCheck.addEventListener('click', openSecurityUpdateModal);
+  el.lensPathInput.addEventListener('input', () => {
+    state.pathLens = el.lensPathInput.value;
+    renderSVG();
+  });
   el.btnLogsModal.addEventListener('click', openLogsModal);
   document.getElementById('btn-mcp-connect').addEventListener('click', openMCPConnectModal);
   document.getElementById('btn-sync-spine').addEventListener('click', handleSyncSpine);
+
+  document.getElementById('sec-close').addEventListener('click', closeSecurityUpdateModal);
+  document.getElementById('sec-close-btn').addEventListener('click', closeSecurityUpdateModal);
+  el.btnEnableProtection.addEventListener('click', handleProtectBranch);
+  document.getElementById('btn-run-update-check').addEventListener('click', handleCheckUpdates);
+  document.getElementById('sec-copy-update-cmd').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(el.secUpdateCmd.textContent || '');
+      showToast('Güncelleme komutu panoya kopyalandı', 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
 
   document.getElementById('studio-close').addEventListener('click', closeConflictStudio);
   document.getElementById('studio-cancel').addEventListener('click', closeConflictStudio);

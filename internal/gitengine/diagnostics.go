@@ -209,57 +209,82 @@ func buildGoReproCmd(pkg, testName string) string {
 	return fmt.Sprintf("go test -v %s", target)
 }
 
-// ComputeCrossPRCollisions finds shared modified files across open branches/PRs.
+// ComputeCrossPRCollisions finds shared modified files across open branches/PRs
+// using an O(N * F) inverted index so mega-repos with many open branches stay fast.
 func ComputeCrossPRCollisions(branches []model.BranchArc) {
 	for i := range branches {
 		branches[i].CrossPR = nil
 	}
-	for i := 0; i < len(branches); i++ {
+
+	fileToBranches := map[string][]int{}
+	for i := range branches {
 		if branches[i].State != "open" || len(branches[i].ChangedFiles) == 0 {
 			continue
 		}
-		setA := make(map[string]bool, len(branches[i].ChangedFiles))
+		seenFile := map[string]bool{}
 		for _, f := range branches[i].ChangedFiles {
-			setA[f] = true
-		}
-
-		for j := i + 1; j < len(branches); j++ {
-			if branches[j].State != "open" || len(branches[j].ChangedFiles) == 0 {
+			if seenFile[f] {
 				continue
 			}
-			var shared []string
-			for _, f := range branches[j].ChangedFiles {
-				if setA[f] {
-					shared = append(shared, f)
+			seenFile[f] = true
+			fileToBranches[f] = append(fileToBranches[f], i)
+		}
+	}
+
+	pairShared := map[[2]int][]string{}
+	for f, idxs := range fileToBranches {
+		if len(idxs) < 2 {
+			continue
+		}
+		for a := 0; a < len(idxs); a++ {
+			for b := a + 1; b < len(idxs); b++ {
+				i, j := idxs[a], idxs[b]
+				if i > j {
+					i, j = j, i
 				}
+				key := [2]int{i, j}
+				pairShared[key] = append(pairShared[key], f)
 			}
-			if len(shared) == 0 {
-				continue
-			}
-			sort.Strings(shared)
-
-			prNumA := 0
-			if branches[i].PR != nil {
-				prNumA = branches[i].PR.Number
-			}
-			prNumB := 0
-			if branches[j].PR != nil {
-				prNumB = branches[j].PR.Number
-			}
-
-			branches[i].CrossPR = append(branches[i].CrossPR, model.CrossPRWarning{
-				OtherBranchID: branches[j].ID,
-				OtherBranch:   branches[j].Name,
-				OtherPRNumber: prNumB,
-				SharedFiles:   shared,
-			})
-			branches[j].CrossPR = append(branches[j].CrossPR, model.CrossPRWarning{
-				OtherBranchID: branches[i].ID,
-				OtherBranch:   branches[i].Name,
-				OtherPRNumber: prNumA,
-				SharedFiles:   shared,
-			})
 		}
+	}
+
+	keys := make([][2]int, 0, len(pairShared))
+	for k := range pairShared {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(a, b int) bool {
+		if keys[a][0] != keys[b][0] {
+			return keys[a][0] < keys[b][0]
+		}
+		return keys[a][1] < keys[b][1]
+	})
+
+	for _, key := range keys {
+		i, j := key[0], key[1]
+		shared := pairShared[key]
+		sort.Strings(shared)
+
+		prNumA := 0
+		if branches[i].PR != nil {
+			prNumA = branches[i].PR.Number
+		}
+		prNumB := 0
+		if branches[j].PR != nil {
+			prNumB = branches[j].PR.Number
+		}
+
+		branches[i].CrossPR = append(branches[i].CrossPR, model.CrossPRWarning{
+			OtherBranchID: branches[j].ID,
+			OtherBranch:   branches[j].Name,
+			OtherPRNumber: prNumB,
+			SharedFiles:   shared,
+		})
+		branches[j].CrossPR = append(branches[j].CrossPR, model.CrossPRWarning{
+			OtherBranchID: branches[i].ID,
+			OtherBranch:   branches[i].Name,
+			OtherPRNumber: prNumA,
+			SharedFiles:   shared,
+		})
 	}
 }
 

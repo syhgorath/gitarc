@@ -1,6 +1,7 @@
 package gitengine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -46,6 +47,9 @@ type Manager struct {
 	nextSeq      int
 	logs         []model.ActionLogEntry
 	logSeq       int
+	teamMode     bool
+	latestVer    string
+	updateAvail  bool
 }
 
 type repoEntry struct {
@@ -183,8 +187,31 @@ func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 		m.recordLog("error", "Snapshot", live.name, err.Error(), "")
 		return model.CockpitSnapshot{}, err
 	}
+	m.mu.RLock()
+	snap.Repo.TeamMode = m.teamMode
+	snap.Repo.AppVersion = AppVersion
+	snap.Repo.LatestVersion = m.latestVer
+	snap.Repo.UpdateAvailable = m.updateAvail
+	m.mu.RUnlock()
 	snap.Logs = m.recentLogs()
 	return snap, nil
+}
+
+// SetTeamMode toggles multi-user shared server protection (locks shared HEAD mutations).
+func (m *Manager) SetTeamMode(enabled bool) {
+	m.mu.Lock()
+	m.teamMode = enabled
+	if enabled {
+		m.recordLogLocked("info", "Team Server Modu", "", "Paylaşılan sunucu modu aktif; yerel HEAD checkout/amend kilitlendi", "")
+	}
+	m.mu.Unlock()
+}
+
+// IsTeamMode reports whether shared server HEAD protection is active.
+func (m *Manager) IsTeamMode() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.teamMode
 }
 
 func (m *Manager) recordLogLocked(level, action, branch, message, detail string) {
@@ -367,8 +394,13 @@ func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitS
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
-// CheckoutBranch switches HEAD to the given branch (simulation or `git switch`).
+	// CheckoutBranch switches HEAD to the given branch (simulation or `git switch`).
 func (m *Manager) CheckoutBranch(branchID string) (model.CockpitSnapshot, error) {
+	if m.IsTeamMode() {
+		err := fmt.Errorf("Team Server modunda paylaşılan çalışma dizini (HEAD) kilitlidir; tüm PR merge, izole worktree çakışma çözümü ve uzak dal işlemleri aktiftir")
+		m.recordLog("error", "Dala Geçiş", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
+	}
 	if live, ok := m.activeLiveRepo(); ok {
 		snap, err := m.checkoutBranchLive(live, branchID)
 		return m.logLiveOutcome("Dala Geçiş", branchID, "Aktif çalışma dalı değiştirildi", snap, err)
@@ -558,6 +590,11 @@ func (m *Manager) UpdatePRMeta(branchID, title, body string) (model.CockpitSnaps
 
 // AmendLastCommit safely updates only the commit message of the active HEAD feature branch.
 func (m *Manager) AmendLastCommit(branchID, message string) (model.CockpitSnapshot, error) {
+	if m.IsTeamMode() {
+		err := fmt.Errorf("Team Server modunda paylaşılan çalışma dizini (HEAD) kilitlidir; tüm PR merge, izole worktree çakışma çözümü ve uzak dal işlemleri aktiftir")
+		m.recordLog("error", "Commit Mesajı Düzenle", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
+	}
 	message = strings.TrimSpace(message)
 	if message == "" {
 		err := fmt.Errorf("commit mesajı boş olamaz")
@@ -591,7 +628,7 @@ func (m *Manager) AmendLastCommit(branchID, message string) (model.CockpitSnapsh
 
 func normalizeMergeStrategy(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "squash", "rebase", "merge":
+	case "squash", "rebase", "merge", "auto":
 		return strings.ToLower(strings.TrimSpace(s))
 	default:
 		return "merge"
@@ -752,8 +789,14 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 	nodes := make([]model.CommitNode, len(m.simRepo.nodes))
 	copy(nodes, m.simRepo.nodes)
 
+	repoMeta := m.simRepo.repo
+	repoMeta.TeamMode = m.teamMode
+	repoMeta.AppVersion = AppVersion
+	repoMeta.LatestVersion = m.latestVer
+	repoMeta.UpdateAvailable = m.updateAvail
+
 	return model.CockpitSnapshot{
-		Repo:        m.simRepo.repo,
+		Repo:        repoMeta,
 		Repos:       opts,
 		Nodes:       nodes,
 		Branches:    branches,
@@ -897,6 +940,7 @@ func buildInitialKeyLabSimulation() simWorkspace {
 			},
 			HasLocal:         true,
 			LocalSHA:         "c18e420",
+			Author:           "ziya",
 			IsHEAD:           false,
 			AheadMain:        3,
 			BehindMain:       2,
@@ -939,6 +983,7 @@ func buildInitialKeyLabSimulation() simWorkspace {
 			},
 			HasLocal:         true,
 			LocalSHA:         "d42b991",
+			Author:           "ziya",
 			IsHEAD:           true,
 			AheadMain:        2,
 			BehindMain:       1,
@@ -961,7 +1006,7 @@ func buildInitialKeyLabSimulation() simWorkspace {
 			PR: &model.PRStatus{
 				Number:      424,
 				Title:       "chore(lock): upgrade linux-hardening 0.13.0 -> 0.14.0",
-				Author:      "ziya",
+				Author:      "dependabot[bot]",
 				ReviewState: "REVIEW_REQUIRED",
 				CI: &model.CIStatus{
 					State:    "RUNNING",
@@ -971,6 +1016,7 @@ func buildInitialKeyLabSimulation() simWorkspace {
 			},
 			HasLocal:         true,
 			LocalSHA:         "e99a014",
+			Author:           "dependabot[bot]",
 			IsHEAD:           false,
 			AheadMain:        1,
 			BehindMain:       0,
@@ -991,6 +1037,7 @@ func buildInitialKeyLabSimulation() simWorkspace {
 			HasRemote:        false,
 			HasLocal:         true,
 			LocalSHA:         "f03c812",
+			Author:           "ziya",
 			IsHEAD:           false,
 			AheadMain:        3,
 			BehindMain:       1,
@@ -1009,6 +1056,7 @@ func buildInitialKeyLabSimulation() simWorkspace {
 			HasRemote:        false,
 			HasLocal:         true,
 			LocalSHA:         "a17c504",
+			Author:           "ziya",
 			IsHEAD:           false,
 			AheadMain:        2,
 			BehindMain:       0,
@@ -1020,16 +1068,20 @@ func buildInitialKeyLabSimulation() simWorkspace {
 
 	return simWorkspace{
 		repo: model.RepoMeta{
-			ID:            "sim-keylab",
-			Name:          "keylab / sshpocket",
-			Path:          "/Users/ziyayesilbahce/Developer/sshpocket",
-			DefaultBranch: "main",
-			RemoteName:    "origin",
-			Ahead:         2,
-			Behind:        1,
-			DirtyCount:    2,
-			Mode:          "simulation",
-			VersionTag:    "v4.0.16",
+			ID:                "sim-keylab",
+			Name:              "keylab / sshpocket",
+			Path:              "/Users/ziyayesilbahce/Developer/sshpocket",
+			DefaultBranch:     "main",
+			RemoteName:        "origin",
+			Ahead:             2,
+			Behind:            1,
+			DirtyCount:        2,
+			Mode:              "simulation",
+			VersionTag:        "v4.0.16",
+			CurrentUser:       "ziya",
+			BranchProtected:   false,
+			ProtectionSummary: "Korumasız (Doğrudan push/force-push açık)",
+			AppVersion:        AppVersion,
 		},
 		nodes:    nodes,
 		branches: branches,
@@ -1092,7 +1144,7 @@ func (m *Manager) createBranchLive(live *repoEntry, name, hemisphere, fromSHA st
 	if out, _, err := runCmd(ctx, live.path, "git", args...); err != nil {
 		return model.CockpitSnapshot{}, fmt.Errorf("dal oluşturulamadı: %s (%v)", strings.TrimSpace(out), err)
 	}
-	if hemisphere == "upper" {
+	if hemisphere == "upper" || m.IsTeamMode() {
 		if remoteOut, _, err := runCmd(ctx, live.path, "git", "remote"); err == nil && strings.TrimSpace(remoteOut) != "" {
 			if out, _, err := runCmd(ctx, live.path, "git", "push", "-u", "origin", name); err != nil {
 				return model.CockpitSnapshot{}, fmt.Errorf("dal yerelde açıldı ancak origin'e pushlanamadı: %s", strings.TrimSpace(out))
@@ -1183,8 +1235,14 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID, strategy string) (m
 			_, _, _ = runCmd(ctx, live.path, "git", "checkout", defBranch)
 			curBranch = defBranch
 		}
-		flag := "--" + normalizeMergeStrategy(strategy)
-		out, _, err := runCmd(ctx, live.path, "gh", "pr", "merge", strconv.Itoa(b.PR.Number), flag, "--delete-branch")
+		strat := normalizeMergeStrategy(strategy)
+		mergeArgs := []string{"pr", "merge", strconv.Itoa(b.PR.Number)}
+		if strat == "auto" {
+			mergeArgs = append(mergeArgs, "--merge", "--auto", "--delete-branch")
+		} else {
+			mergeArgs = append(mergeArgs, "--"+strat, "--delete-branch")
+		}
+		out, _, err := runCmd(ctx, live.path, "gh", mergeArgs...)
 		if err != nil {
 			return model.CockpitSnapshot{}, fmt.Errorf("PR #%d merge edilemedi: %s", b.PR.Number, strings.TrimSpace(out))
 		}
@@ -1397,4 +1455,105 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 
 	InvalidateGHCache(live.path)
 	return m.Snapshot()
+}
+
+// CheckForUpdates inspects remote git tags to detect whether a newer GitArc release exists.
+func (m *Manager) CheckForUpdates() (map[string]any, error) {
+	latest := AppVersion
+	updateCmd := "git pull --ff-only origin main && go build -o gitarc ."
+
+	if live, ok := m.activeLiveRepo(); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		remoteName := "origin"
+		if rOut, _, err := runCmd(ctx, live.path, "git", "remote"); err == nil && strings.TrimSpace(rOut) != "" {
+			remoteName = strings.Fields(rOut)[0]
+		}
+		if out, _, err := runCmd(ctx, live.path, "git", "ls-remote", "--tags", "--sort=-v:refname", remoteName); err == nil {
+			for _, line := range strings.Split(out, "\n") {
+				fields := strings.Fields(line)
+				if len(fields) < 2 {
+					continue
+				}
+				ref := strings.TrimSuffix(fields[1], "^{}")
+				if strings.HasPrefix(ref, "refs/tags/v") {
+					latest = strings.TrimPrefix(ref, "refs/tags/v")
+					break
+				}
+			}
+		}
+	}
+
+	avail := compareSemver(latest, AppVersion) > 0
+	m.mu.Lock()
+	m.latestVer = latest
+	m.updateAvail = avail
+	m.recordLogLocked("ok", "Sürüm Kontrolü", "", fmt.Sprintf("Mevcut v%s · Uzak v%s (Güncelleme: %v)", AppVersion, latest, avail), "")
+	m.mu.Unlock()
+
+	return map[string]any{
+		"currentVersion":  AppVersion,
+		"latestVersion":   latest,
+		"updateAvailable": avail,
+		"updateCommand":   updateCmd,
+		"teamMode":        m.IsTeamMode(),
+	}, nil
+}
+
+func compareSemver(a, b string) int {
+	pa := strings.Split(strings.TrimPrefix(strings.TrimSpace(a), "v"), ".")
+	pb := strings.Split(strings.TrimPrefix(strings.TrimSpace(b), "v"), ".")
+	for i := 0; i < 3; i++ {
+		va, vb := 0, 0
+		if i < len(pa) {
+			va, _ = strconv.Atoi(strings.Split(pa[i], "-")[0])
+		}
+		if i < len(pb) {
+			vb, _ = strconv.Atoi(strings.Split(pb[i], "-")[0])
+		}
+		if va > vb {
+			return 1
+		}
+		if va < vb {
+			return -1
+		}
+	}
+	return 0
+}
+
+// ProtectDefaultBranch enables main/default branch protection in simulation or via GitHub API.
+func (m *Manager) ProtectDefaultBranch() (model.CockpitSnapshot, error) {
+	if live, ok := m.activeLiveRepo(); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		defBranch := detectDefaultBranch(ctx, live.path)
+		if _, err := exec.LookPath("gh"); err != nil {
+			err := fmt.Errorf("Branch Protection etkinleştirmek için gh CLI gereklidir")
+			m.recordLog("error", "Branch Protection", defBranch, err.Error(), "")
+			return model.CockpitSnapshot{}, err
+		}
+		payload := `{"required_status_checks":{"strict":true,"contexts":[]},"enforce_admins":false,"required_pull_request_reviews":{"dismiss_stale_reviews":true,"required_approving_review_count":1},"restrictions":null}`
+		cmd := exec.CommandContext(ctx, "gh", "api", "-X", "PUT", fmt.Sprintf("repos/:owner/:repo/branches/%s/protection", defBranch), "--input", "-")
+		cmd.Dir = live.path
+		cmd.Stdin = strings.NewReader(payload)
+		var outBuf bytes.Buffer
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &outBuf
+		if err := cmd.Run(); err != nil {
+			msg := strings.TrimSpace(outBuf.String())
+			errOut := fmt.Errorf("Branch Protection API hatası (%s): %s", defBranch, msg)
+			m.recordLog("error", "Branch Protection", defBranch, errOut.Error(), fmt.Sprintf("gh api -X PUT repos/:owner/:repo/branches/%s/protection", defBranch))
+			return model.CockpitSnapshot{}, errOut
+		}
+		InvalidateGHCache(live.path)
+		m.recordLog("ok", "Branch Protection", defBranch, fmt.Sprintf("%s dalı korumaya alındı (PR + strict status checks)", defBranch), "")
+		return m.Snapshot()
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.simRepo.repo.BranchProtected = true
+	m.simRepo.repo.ProtectionSummary = "PR Zorunlu + CI Status Checks + Force-Push Kilitli"
+	m.recordLogLocked("ok", "Branch Protection", m.simRepo.repo.DefaultBranch, "main dalı korumaya alındı (PR + CI + Force-Push kilitli)", "")
+	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }

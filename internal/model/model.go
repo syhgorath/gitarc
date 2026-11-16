@@ -28,16 +28,24 @@ type RepoOption struct {
 
 // RepoMeta holds active repository metadata and spine sync status.
 type RepoMeta struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Path          string `json:"path"`
-	DefaultBranch string `json:"defaultBranch"`
-	RemoteName    string `json:"remoteName"`
-	Ahead         int    `json:"ahead"`
-	Behind        int    `json:"behind"`
-	DirtyCount    int    `json:"dirtyCount"`
-	Mode          string `json:"mode"` // "simulation" | "live"
-	VersionTag    string `json:"versionTag,omitempty"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Path              string `json:"path"`
+	DefaultBranch     string `json:"defaultBranch"`
+	RemoteName        string `json:"remoteName"`
+	Ahead             int    `json:"ahead"`
+	Behind            int    `json:"behind"`
+	DirtyCount        int    `json:"dirtyCount"`
+	Mode              string `json:"mode"` // "simulation" | "live"
+	VersionTag        string `json:"versionTag,omitempty"`
+	CurrentUser       string `json:"currentUser,omitempty"`
+	TeamMode          bool   `json:"teamMode,omitempty"`
+	BranchProtected   bool   `json:"branchProtected"`
+	ProtectionSummary string `json:"protectionSummary,omitempty"`
+	AppVersion        string `json:"appVersion,omitempty"`
+	LatestVersion     string `json:"latestVersion,omitempty"`
+	UpdateAvailable   bool   `json:"updateAvailable,omitempty"`
+	CacheHits         int    `json:"cacheHits,omitempty"`
 }
 
 // CommitNode represents a commit along the central main/develop spine.
@@ -76,6 +84,7 @@ type BranchArc struct {
 	// Lower layer of Branch Pair Capsule (Local Branch / HEAD / Working Tree)
 	HasLocal         bool   `json:"hasLocal"`
 	LocalSHA         string `json:"localSha,omitempty"`
+	Author           string `json:"author,omitempty"`
 	IsHEAD           bool   `json:"isHead"`
 	AheadMain        int    `json:"aheadMain"`
 	BehindMain       int    `json:"behindMain"`
