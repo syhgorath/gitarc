@@ -99,7 +99,7 @@ func handleRequest(req rpcRequest, mgr *gitengine.Manager) rpcResponse {
 				},
 				"serverInfo": map[string]any{
 					"name":    "gitarc",
-					"version": "0.3.0",
+					"version": "0.5.0",
 				},
 			},
 		}
@@ -166,6 +166,32 @@ func listTools() []toolDefinition {
 			Description: "Çalışma dizinini bozmadan origin/main ile yerel main referansını eşitler.",
 			InputSchema: emptySchema,
 		},
+		{
+			Name:        "gitarc_resolve_conflict",
+			Description: "Seçili daldaki merge çakışmasını izole git worktree içinde (union, ours, theirs veya custom içerikle) çözer, go vet doğrulamasından geçirir ve commit/push yapar.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"branchId": map[string]any{
+						"type":        "string",
+						"description": "Çözülecek dal kimliği (ID veya dal adı, örn. feat/v0.2.0-live-dogfooding).",
+					},
+					"strategy": map[string]any{
+						"type":        "string",
+						"enum":        []string{"union", "ours", "theirs", "custom"},
+						"description": "Çakışma çözüm stratejisi: union | ours | theirs | custom.",
+					},
+					"customFiles": map[string]any{
+						"type":        "object",
+						"description": "Opsiyonel dosya yolu -> pencere içerik haritası (strategy='custom' iken kullanılır).",
+						"additionalProperties": map[string]any{
+							"type": "string",
+						},
+					},
+				},
+				"required": []string{"branchId", "strategy"},
+			},
+		},
 	}
 }
 
@@ -183,7 +209,7 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 		if err != nil {
 			return errResult(err.Error())
 		}
-		return jsonTextResult(buildConflictsPayload(snap))
+		return jsonTextResult(buildConflictsPayload(snap, mgr))
 
 	case "gitarc_ci_failure_digest":
 		snap, err := mgr.Snapshot()
@@ -203,6 +229,33 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 			"ahead":         snap.Repo.Ahead,
 			"behind":        snap.Repo.Behind,
 			"nodeCount":     len(snap.Nodes),
+		})
+
+	case "gitarc_resolve_conflict":
+		branchID, _ := params.Arguments["branchId"].(string)
+		strategy, _ := params.Arguments["strategy"].(string)
+		if strings.TrimSpace(branchID) == "" || strings.TrimSpace(strategy) == "" {
+			return errResult("branchId ve strategy zorunludur")
+		}
+		var customFiles map[string]string
+		if rawMap, ok := params.Arguments["customFiles"].(map[string]any); ok && len(rawMap) > 0 {
+			customFiles = make(map[string]string, len(rawMap))
+			for k, v := range rawMap {
+				if s, ok := v.(string); ok {
+					customFiles[k] = s
+				}
+			}
+		}
+		snap, err := mgr.ResolveBranchConflict(branchID, strategy, customFiles, true)
+		if err != nil {
+			return errResult(err.Error())
+		}
+		return jsonTextResult(map[string]any{
+			"resolved": true,
+			"branchId": branchID,
+			"strategy": strategy,
+			"repo":     snap.Repo.Name,
+			"branches": buildStatusPayload(snap)["branches"],
 		})
 
 	default:
@@ -250,14 +303,16 @@ func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 	}
 }
 
-func buildConflictsPayload(snap model.CockpitSnapshot) map[string]any {
+func buildConflictsPayload(snap model.CockpitSnapshot, mgr *gitengine.Manager) map[string]any {
 	type conflictReport struct {
-		Branch            string                 `json:"branch"`
-		PRNumber          int                    `json:"prNumber,omitempty"`
-		MergeTreeFiles    []string               `json:"mergeTreeFiles,omitempty"`
-		IsChangelogOrLock bool                   `json:"isChangelogOrLock,omitempty"`
-		Strategy          string                 `json:"strategy,omitempty"`
-		CrossPR           []model.CrossPRWarning `json:"crossPr,omitempty"`
+		BranchID          string                   `json:"branchId"`
+		Branch            string                   `json:"branch"`
+		PRNumber          int                      `json:"prNumber,omitempty"`
+		MergeTreeFiles    []string                 `json:"mergeTreeFiles,omitempty"`
+		IsChangelogOrLock bool                     `json:"isChangelogOrLock,omitempty"`
+		Strategy          string                   `json:"strategy,omitempty"`
+		Files             []model.ConflictFileDiff `json:"files,omitempty"`
+		CrossPR           []model.CrossPRWarning   `json:"crossPr,omitempty"`
 	}
 	var reports []conflictReport
 	for _, b := range snap.Branches {
@@ -266,8 +321,9 @@ func buildConflictsPayload(snap model.CockpitSnapshot) map[string]any {
 			continue
 		}
 		r := conflictReport{
-			Branch:  b.Name,
-			CrossPR: b.CrossPR,
+			BranchID: b.ID,
+			Branch:   b.Name,
+			CrossPR:  b.CrossPR,
 		}
 		if b.PR != nil {
 			r.PRNumber = b.PR.Number
@@ -276,6 +332,11 @@ func buildConflictsPayload(snap model.CockpitSnapshot) map[string]any {
 			r.MergeTreeFiles = b.Conflict.Files
 			r.IsChangelogOrLock = b.Conflict.IsChangelogOrLock
 			r.Strategy = b.Conflict.Strategy
+			if mgr != nil {
+				if studio, err := mgr.InspectConflictStudio(b.ID); err == nil {
+					r.Files = studio.Files
+				}
+			}
 		}
 		reports = append(reports, r)
 	}

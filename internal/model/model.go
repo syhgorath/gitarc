@@ -153,3 +153,24 @@ type DiagnosticItem struct {
 	ActionHint string   `json:"actionHint,omitempty"`
 	Files      []string `json:"files,omitempty"`
 }
+
+// ConflictFileDiff holds the 3-way conflict hunk window and the 3 automatic resolution previews.
+type ConflictFileDiff struct {
+	Path          string `json:"path"`
+	StartLine     int    `json:"startLine"`
+	EndLine       int    `json:"endLine"`
+	ConflictHunks string `json:"conflictHunks"` // Sol Panel: <<<<<<< origin/main ... ======= ... >>>>>>> dal
+	UnionPreview  string `json:"unionPreview"`  // 1. Adım: Her İkisini Koru (Union)
+	OursPreview   string `json:"oursPreview"`   // 2. Adım: Main'i Baz Al (Ours)
+	TheirsPreview string `json:"theirsPreview"` // 3. Adım: Dalı Baz Al (Theirs)
+}
+
+// ConflictStudioPayload is returned by /api/conflict/inspect for the side-by-side Conflict Studio modal.
+type ConflictStudioPayload struct {
+	BranchID    string             `json:"branchId"`
+	BranchName  string             `json:"branchName"`
+	BaseRef     string             `json:"baseRef"`
+	Recommended string             `json:"recommended"` // "union" | "ours" | "theirs" | "custom"
+	AIPrompt    string             `json:"aiPrompt"`    // 4. Adım: Kota dostu hazır AI / MCP çözüm istemi
+	Files       []ConflictFileDiff `json:"files"`
+}

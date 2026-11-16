@@ -527,28 +527,7 @@ func (m *Manager) FixCI(branchID string) (model.CockpitSnapshot, error) {
 
 // AutoResolveConflict resolves CHANGELOG.md / lockfile conflicts by preserving both sides.
 func (m *Manager) AutoResolveConflict(branchID string) (model.CockpitSnapshot, error) {
-	if _, ok := m.activeLiveRepo(); ok {
-		return model.CockpitSnapshot{}, fmt.Errorf("canlı modda güvenli dosya düzenleme için dalı checkout edip union merge uygulayın")
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for i := range m.simRepo.branches {
-		b := &m.simRepo.branches[i]
-		if b.ID == branchID {
-			if b.Conflict == nil || !b.Conflict.HasConflict {
-				return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
-			}
-			b.Conflict.HasConflict = false
-			b.Conflict.Resolved = true
-			b.Conflict.ResolvedNote = "Union merge + kilit bütünlük doğrulaması uygulandı; çalışma dizini temiz."
-			b.Conflict.PreviewUnified = "✓ Her iki dalın CHANGELOG.md ve kilit girdileri sırası korunarak birleştirildi.\n✓ git merge-tree --write-tree: exit 0 (temiz)"
-			b.BehindMain = 0
-			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
-		}
-	}
-	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	return m.ResolveBranchConflict(branchID, "union", nil, true)
 }
 
 // PruneGone cleans up branches whose remote tracking ref is gone or already merged.
@@ -957,6 +936,28 @@ func (m *Manager) findLiveBranch(live *repoEntry, branchID string) (model.Branch
 			}
 			return b, snap, nil
 		}
+	}
+	var fallback *model.BranchArc
+	for i := range snap.Branches {
+		b := snap.Branches[i]
+		if b.Name == branchID {
+			if b.State == "open" {
+				if err := validateBranchName(b.Name); err != nil {
+					return model.BranchArc{}, snap, err
+				}
+				return b, snap, nil
+			}
+			if fallback == nil {
+				cp := b
+				fallback = &cp
+			}
+		}
+	}
+	if fallback != nil {
+		if err := validateBranchName(fallback.Name); err != nil {
+			return model.BranchArc{}, snap, err
+		}
+		return *fallback, snap, nil
 	}
 	return model.BranchArc{}, snap, fmt.Errorf("canlı depoda dal bulunamadı: %s", branchID)
 }

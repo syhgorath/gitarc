@@ -2,6 +2,14 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
+## [0.5.0] - 2026-11-16
+
+### Eklenenler
+- **Çakışma Çözüm Stüdyosu (Sol: Olan / Sağ: Olacak + 4 Adımlı Editör):** Çakışmalı canlı/simüle tüm dallar için `/api/conflict/inspect` ve yan yana stüdyo modalı; 3 yollu gerçek `git merge-file -p` bloklarını çıkarır ve tek tıkla **1. Union**, **2. Main (`ours`)**, **3. Dal (`theirs`)**, **4. 🤖 AI / Elle Düzenle** seçeneklerini canlı önizler.
+- **Zero-Touch İzole `git worktree` + `go vet` Kilidi:** `ResolveBranchConflict` kullanıcının aktif çalışma dizinindeki kirli dosyalara hiç dokunmadan geçici `git worktree` içinde çözümü uygular, `go.mod` varsa `go vet ./...` ile derlemeyi doğrular ve temizse commit + `origin` push yapar.
+- **Antigravity Doğrudan MCP Eklentisi & `gitarc_resolve_conflict`:** `.agents/plugins/gitarc/` eklentisiyle GitArc MCP sunucusu Antigravity'ye doğrudan bağlanır; `gitarc_check_conflicts` artık odaklı `conflictHunks` penceresi döndürür ve `gitarc_resolve_conflict` MCP üzerinden tek adımda çözüm uygular.
+- **MCP Bağlantı Merkezi Modalı (`🔌 MCP Bağla`):** Antigravity, Claude Code ve Cursor için tek tıkla kopyalanabilir `mcp_config.json` penceresi eklendi.
+
 ## [0.4.0] - 2026-11-16
 
 ### Eklenenler
