@@ -42,6 +42,7 @@
           <span>Birleşmiş Parabolleri Göster</span>
         </label>
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
+        <button type="button" class="btn ghost" id="btn-logs-modal" title="Sistem ve hata kayıtlarını görüntüle">📜 Loglar <span class="badge-count" id="log-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP Bağla</button>
         <button type="button" class="btn ghost" id="btn-sync-spine" title="main ile origin/main arasındaki farkı eşitle">Sync ↑↓</button>
         <button type="button" class="btn emerald" id="btn-new-branch" title="main omurgasından yeni parabolik dal aç">+ Yeni Dal Aç</button>
@@ -155,11 +156,28 @@
         <div class="modal-body">
           <div class="studio-file-tabs" id="studio-file-tabs"></div>
 
+          <div class="studio-guide-box" id="studio-guide-box" hidden>
+            <span class="studio-guide-tag">💡 Ne Yapmalıyım? (Akıllı Rehber)</span>
+            <p class="studio-guide-text" id="studio-guide-text"></p>
+          </div>
+
           <div class="strat-tabs" id="studio-strategy-bar" role="group" aria-label="4 adımlı çakışma çözüm yöntemleri">
-            <button type="button" class="strat-btn" data-strat="union">1. ✦ Her İkisini Koru (Union)</button>
-            <button type="button" class="strat-btn" data-strat="ours">2. 🛡️ Main'i Baz Al (Ours)</button>
-            <button type="button" class="strat-btn" data-strat="theirs">3. 🚀 Dalı Baz Al (Theirs)</button>
-            <button type="button" class="strat-btn" data-strat="custom">4. 🤖 AI / Elle Düzenle</button>
+            <button type="button" class="strat-btn" data-strat="union">
+              <span class="strat-title">1. ✦ İkisini Alt Alta Koru</span>
+              <span class="strat-badge" data-badge-for="union">Union</span>
+            </button>
+            <button type="button" class="strat-btn" data-strat="ours">
+              <span class="strat-title">2. 🛡️ Main'deki Güncel Kodu Kullan</span>
+              <span class="strat-badge" data-badge-for="ours">Ours</span>
+            </button>
+            <button type="button" class="strat-btn" data-strat="theirs">
+              <span class="strat-title">3. 🚀 Sadece Bu Dalın Kodunu Kullan</span>
+              <span class="strat-badge" data-badge-for="theirs">Theirs</span>
+            </button>
+            <button type="button" class="strat-btn" data-strat="custom">
+              <span class="strat-title">4. 🤖 AI / Elle Düzenle</span>
+              <span class="strat-badge" data-badge-for="custom">Özel Editör</span>
+            </button>
           </div>
 
           <div class="studio-split-grid">
@@ -177,6 +195,14 @@
               </div>
               <textarea class="textarea-control studio-code-pane mono" id="studio-right-preview" spellcheck="false" aria-label="Olacak olan çözüm önizlemesi ve editör"></textarea>
             </div>
+          </div>
+
+          <div class="studio-error-banner" id="studio-error-banner" hidden>
+            <div class="studio-error-head">
+              <span>❌ Çözüm Uygulanamadı — Tam Hata Çıktısı</span>
+              <button type="button" class="btn sm danger" id="studio-copy-error">📋 Hatayı Kopyala</button>
+            </div>
+            <pre class="terminal-box studio-error-pre" id="studio-error-text"></pre>
           </div>
 
           <div class="modal-foot studio-foot">
@@ -217,6 +243,28 @@
           <div class="modal-foot">
             <button type="button" class="btn primary" id="mcp-copy-json">📋 Konfigürasyonu Kopyala</button>
             <button type="button" class="btn ghost" id="mcp-close-btn">Kapat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: SİSTEM & HATA GÜNLÜĞÜ -->
+    <div class="modal-backdrop" id="logs-modal" hidden>
+      <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="logs-modal-title">
+        <div class="modal-head">
+          <h3 id="logs-modal-title"><span class="modal-dot"></span>📜 Sistem &amp; Hata Günlüğü</h3>
+          <button type="button" class="icon-close" id="logs-close" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="log-list" id="logs-list"></div>
+          <div class="modal-foot studio-foot">
+            <div class="studio-foot-left">
+              <button type="button" class="btn primary sm" id="logs-copy-all">📋 Tüm Logları Kopyala</button>
+              <button type="button" class="btn warn sm" id="logs-clear">🧹 Logları Temizle</button>
+            </div>
+            <div class="studio-foot-right">
+              <button type="button" class="btn ghost sm" id="logs-close-btn">Kapat</button>
+            </div>
           </div>
         </div>
       </div>

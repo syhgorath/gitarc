@@ -44,6 +44,8 @@ type Manager struct {
 	liveRepos    []repoEntry
 	nextPR       int
 	nextSeq      int
+	logs         []model.ActionLogEntry
+	logSeq       int
 }
 
 type repoEntry struct {
@@ -178,9 +180,67 @@ func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 
 	snap, err := CollectLiveRepo(live.id, live.name, live.path, opts)
 	if err != nil {
+		m.recordLog("error", "Snapshot", live.name, err.Error(), "")
 		return model.CockpitSnapshot{}, err
 	}
+	snap.Logs = m.recentLogs()
 	return snap, nil
+}
+
+func (m *Manager) recordLogLocked(level, action, branch, message, detail string) {
+	m.logSeq++
+	entry := model.ActionLogEntry{
+		ID:        fmt.Sprintf("log-%d", m.logSeq),
+		Timestamp: time.Now().Format("15:04:05"),
+		Level:     level,
+		Action:    action,
+		Branch:    branch,
+		Message:   strings.TrimSpace(message),
+		Detail:    strings.TrimSpace(detail),
+	}
+	m.logs = append([]model.ActionLogEntry{entry}, m.logs...)
+	if len(m.logs) > 50 {
+		m.logs = m.logs[:50]
+	}
+}
+
+func (m *Manager) recordLog(level, action, branch, message, detail string) {
+	m.mu.Lock()
+	m.recordLogLocked(level, action, branch, message, detail)
+	m.mu.Unlock()
+}
+
+func (m *Manager) logLiveOutcome(action, branch, okMsg string, snap model.CockpitSnapshot, err error) (model.CockpitSnapshot, error) {
+	if err != nil {
+		m.recordLog("error", action, branch, err.Error(), "")
+		return snap, err
+	}
+	m.recordLog("ok", action, branch, okMsg, "")
+	snap.Logs = m.recentLogs()
+	return snap, nil
+}
+
+func (m *Manager) recentLogsLocked() []model.ActionLogEntry {
+	if len(m.logs) == 0 {
+		return nil
+	}
+	out := make([]model.ActionLogEntry, len(m.logs))
+	copy(out, m.logs)
+	return out
+}
+
+func (m *Manager) recentLogs() []model.ActionLogEntry {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.recentLogsLocked()
+}
+
+// ClearLogs empties the in-memory cockpit operation/error log buffer.
+func (m *Manager) ClearLogs() (model.CockpitSnapshot, error) {
+	m.mu.Lock()
+	m.logs = nil
+	m.mu.Unlock()
+	return m.Snapshot()
 }
 
 // SwitchRepo switches the active repository between simulation and discovered live repos.
@@ -218,6 +278,7 @@ func (m *Manager) activeLiveRepo() (*repoEntry, bool) {
 func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitSnapshot, error) {
 	name = strings.TrimSpace(name)
 	if err := validateBranchName(name); err != nil {
+		m.recordLog("error", "Dal Oluştur", name, err.Error(), "")
 		return model.CockpitSnapshot{}, err
 	}
 	if hemisphere != "upper" && hemisphere != "lower" {
@@ -225,7 +286,8 @@ func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitS
 	}
 
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.createBranchLive(live, name, hemisphere, fromSHA)
+		snap, err := m.createBranchLive(live, name, hemisphere, fromSHA)
+		return m.logLiveOutcome("Dal Oluştur", name, fmt.Sprintf("%s dalı (%s) açıldı", name, hemisphere), snap, err)
 	}
 
 	m.mu.Lock()
@@ -233,7 +295,9 @@ func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitS
 
 	for _, b := range m.simRepo.branches {
 		if b.Name == name && b.State != "merged" {
-			return model.CockpitSnapshot{}, fmt.Errorf("%s dalı zaten açık", name)
+			err := fmt.Errorf("%s dalı zaten açık", name)
+			m.recordLogLocked("error", "Dal Oluştur", name, err.Error(), "")
+			return model.CockpitSnapshot{}, err
 		}
 	}
 
@@ -299,13 +363,15 @@ func (m *Manager) CreateBranch(name, hemisphere, fromSHA string) (model.CockpitS
 		ChangedFiles:     []string{"go/internal/gitarc/new_feature.go"},
 	})
 
+	m.recordLogLocked("ok", "Dal Oluştur", name, fmt.Sprintf("%s dalı açıldı", name), "")
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
 // CheckoutBranch switches HEAD to the given branch (simulation or `git switch`).
 func (m *Manager) CheckoutBranch(branchID string) (model.CockpitSnapshot, error) {
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.checkoutBranchLive(live, branchID)
+		snap, err := m.checkoutBranchLive(live, branchID)
+		return m.logLiveOutcome("Dala Geçiş", branchID, "Aktif çalışma dalı değiştirildi", snap, err)
 	}
 
 	m.mu.Lock()
@@ -314,7 +380,9 @@ func (m *Manager) CheckoutBranch(branchID string) (model.CockpitSnapshot, error)
 	for i := range m.simRepo.branches {
 		if m.simRepo.branches[i].ID == branchID {
 			if m.simRepo.branches[i].State != "open" {
-				return model.CockpitSnapshot{}, fmt.Errorf("yalnızca açık dallara geçiş yapılabilir")
+				err := fmt.Errorf("yalnızca açık dallara geçiş yapılabilir")
+				m.recordLogLocked("error", "Dala Geçiş", branchID, err.Error(), "")
+				return model.CockpitSnapshot{}, err
 			}
 			m.simRepo.branches[i].IsHEAD = true
 			found = true
@@ -323,8 +391,11 @@ func (m *Manager) CheckoutBranch(branchID string) (model.CockpitSnapshot, error)
 		}
 	}
 	if !found {
-		return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+		err := fmt.Errorf("dal bulunamadı: %s", branchID)
+		m.recordLogLocked("error", "Dala Geçiş", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
+	m.recordLogLocked("ok", "Dala Geçiş", branchID, "Aktif çalışma dalı değiştirildi", "")
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
@@ -333,7 +404,8 @@ func (m *Manager) CheckoutBranch(branchID string) (model.CockpitSnapshot, error)
 func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot, error) {
 	strategy = normalizeMergeStrategy(strategy)
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.mergeBranchLive(live, branchID, strategy)
+		snap, err := m.mergeBranchLive(live, branchID, strategy)
+		return m.logLiveOutcome("Merge ("+strategy+")", branchID, fmt.Sprintf("%s birleştirildi", branchID), snap, err)
 	}
 
 	m.mu.Lock()
@@ -347,17 +419,23 @@ func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot,
 		}
 	}
 	if idx < 0 {
-		return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+		err := fmt.Errorf("dal bulunamadı: %s", branchID)
+		m.recordLogLocked("error", "Merge ("+strategy+")", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
 	b := &m.simRepo.branches[idx]
 	if b.State == "merged" {
 		return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 	}
 	if b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved {
-		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında çözülmemiş çakışma var; önce Auto-Resolve çalıştırın", b.Name)
+		err := fmt.Errorf("%s dalında çözülmemiş çakışma var; önce Auto-Resolve çalıştırın", b.Name)
+		m.recordLogLocked("error", "Merge ("+strategy+")", b.Name, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
 	if b.PR != nil && b.PR.CI != nil && b.PR.CI.State == "FAILURE" {
-		return model.CockpitSnapshot{}, fmt.Errorf("%s dalında CI testleri başarısız; merge öncesi hatayı düzeltin", b.Name)
+		err := fmt.Errorf("%s dalında CI testleri başarısız; merge öncesi hatayı düzeltin", b.Name)
+		m.recordLogLocked("error", "Merge ("+strategy+")", b.Name, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
 
 	m.nextSeq++
@@ -395,6 +473,7 @@ func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot,
 	b.IsHEAD = false
 	b.UncommittedCount = 0
 	m.simRepo.repo.Ahead++
+	m.recordLogLocked("ok", "Merge ("+strategy+")", b.Name, fmt.Sprintf("%s birleştirildi", b.Name), "")
 
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
@@ -403,7 +482,8 @@ func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot,
 // flipping it into the upper hemisphere.
 func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) {
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.promoteBranchLive(live, branchID)
+		snap, err := m.promoteBranchLive(live, branchID)
+		return m.logLiveOutcome("Push & PR Aç", branchID, "Dal origin'e pushlandı ve PR açıldı", snap, err)
 	}
 
 	m.mu.Lock()
@@ -433,20 +513,26 @@ func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) 
 					Duration: "1m 18s",
 				},
 			}
+			m.recordLogLocked("ok", "Push & PR Aç", b.Name, fmt.Sprintf("PR #%d açıldı", prNum), "")
 			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 		}
 	}
-	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	err := fmt.Errorf("dal bulunamadı: %s", branchID)
+	m.recordLogLocked("error", "Push & PR Aç", branchID, err.Error(), "")
+	return model.CockpitSnapshot{}, err
 }
 
 // UpdatePRMeta edits an open PR's title and description.
 func (m *Manager) UpdatePRMeta(branchID, title, body string) (model.CockpitSnapshot, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return model.CockpitSnapshot{}, fmt.Errorf("PR başlığı boş olamaz")
+		err := fmt.Errorf("PR başlığı boş olamaz")
+		m.recordLog("error", "PR Güncelleme", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.updatePRMetaLive(live, branchID, title, body)
+		snap, err := m.updatePRMetaLive(live, branchID, title, body)
+		return m.logLiveOutcome("PR Güncelleme", branchID, "PR başlık/açıklaması güncellendi", snap, err)
 	}
 
 	m.mu.Lock()
@@ -455,24 +541,32 @@ func (m *Manager) UpdatePRMeta(branchID, title, body string) (model.CockpitSnaps
 		b := &m.simRepo.branches[i]
 		if b.ID == branchID {
 			if b.PR == nil {
-				return model.CockpitSnapshot{}, fmt.Errorf("%s dalı için açık PR yok", b.Name)
+				err := fmt.Errorf("%s dalı için açık PR yok", b.Name)
+				m.recordLogLocked("error", "PR Güncelleme", b.Name, err.Error(), "")
+				return model.CockpitSnapshot{}, err
 			}
 			b.PR.Title = title
 			b.PR.Body = strings.TrimSpace(body)
+			m.recordLogLocked("ok", "PR Güncelleme", b.Name, fmt.Sprintf("PR #%d güncellendi", b.PR.Number), "")
 			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 		}
 	}
-	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	err := fmt.Errorf("dal bulunamadı: %s", branchID)
+	m.recordLogLocked("error", "PR Güncelleme", branchID, err.Error(), "")
+	return model.CockpitSnapshot{}, err
 }
 
 // AmendLastCommit safely updates only the commit message of the active HEAD feature branch.
 func (m *Manager) AmendLastCommit(branchID, message string) (model.CockpitSnapshot, error) {
 	message = strings.TrimSpace(message)
 	if message == "" {
-		return model.CockpitSnapshot{}, fmt.Errorf("commit mesajı boş olamaz")
+		err := fmt.Errorf("commit mesajı boş olamaz")
+		m.recordLog("error", "Commit Mesajı Düzenle", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.amendLastCommitLive(live, branchID, message)
+		snap, err := m.amendLastCommitLive(live, branchID, message)
+		return m.logLiveOutcome("Commit Mesajı Düzenle", branchID, "Son commit mesajı güncellendi", snap, err)
 	}
 
 	m.mu.Lock()
@@ -481,13 +575,18 @@ func (m *Manager) AmendLastCommit(branchID, message string) (model.CockpitSnapsh
 		b := &m.simRepo.branches[i]
 		if b.ID == branchID {
 			if !b.IsHEAD || b.State != "open" {
-				return model.CockpitSnapshot{}, fmt.Errorf("yalnızca aktif çalışma dalının (HEAD) son commit mesajı değiştirilebilir")
+				err := fmt.Errorf("yalnızca aktif çalışma dalının (HEAD) son commit mesajı değiştirilebilir")
+				m.recordLogLocked("error", "Commit Mesajı Düzenle", b.Name, err.Error(), "")
+				return model.CockpitSnapshot{}, err
 			}
 			b.LastCommitMsg = message
+			m.recordLogLocked("ok", "Commit Mesajı Düzenle", b.Name, "Son commit mesajı güncellendi", "")
 			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 		}
 	}
-	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	err := fmt.Errorf("dal bulunamadı: %s", branchID)
+	m.recordLogLocked("error", "Commit Mesajı Düzenle", branchID, err.Error(), "")
+	return model.CockpitSnapshot{}, err
 }
 
 func normalizeMergeStrategy(s string) string {
@@ -500,7 +599,9 @@ func normalizeMergeStrategy(s string) string {
 }
 func (m *Manager) FixCI(branchID string) (model.CockpitSnapshot, error) {
 	if _, ok := m.activeLiveRepo(); ok {
-		return model.CockpitSnapshot{}, fmt.Errorf("canlı modda otomatik kod düzeltmesi kapalıdır; hatayı yerelde düzeltip pushlayın")
+		err := fmt.Errorf("canlı modda otomatik kod düzeltmesi kapalıdır; hatayı yerelde düzeltip pushlayın")
+		m.recordLog("error", "CI Düzeltme", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
 
 	m.mu.Lock()
@@ -519,10 +620,13 @@ func (m *Manager) FixCI(branchID string) (model.CockpitSnapshot, error) {
 			}
 			b.LastCommitMsg = "fix(shellgold): guard slice upper bound & update golden"
 			b.UncommittedCount = 0
+			m.recordLogLocked("ok", "CI Düzeltme", b.Name, "CI testleri yeşile döndü", "")
 			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 		}
 	}
-	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	err := fmt.Errorf("dal bulunamadı: %s", branchID)
+	m.recordLogLocked("error", "CI Düzeltme", branchID, err.Error(), "")
+	return model.CockpitSnapshot{}, err
 }
 
 // AutoResolveConflict resolves CHANGELOG.md / lockfile conflicts by preserving both sides.
@@ -533,7 +637,9 @@ func (m *Manager) AutoResolveConflict(branchID string) (model.CockpitSnapshot, e
 // PruneGone cleans up branches whose remote tracking ref is gone or already merged.
 func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.pruneGoneLive(live)
+		snap, removed, err := m.pruneGoneLive(live)
+		snap, err = m.logLiveOutcome("Kalıntı Temizliği", "", fmt.Sprintf("%d artık dal temizlendi", removed), snap, err)
+		return snap, removed, err
 	}
 
 	m.mu.Lock()
@@ -549,6 +655,7 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 		kept = append(kept, b)
 	}
 	m.simRepo.branches = kept
+	m.recordLogLocked("ok", "Kalıntı Temizliği", "", fmt.Sprintf("%d artık dal temizlendi", removed), "")
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), removed, nil
 }
 
@@ -556,31 +663,38 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 // a local merged branch in live mode (`git branch -d`).
 func (m *Manager) DeleteBranch(branchID string) (model.CockpitSnapshot, error) {
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.deleteBranchLive(live, branchID)
+		snap, err := m.deleteBranchLive(live, branchID)
+		return m.logLiveOutcome("Dal Silme", branchID, fmt.Sprintf("%s kaldırıldı", branchID), snap, err)
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var kept []model.BranchArc
 	found := false
+	deletedName := branchID
 	for _, b := range m.simRepo.branches {
 		if b.ID == branchID {
 			found = true
+			deletedName = b.Name
 			continue
 		}
 		kept = append(kept, b)
 	}
 	if !found {
-		return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+		err := fmt.Errorf("dal bulunamadı: %s", branchID)
+		m.recordLogLocked("error", "Dal Silme", branchID, err.Error(), "")
+		return model.CockpitSnapshot{}, err
 	}
 	m.simRepo.branches = kept
+	m.recordLogLocked("ok", "Dal Silme", deletedName, fmt.Sprintf("%s kaldırıldı", deletedName), "")
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
 // SyncSpine clears ahead/behind skew between local main and origin/main.
 func (m *Manager) SyncSpine() (model.CockpitSnapshot, error) {
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.syncSpineLive(live)
+		snap, err := m.syncSpineLive(live)
+		return m.logLiveOutcome("Omurga Sync", "main", "main ↔ origin/main eşitlendi", snap, err)
 	}
 
 	m.mu.Lock()
@@ -601,6 +715,7 @@ func (m *Manager) SyncSpine() (model.CockpitSnapshot, error) {
 	}
 	m.simRepo.repo.Ahead = 0
 	m.simRepo.repo.Behind = 0
+	m.recordLogLocked("ok", "Omurga Sync", "main", "main ↔ origin/main eşitlendi", "")
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
@@ -643,6 +758,7 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 		Nodes:       nodes,
 		Branches:    branches,
 		Diagnostics: diags,
+		Logs:        m.recentLogsLocked(),
 		GeneratedAt: time.Now(),
 	}
 }

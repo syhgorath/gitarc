@@ -99,7 +99,7 @@ func handleRequest(req rpcRequest, mgr *gitengine.Manager) rpcResponse {
 				},
 				"serverInfo": map[string]any{
 					"name":    "gitarc",
-					"version": "0.5.0",
+					"version": "0.6.0",
 				},
 			},
 		}
@@ -300,6 +300,7 @@ func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 		"repo":        snap.Repo,
 		"branches":    briefs,
 		"diagnostics": snap.Diagnostics,
+		"logs":        snap.Logs,
 	}
 }
 

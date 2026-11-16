@@ -2,6 +2,13 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
+## [0.6.0] - 2026-11-16
+
+### Eklenenler
+- **Kalıcı Sistem & Hata Günlüğü (`📜 Loglar` + `/api/logs/clear`):** 3 saniyede kaybolan toast yerine backend ve istemci taraflı tüm hata ve işlem kayıtları saat, dal ve komut ayrıntısıyla `CockpitSnapshot.Logs` içinde saklanır; üst çubuktaki `📜 Loglar` modalından tek tıkla kopyalanabilir veya temizlenebilir. Toast bildirimleri de tıklanarak kopyalanabilir hale getirildi.
+- **Stüdyo İçi Kalıcı & Kopyalanabilir Hata Kutusu (`#studio-error-banner`):** Çakışma Çözüm Stüdyosunda `go vet` veya `git` hatası oluşursa kaybolmayan hata kutusu ve **`📋 Hatayı Kopyala`** butonu çıkar.
+- **Akıllı Çakışma Rehberi (`★ ÖNERİLEN` + Otomatik Kod Riski Analizi):** Çakışan dosyanın `.go` kaynak kodu mu yoksa `CHANGELOG.md` / kilit dosyası mı olduğunu analiz ederek Türkçe **"💡 Ne Yapmalıyım?"** açıklaması sunar; kaynak kodda *Union* riskine karşı **`⚠ Kodda Çift Tanım / Hata Riski`** uyarısı verir, **`2. 🛡️ Main'deki Güncel Kodu Kullan`** seçeneğini önerir.
+
 ## [0.5.0] - 2026-11-16
 
 ### Eklenenler

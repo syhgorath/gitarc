@@ -175,6 +175,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/pr/edit", a.guard(a.handleEditPR))
 	mux.HandleFunc("/api/commit/amend", a.guard(a.handleAmendCommit))
 	mux.HandleFunc("/api/spine/sync", a.guard(a.handleSyncSpine))
+	mux.HandleFunc("/api/logs/clear", a.guard(a.handleClearLogs))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/test/run", a.guard(a.handleRunLocalTest))
 	return mux
@@ -393,6 +394,19 @@ func (a *App) handleSyncSpine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap, err := a.mgr.SyncSpine()
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleClearLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "POST bekleniyor")
+		return
+	}
+	snap, err := a.mgr.ClearLogs()
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

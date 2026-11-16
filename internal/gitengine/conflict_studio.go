@@ -188,6 +188,92 @@ func buildConflictAIPrompt(branchName, baseRef string, files []model.ConflictFil
 	return strings.TrimSpace(sb.String())
 }
 
+func buildStrategyAdvice(b model.BranchArc, files []model.ConflictFileDiff) (recommended, reason string, advices []model.StrategyAdvice) {
+	allSpecial := len(files) > 0
+	nonSpecialPath := ""
+	for _, f := range files {
+		if !IsSpecialAutoMergeFile(f.Path) {
+			allSpecial = false
+			if nonSpecialPath == "" {
+				nonSpecialPath = f.Path
+			}
+		}
+	}
+	if nonSpecialPath == "" && len(files) > 0 {
+		nonSpecialPath = files[0].Path
+	}
+
+	if allSpecial {
+		recommended = "union"
+		reason = "Çakışan dosya bir değişiklik günlüğü / kilit dosyasıdır. '1. İkisini Alt Alta Koru (Union)' seçeneği hem main hem daldaki satırları veri kaybı olmadan birleştirir."
+		advices = []model.StrategyAdvice{
+			{
+				Strategy: "union",
+				Title:    "1. ✦ İkisini Alt Alta Koru (Union)",
+				Subtitle: "Hem main hem daldaki satırları alt alta birleştirir.",
+				Badge:    "★ ÖNERİLEN · Veri Kaybı Yok",
+				Tone:     "ok",
+			},
+			{
+				Strategy: "ours",
+				Title:    "2. 🛡️ Main'deki Güncel Kodu Kullan (Ours)",
+				Subtitle: "Çakışan kısımda yalnızca origin/main kodunu korur.",
+				Badge:    "Daldaki Eklemeyi Atlar",
+				Tone:     "warn",
+			},
+			{
+				Strategy: "theirs",
+				Title:    "3. 🚀 Sadece Bu Dalın Kodunu Kullan (Theirs)",
+				Subtitle: "Çakışan kısımda yalnızca bu dalın satırlarını bırakır.",
+				Badge:    "Main'deki Eklemeyi Atlar",
+				Tone:     "warn",
+			},
+			{
+				Strategy: "custom",
+				Title:    "4. 🤖 AI / Elle Düzenle",
+				Subtitle: "Sağdaki editörde veya MCP üzerinden AI ile düzenle.",
+				Badge:    "Tam Kontrol",
+				Tone:     "accent",
+			},
+		}
+		return recommended, reason, advices
+	}
+
+	recommended = "ours"
+	reason = fmt.Sprintf("Çakışan dosya kaynak kodudur (%s). Kaynak kodda 'İkisini Alt Alta Koru (Union)' seçilirse aynı değişken/fonksiyon iki kez yazılıp derleme hatası (go vet) üretebilir. '2. Maindeki Güncel Kodu Kullan (Ours)' en güvenli otomatik çözümdür.", nonSpecialPath)
+	advices = []model.StrategyAdvice{
+		{
+			Strategy: "union",
+			Title:    "1. ✦ İkisini Alt Alta Koru (Union)",
+			Subtitle: "İki bloğu alt alta yazar (kodda tekrar tanım yapabilir).",
+			Badge:    "⚠ Kodda Çift Tanım / Hata Riski",
+			Tone:     "warn",
+		},
+		{
+			Strategy: "ours",
+			Title:    "2. 🛡️ Main'deki Güncel Kodu Kullan (Ours)",
+			Subtitle: "Çakışan blokta origin/main güncel kodunu korur.",
+			Badge:    "★ ÖNERİLEN · Main Güncel Kodu",
+			Tone:     "ok",
+		},
+		{
+			Strategy: "theirs",
+			Title:    "3. 🚀 Sadece Bu Dalın Kodunu Kullan (Theirs)",
+			Subtitle: "Çakışan blokta yalnızca bu daldaki kodu kullanır.",
+			Badge:    "✓ Sadece Dalın Kodunu Yazar",
+			Tone:     "accent",
+		},
+		{
+			Strategy: "custom",
+			Title:    "4. 🤖 AI / Elle Düzenle",
+			Subtitle: "İki bloğu harmanlamak için sağdaki editörü veya AI'ı kullan.",
+			Badge:    "✓ Özgün Birleştirme",
+			Tone:     "accent",
+		},
+	}
+	return recommended, reason, advices
+}
+
 // InspectConflictStudio extracts focused 3-way conflict hunks and Union/Ours/Theirs previews
 // without mutating the repository working directory.
 func (m *Manager) InspectConflictStudio(branchID string) (model.ConflictStudioPayload, error) {
@@ -208,17 +294,16 @@ func (m *Manager) InspectConflictStudio(branchID string) (model.ConflictStudioPa
 				raw := simRawConflictSample(f, b.Name)
 				files = append(files, buildConflictFileDiff(f, raw))
 			}
-			rec := "ours"
-			if b.Conflict.IsChangelogOrLock {
-				rec = "union"
-			}
+			rec, reason, advices := buildStrategyAdvice(b, files)
 			return model.ConflictStudioPayload{
-				BranchID:    b.ID,
-				BranchName:  b.Name,
-				BaseRef:     "origin/" + m.simRepo.repo.DefaultBranch,
-				Recommended: rec,
-				AIPrompt:    buildConflictAIPrompt(b.Name, "origin/"+m.simRepo.repo.DefaultBranch, files),
-				Files:       files,
+				BranchID:             b.ID,
+				BranchName:           b.Name,
+				BaseRef:              "origin/" + m.simRepo.repo.DefaultBranch,
+				Recommended:          rec,
+				RecommendationReason: reason,
+				Strategies:           advices,
+				AIPrompt:             buildConflictAIPrompt(b.Name, "origin/"+m.simRepo.repo.DefaultBranch, files),
+				Files:                files,
 			}, nil
 		}
 	}
@@ -268,17 +353,16 @@ func (m *Manager) inspectConflictStudioLive(live *repoEntry, branchID string) (m
 		files = append(files, buildConflictFileDiff(relPath, rawConflict))
 	}
 
-	rec := "ours"
-	if b.Conflict.IsChangelogOrLock {
-		rec = "union"
-	}
+	rec, reason, advices := buildStrategyAdvice(b, files)
 	return model.ConflictStudioPayload{
-		BranchID:    b.ID,
-		BranchName:  b.Name,
-		BaseRef:     baseRef,
-		Recommended: rec,
-		AIPrompt:    buildConflictAIPrompt(b.Name, baseRef, files),
-		Files:       files,
+		BranchID:             b.ID,
+		BranchName:           b.Name,
+		BaseRef:              baseRef,
+		Recommended:          rec,
+		RecommendationReason: reason,
+		Strategies:           advices,
+		AIPrompt:             buildConflictAIPrompt(b.Name, baseRef, files),
+		Files:                files,
 	}, nil
 }
 
@@ -386,22 +470,30 @@ func (m *Manager) ResolveBranchConflict(branchID, strategy string, customFiles m
 			b.Conflict.ResolvedNote = note
 			b.Conflict.PreviewUnified = fmt.Sprintf("✓ Çakışma Çözüm Stüdyosu (%s) ile temizlendi.\n✓ git merge-tree --write-tree: exit 0 (temiz)", strategy)
 			b.BehindMain = 0
+			m.recordLogLocked("ok", "Çakışma Çözümü ("+strategy+")", b.Name, note, "")
 			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 		}
 	}
-	return model.CockpitSnapshot{}, fmt.Errorf("dal bulunamadı: %s", branchID)
+	err := fmt.Errorf("dal bulunamadı: %s", branchID)
+	m.recordLogLocked("error", "Çakışma Çözümü ("+strategy+")", branchID, err.Error(), "")
+	return model.CockpitSnapshot{}, err
 }
 
 func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string, customFiles map[string]string, runVet bool) (model.CockpitSnapshot, error) {
+	failStep := func(branchName, cmdDesc string, err error) (model.CockpitSnapshot, error) {
+		m.recordLog("error", "Çakışma Çözümü ("+strategy+")", branchName, err.Error(), cmdDesc)
+		return model.CockpitSnapshot{}, err
+	}
+
 	b, snap, err := m.findLiveBranch(live, branchID)
 	if err != nil {
-		return model.CockpitSnapshot{}, err
+		return failStep(branchID, "findLiveBranch", err)
 	}
 	if b.Conflict == nil || !b.Conflict.HasConflict || len(b.Conflict.Files) == 0 {
 		return m.Snapshot()
 	}
 	if b.IsHEAD && snap.Repo.DirtyCount > 0 {
-		return model.CockpitSnapshot{}, fmt.Errorf("aktif dal (%s) üzerinde %d uncommitted değişiklik varken çakışma uygulanamaz; önce commit veya stash yapın", b.Name, snap.Repo.DirtyCount)
+		return failStep(b.Name, "dirty working tree guard", fmt.Errorf("aktif dal (%s) üzerinde %d uncommitted değişiklik varken çakışma uygulanamaz; önce commit veya stash yapın", b.Name, snap.Repo.DirtyCount))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -409,12 +501,12 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 
 	baseRef, branchRef, mbSHA, err := resolveConflictRefs(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, b)
 	if err != nil {
-		return model.CockpitSnapshot{}, err
+		return failStep(b.Name, "git merge-base", err)
 	}
 
 	wtDir, err := os.MkdirTemp("", "gitarc-wt-*")
 	if err != nil {
-		return model.CockpitSnapshot{}, err
+		return failStep(b.Name, "os.MkdirTemp(gitarc-wt)", err)
 	}
 	defer func() {
 		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -424,7 +516,7 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 	}()
 
 	if _, errOut, _, err := runCmdStdout(ctx, live.path, "git", "worktree", "add", "--detach", wtDir, branchRef); err != nil {
-		return model.CockpitSnapshot{}, fmt.Errorf("izole worktree oluşturulamadı: %s", strings.TrimSpace(errOut))
+		return failStep(b.Name, fmt.Sprintf("git worktree add --detach %s %s", wtDir, branchRef), fmt.Errorf("izole worktree oluşturulamadı: %s", strings.TrimSpace(errOut)))
 	}
 
 	gitIdentityArgs := buildGitIdentityArgs(ctx, live.path)
@@ -434,20 +526,20 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 	_, mergeErrOut, mergeCode, mergeErr := runCmdStdout(ctx, wtDir, "git", mergeArgs...)
 	if mergeErr != nil && mergeCode != 0 {
 		if _, _, _, mhErr := runCmdStdout(ctx, wtDir, "git", "rev-parse", "-q", "--verify", "MERGE_HEAD"); mhErr != nil {
-			return model.CockpitSnapshot{}, fmt.Errorf("worktree içinde merge başlatılamadı: %s", strings.TrimSpace(mergeErrOut))
+			return failStep(b.Name, "git merge --no-commit --no-ff "+baseRef, fmt.Errorf("worktree içinde merge başlatılamadı: %s", strings.TrimSpace(mergeErrOut)))
 		}
 	}
 
 	tmpDir, err := os.MkdirTemp("", "gitarc-mergefiles-*")
 	if err != nil {
-		return model.CockpitSnapshot{}, err
+		return failStep(b.Name, "os.MkdirTemp(gitarc-mergefiles)", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	for _, relPath := range b.Conflict.Files {
 		rawConflict, err := generateThreeWayMergeText(ctx, live.path, tmpDir, mbSHA, baseRef, branchRef, relPath, b.Name)
 		if err != nil {
-			return model.CockpitSnapshot{}, err
+			return failStep(b.Name, "git merge-file "+relPath, err)
 		}
 		customWin := ""
 		if customFiles != nil {
@@ -455,22 +547,22 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 		}
 		resolvedContent := applyWindowResolution(rawConflict, strategy, customWin)
 		if hasStrayConflictMarkers(resolvedContent) {
-			return model.CockpitSnapshot{}, fmt.Errorf("%s için sağlanan çözümde hâlâ <<<<<<< / >>>>>>> işaretleri var", relPath)
+			return failStep(b.Name, "stray marker check ("+relPath+")", fmt.Errorf("%s için sağlanan çözümde hâlâ <<<<<<< / >>>>>>> işaretleri var", relPath))
 		}
 		targetPath := filepath.Join(wtDir, filepath.FromSlash(relPath))
 		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-			return model.CockpitSnapshot{}, err
+			return failStep(b.Name, "mkdir "+filepath.Dir(targetPath), err)
 		}
 		if err := os.WriteFile(targetPath, []byte(resolvedContent), 0644); err != nil {
-			return model.CockpitSnapshot{}, fmt.Errorf("çözüm yazılamadı (%s): %w", relPath, err)
+			return failStep(b.Name, "write "+relPath, fmt.Errorf("çözüm yazılamadı (%s): %w", relPath, err))
 		}
 		if _, addErr, _, err := runCmdStdout(ctx, wtDir, "git", "add", "--", relPath); err != nil {
-			return model.CockpitSnapshot{}, fmt.Errorf("dosya stage edilemedi (%s): %s", relPath, strings.TrimSpace(addErr))
+			return failStep(b.Name, "git add -- "+relPath, fmt.Errorf("dosya stage edilemedi (%s): %s", relPath, strings.TrimSpace(addErr)))
 		}
 	}
 
 	if unmergedOut, _, _, _ := runCmdStdout(ctx, wtDir, "git", "diff", "--name-only", "--diff-filter=U"); strings.TrimSpace(unmergedOut) != "" {
-		return model.CockpitSnapshot{}, fmt.Errorf("çözülmemiş başka dosyalar kaldı: %s", strings.TrimSpace(unmergedOut))
+		return failStep(b.Name, "git diff --diff-filter=U", fmt.Errorf("çözülmemiş başka dosyalar kaldı: %s", strings.TrimSpace(unmergedOut)))
 	}
 
 	if runVet {
@@ -478,7 +570,7 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 			vetOut, vetErrOut, _, vetErr := runCmdStdout(ctx, wtDir, "go", "vet", "./...")
 			if vetErr != nil {
 				combined := strings.TrimSpace(vetOut + "\n" + vetErrOut)
-				return model.CockpitSnapshot{}, fmt.Errorf("go vet doğrulaması başarısız oldu, bozuk kod pushlanmadı:\n%s", combined)
+				return failStep(b.Name, "go vet ./...", fmt.Errorf("go vet doğrulaması başarısız oldu, bozuk kod pushlanmadı:\n%s", combined))
 			}
 		}
 	}
@@ -487,23 +579,23 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 	commitArgs := append([]string{}, gitIdentityArgs...)
 	commitArgs = append(commitArgs, "commit", "--no-edit", "-m", commitMsg)
 	if _, cErrOut, _, err := runCmdStdout(ctx, wtDir, "git", commitArgs...); err != nil {
-		return model.CockpitSnapshot{}, fmt.Errorf("worktree merge commit atılamadı: %s", strings.TrimSpace(cErrOut))
+		return failStep(b.Name, "git commit --no-edit", fmt.Errorf("worktree merge commit atılamadı: %s", strings.TrimSpace(cErrOut)))
 	}
 
 	shaOut, _, _, err := runCmdStdout(ctx, wtDir, "git", "rev-parse", "HEAD")
 	if err != nil {
-		return model.CockpitSnapshot{}, fmt.Errorf("yeni commit SHA alınamadı: %w", err)
+		return failStep(b.Name, "git rev-parse HEAD", fmt.Errorf("yeni commit SHA alınamadı: %w", err))
 	}
 	newSHA := strings.TrimSpace(shaOut)
 
 	if b.HasLocal {
 		if b.IsHEAD {
 			if _, rErr, _, err := runCmdStdout(ctx, live.path, "git", "reset", "--hard", newSHA); err != nil {
-				return model.CockpitSnapshot{}, fmt.Errorf("aktif dal güncellenemedi: %s", strings.TrimSpace(rErr))
+				return failStep(b.Name, "git reset --hard "+newSHA, fmt.Errorf("aktif dal güncellenemedi: %s", strings.TrimSpace(rErr)))
 			}
 		} else {
 			if _, bErr, _, err := runCmdStdout(ctx, live.path, "git", "branch", "-f", b.Name, newSHA); err != nil {
-				return model.CockpitSnapshot{}, fmt.Errorf("yerel dal güncellenemedi: %s", strings.TrimSpace(bErr))
+				return failStep(b.Name, "git branch -f "+b.Name, fmt.Errorf("yerel dal güncellenemedi: %s", strings.TrimSpace(bErr)))
 			}
 		}
 	}
@@ -514,11 +606,16 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 			remoteName = "origin"
 		}
 		if _, pErr, _, err := runCmdStdout(ctx, wtDir, "git", "push", remoteName, newSHA+":refs/heads/"+b.Name); err != nil {
-			return model.CockpitSnapshot{}, fmt.Errorf("çözüm pushlanamadı: %s", strings.TrimSpace(pErr))
+			return failStep(b.Name, fmt.Sprintf("git push %s %s:refs/heads/%s", remoteName, newSHA, b.Name), fmt.Errorf("çözüm pushlanamadı: %s", strings.TrimSpace(pErr)))
 		}
 		_, _, _, _ = runCmdStdout(ctx, live.path, "git", "fetch", remoteName)
 	}
 
+	shortNew := newSHA
+	if len(shortNew) > 7 {
+		shortNew = shortNew[:7]
+	}
+	m.recordLog("ok", "Çakışma Çözümü ("+strategy+")", b.Name, fmt.Sprintf("İzole git worktree içinde çözüldü (%s)", shortNew), fmt.Sprintf("base=%s files=%s", baseRef, strings.Join(b.Conflict.Files, ", ")))
 	InvalidateGHCache(live.path)
 	return m.Snapshot()
 }
