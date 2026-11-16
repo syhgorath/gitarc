@@ -28,7 +28,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 | **v0.5.0** | **Çakışma Çözüm Stüdyosu** (`/api/conflict/inspect`): Sol (Olan 3-yollu diff hunks) / Sağ (Olacak canlı önizleme), 4 strateji (`union`, `ours`, `theirs`, `custom`), izole geçici `git worktree` içinde çözüm + `go vet ./...` güvenlik kilidi, Antigravity MCP bağlantısı (`gitarc_resolve_conflict`, `.agents/plugins/gitarc/`). |
 | **v0.6.0** | Kalıcı `📜 Loglar` modalı (`CockpitSnapshot.Logs` + `/api/logs/clear`), stüdyo içi kalıcı kopyalanabilir hata kutusu (`#studio-error-banner`), dosya türüne göre `★ ÖNERİLEN` strateji danışmanı. |
 | **v0.7.0** | **Mega-Repo (10K Geliştirici) Ölçekleme:** SHA-bazlı `evalCache` (`CacheHits`), `--sort=-committerdate --count=40` dal penceresi, $O(N \cdot F)$ ters indeks Cross-PR motoru, `👤 Benim Dallarım (@me)` ve `📂 Klasör/Dosya Merceği`, `-team` ekip sunucusu modu, Windows `rundll32` tarayıcı açılışı, Branch Protection (`/api/repo/protect`) ve Update Checker (`/api/system/update-check`). |
-| **v0.8.0** | **Konsolsuz Commit & PR Stüdyosu** (`/api/working-tree/commit`, `CommitWorkingTree`), alt ray yerel dallar için **Push Öncesi PR Başlık & Açıklama** formu (`PromoteBranchWithMeta` + `/api/branch/promote`), **`CI: RUNNING` Nabız Efekti** (`.ci-running` / `.running-pulse`), polling tabanlı **Otomatik Merge Kuyruğu** (`state.pendingAutoMerge`), **Alt Ray Yerel Kalıntı Kuyruğu** + `💻 Local` rozeti, otomatik `HEAD → main` geçişli `DeleteBranch`/`PruneGone` ve **Hata Geçirmezlik (Foolproof UX)** korumaları (`suggestUniqueBranchName`, boş dal PR koruması). |
+| **v0.8.0** | **PocketUI Alt Çekmece (Bottom Dock)** (Radar/Loglar/İşlemler), **Tam Genişlik Hata & Uyarı Kartları** (dosya etiketleri, CI hata logu snippet'i, kopyalanabilir komut satırı), **Taze Dal Ayrımı** (`🌱 Yeni Yerel Dal` · `aheadMain == 0` dalların yanlışlıkla `origin: gone` sayılmasını engelleme), **Mükerrer Dal Açma Kalkanı**, **Konsolsuz Commit & PR Stüdyosu** (`/api/working-tree/commit`, yerel `git checkout -b` akışı), **Push Öncesi PR Başlık & Açıklama** (`PromoteBranchWithMeta`), **`CI: RUNNING` Nabız Efekti** (`.running-pulse`), polling tabanlı **Otomatik Merge Kuyruğu**, **Alt Ray Yerel Kalıntı Kuyruğu** + `💻 Local` rozeti, otomatik `HEAD → main` geçişli `DeleteBranch`/`PruneGone`. |
 
 ---
 
@@ -60,21 +60,23 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 - **`internal/mcp/server.go`:** MCP JSON-RPC 2.0 `stdio` sunucusu (`protocolVersion = "2024-11-05"`). Sunulan 5 araç: `gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`.
 
 ### Frontend (`web/`)
-- **`web/index.html`:** Üst bar (repo seçici, KPI çipleri, arama/filtre/mercek, Loglar/MCP/Güvenlik&Güncelleme butonları), sol SVG parabol sahnesi (`#rail-svg`), sağ Inspector (`#inspector-detail`) ve 5 modal:
+- **`web/index.html`:** Üst bar (repo seçici, KPI çipleri, arama/filtre/mercek, Loglar/MCP/Güvenlik&Güncelleme butonları), sol SVG parabol sahnesi (`#rail-svg`), tuvalin altında **PocketUI Tabbed Bottom Dock** (`#bottom-dock` · 🚨 Hata & Uyarı Radarı, 📜 Sistem & Git Logları, ⚡ Son İşlemler, daraltma/temizleme araçları), sağ Inspector (`#inspector-detail`) ve 5 modal:
   1. `#create-branch-modal`
   2. `#conflict-studio-modal`
   3. `#mcp-connect-modal`
   4. `#logs-modal`
   5. `#security-update-modal`
-- **`web/tasarim.css`:** Tüm tema renkleri (`--sky`, `--purple`, `--emerald`, `--danger`, `--warn`, `--warn-orange`), SVG yay animasyonları (`ciStrokePulse`, `ciRunningPulse`), kart nabız halkaları (`pulseRedRing`, `pulseRunningRing`, `dotBlink`) ve modal/form düzenleri.
+- **`web/tasarim.css`:** Tüm tema renkleri (`--sky`, `--purple`, `--emerald`, `--danger`, `--warn`, `--warn-orange`), SVG yay animasyonları (`ciStrokePulse`, `ciRunningPulse`), kart nabız halkaları (`pulseRedRing`, `pulseRunningRing`, `dotBlink`), **PocketUI Bottom Dock** (`.bottom-dock`, `.dock-collapsed`), **Tam Genişlik Hata Radarı Kartları** (`.radar-card`, `.rc-header`, `.rc-badge`, `.rc-files-row`, `.rc-ci-snippet`, `.rc-cmd-row`), ve modal/form düzenleri.
 - **`web/fallback.js`:**
   - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti bağımsız çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur, simüle CI extraction, çakışma ve pipeline yönetimini barındırır). `app.js`'den önce yüklenir (`window.LocalFallbackEngine`).
 - **`web/app.js`:**
   - Ana kokpit kontrolcüsü, DOM/SVG render, durum yönetimi ve olay dinleyicileri.
   - `apiCall(path, method, body)`: Tüm POST isteklerine `X-Requested-With: gitarc` başlığı ekler.
   - 4 saniyelik sessiz canlı polling (`setInterval`, `snapshotSignature(snap)` değişirse `applySnapshot` çağırır; kullanıcı `INPUT`/`TEXTAREA`/`SELECT` odaklıyken veya modal/drag açıkken DOM'u ezmez).
+  - `setupBottomDock()` & `renderRadar()`: Alt çekmece sekmeleri ve tam genişlikte, etkilenen dosya etiketli, CI kırılma özetli ve tek tık aksiyonlu hata radarı kartları render edilir.
   - `state.pendingAutoMerge`: `CI: RUNNING` iken Merge tetiklendiğinde dalı kuyruğa alır; polling `CI: SUCCESS` gördüğünde `executeMergeNow` çağırır, `FAILURE` veya çakışma görürse iptal eder.
-  - **Yerel Kalıntı & Hata Geçirmezlik Katmanı:** `renderSVG()` yerelde kopyası duran birleşmiş dallar için alt raya kesikli `.svg-local-remnant-path` + `.cap-local-remnant` rozeti çizer; `suggestUniqueBranchName(b, snap)` değişen dosyalardan geçmiş dallarla çakışmayan benzersiz varsayılan dal adı üretir.
+  - **Yerel Kalıntı & Hata Geçirmezlik Katmanı:** `renderSVG()` yerelde kopyası duran birleşmiş dallar için alt raya kesikli `.svg-local-remnant-path` + `.cap-local-remnant` rozeti çizer; `suggestUniqueBranchName(arg1, arg2, arg3)` değişen dosyalardan dinamik (`feat/<dosya>-guncel`), geçmiş veya açık dallarla çakışmayan benzersiz dal adı üretir.
+  - **Konsolsuz Dal Açma & Commit:** Kirli çalışma alanını yerelde `git checkout -b <dal>` akışıyla hatasız yeni dala alıp tek tıkla commit & PR açar.
 
 ---
 
