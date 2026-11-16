@@ -879,24 +879,34 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID string) (model.Cockp
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
+	defBranch := snap.Repo.DefaultBranch
+	if defBranch == "" {
+		defBranch = "main"
+	}
+
 	if b.PR != nil && b.PR.Number > 0 {
 		if _, err := exec.LookPath("gh"); err != nil {
 			return model.CockpitSnapshot{}, fmt.Errorf("PR merge için gh CLI gerekli")
+		}
+		curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
+		curBranch := strings.TrimSpace(curOut)
+		if curBranch == b.Name && snap.Repo.DirtyCount == 0 {
+			_, _, _ = runCmd(ctx, live.path, "git", "checkout", defBranch)
+			curBranch = defBranch
 		}
 		out, _, err := runCmd(ctx, live.path, "gh", "pr", "merge", strconv.Itoa(b.PR.Number), "--merge", "--delete-branch")
 		if err != nil {
 			return model.CockpitSnapshot{}, fmt.Errorf("PR #%d merge edilemedi: %s", b.PR.Number, strings.TrimSpace(out))
 		}
 		_, _, _ = runCmd(ctx, live.path, "git", "fetch", "--prune", "origin")
+		if curBranch == defBranch && snap.Repo.DirtyCount == 0 {
+			_, _, _ = runCmd(ctx, live.path, "git", "merge", "--ff-only", "origin/"+defBranch)
+		}
 		return m.Snapshot()
 	}
 
 	if snap.Repo.DirtyCount > 0 {
 		return model.CockpitSnapshot{}, fmt.Errorf("çalışma dizininde %d uncommitted değişiklik var; yerel merge öncesi commit veya stash yapın", snap.Repo.DirtyCount)
-	}
-	defBranch := snap.Repo.DefaultBranch
-	if defBranch == "" {
-		defBranch = "main"
 	}
 	if cur, _, err := runCmd(ctx, live.path, "git", "branch", "--show-current"); err == nil && strings.TrimSpace(cur) != defBranch {
 		if out, _, err := runCmd(ctx, live.path, "git", "checkout", defBranch); err != nil {
