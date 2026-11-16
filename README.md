@@ -32,3 +32,7 @@ go build -o gitarc .
 ```
 
 Arayüz, Go sunucusu olmadan `web/index.html` doğrudan tarayıcıda açıldığında da yerleşik `LocalFallbackEngine` ile simülasyon modunda çalışır.
+
+## Yol Haritası (v0.2.0)
+- Canlı modda gh run view --log-failed entegrasyonu
+- Tek tıkla güvenli git fetch & prune --dry-run
