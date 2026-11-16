@@ -2,9 +2,14 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
-## [0.8.0] - 2026-11-16
+## [0.8.0] - 2026-11-17
 
 ### Eklenenler
+- **PocketUI Tab'lı Alt Çekmece (Bottom Dock):** Akıllı Hata Radarı sağ panelden alt çekmeceye taşındı; 3 sekmeli (`🚨 Hata & Uyarı Radarı`, `📜 Sistem & Git Logları`, `⚡ Son İşlemler`), daraltılabilir (`▼/▲`) ve log temizleme araçlı alt panel oluşturuldu.
+- **Tam Genişlikte Hata & Uyarı Radarı Kartları (`Full-Width Radar Cards`):** Hata ve uyarı kartları küçük ızgara kutularından tam satır genişliğine yayılan zengin bilgi kartlarına dönüştürüldü. Etkilenen dosyalar, CI hata logu snippet'i, tek tıkla kopyalanabilir terminal komutu ve doğrudan çakışma stüdyosuna/temizliğe götüren aksiyon butonları eklendi.
+- **🌱 Taze Yerel Dal Ayrımı (`collector.go`):** Henüz pushlanmamış `aheadMain == 0` yerel dalların yanlışlıkla `origin: gone` / silinmiş kalıntı sayılması kökten engellendi; `🌱 Yeni Yerel Dal` kimliği ve eylemleri atandı.
+- **Mükerrer Dal Açma Kalkanı & Dinamik Dal Adı Üretimi:** Hem UI'da hem API'de mevcut veya birleşmiş dal adlarıyla yeniden dal açılması engellendi; statik isim öneri hatası dinamik dosya bazlı (`feat/<dosya>-guncel`) öneriyle değiştirildi.
+- **Pürüzsüz `git checkout -b` Stüdyo Akışı:** Çalışma ağacında kirli dosya varken dal açma `git switch -c ... origin/main` yerine güvenli yerel `git checkout -b` akışına geçirilerek GitArc içinden tek tıkla commit & PR açma hatasız hale getirildi.
 - **Konsolsuz Dal Açma, Commit & PR Oluşturma Stüdyosu (`/api/working-tree/commit`):** Çalışma ağacındaki kirli değişiklikleri (`wip/working-tree` veya yerel dallar) terminal açmadan yeni özellik dalına alma, commit mesajı, PR başlığı ve PR açıklamasını düzenleyip yerelde commitleme veya tek tıkla push + PR açma desteği eklendi.
 - **Push Öncesi PR Başlık & Açıklama Düzenleyici (`PromoteBranchWithMeta` + `/api/branch/promote`):** Alt raydaki yerel dalları `origin`'e pushlamadan önce PR başlığı ve açıklamasını kokpit içinden hazırlama ve bu bilgilerle PR açma eklendi.
 - **Canlı `CI: RUNNING` Pulse Efekti & Akıllı Auto-Merge Kuyruğu:** `CI: RUNNING` durumundaki dal parabolü, rozetleri ve Inspector çipi animasyonlu nabız efektiyle (`ci-running` / `running-pulse`) vurgulanır; CI çalışırken Merge / `⏳ CI Bitince Merge Et` tıklandığında dal kuyruğa alınır, CI geçince otomatik merge edilir, başarısız olursa kuyruk iptal edilip hata bildirimi + kalıcı log üretilir.

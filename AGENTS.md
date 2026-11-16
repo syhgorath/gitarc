@@ -9,7 +9,8 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 - Değişiklikleri tamamladıktan ve doğrulama komutunu (`go vet ./... && go test -count=1 -v ./... && go build -o gitarc .`) çalıştırdıktan sonra **otomatik commit veya push yapma** (kullanıcı açıkça istemedikçe).
 - Bunun yerine her zaman yanıtın sonunda aşağıdaki kalıpta hazır, tek tıkla kopyalanabilir komut blokları ve açıklamalar sun:
   1. **Dal / Commit Komutu:** Önerilen branch adı (`git checkout -b ...`), `git add`, anlamlı Conventional Commit başlıklı `git commit -m "..."` ve `git push -u origin ...` komutu.
-  2. **PR Başlığı ve Açıklaması + `gh pr create` Komutu:** PR başlığı, neyin neden değiştiğini ve doğrulama adımlarını özetleyen gövde metniyle tek seferde çalıştırılabilir `gh pr create --title "..." --body "..."` komutu.
+  2. **PR Başlığı (Tek Satır):** GitHub Web arayüzüne yapıştırılacak yalın PR başlığı.
+  3. **PR Açıklaması / Gövde Metni (Markdown):** Ne, neden değişti ve doğrulama adımlarını içeren, GitHub Web arayüzüne yapıştırılacak hazır Markdown gövdesi (`gh pr create` yerine web tercih edilmektedir).
 
 ## 2. Kırmızı Çizgiler (Asla İhlal Etme)
 
@@ -28,7 +29,10 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 7. **Binary Yeniden Derleme:** `web/` dosyaları `//go:embed web` ile ikiliye gömülür; her UI veya Go değişikliği sonrası `go build -o gitarc .` çalıştırılmalıdır.
 8. **Hata Geçirmezlik Prensibi (Foolproof UX & Otomatik Ön Koşul Çözümü):**
    - **Kullanıcıyı Çıkmaz Sokağa Sokma:** Bir aksiyon öncesinde Git ön koşulu gerekiyorsa (örn. silinecek dalın aktif `HEAD` olması, PR açılacak dalda kaydedilmemiş kirli dosyaların bulunması) çalışma ağacı temiz/güvenli olduğu sürece kullanıcıya *"önce başka dala geçin"* veya *"önce commit atın"* hatası döndürme; arka planda güvenli ön adımı (`git switch main`, `git add -A && git commit`) otomatik uygula.
-   - **Benzersiz Varsayılan Öneriler:** Kullanıcıya dal veya etiket adı önerirken açık ve birleşmiş (`merged`/`gone`) tüm dalları denetle (`suggestUniqueBranchName`); daha önce birleşmiş veya mevcut bir dal adını asla tekrar varsayılan olarak önerme.
+   - **Taze Yerel Dal Koruması:** `aheadMain == 0` olan taze yerel dallar asla `origin: gone` / silinmiş kalıntı sayılmaz; `🌱 Yeni Yerel Dal` olarak alt rayda açık mor parabolle gösterilir, eylemlerinde silme yerine `🎯 Dala Geç` ve `🚀 Push & PR Aç` yer alır.
+   - **Mükerrer Dal Açma Engeli:** Hem arayüzde hem API'de mevcut veya birleşmiş dal adlarıyla dal açılması engellenir.
+   - **Pürüzsüz `checkout -b` Stüdyo Akışı:** Çalışma ağacında kirli dosya varken dal açma stüdyosu `git switch -c ... origin/main` yerine güvenli yerel `git checkout -b <dal>` akışıyla çalışır.
+   - **Benzersiz Varsayılan Öneriler:** Kullanıcıya dal veya etiket adı önerirken açık ve birleşmiş (`merged`/`gone`) tüm dalları denetle (`suggestUniqueBranchName`); statik isimler yerine değişen dosyalardan dinamik (`feat/<dosya>-guncel`) isimler türet.
    - **Uzak Sunucuya Boş/Bozuk İstek Gönderme:** `gh pr create` veya `git push` öncesi `AheadMain == 0` ya da `go vet ./...` doğrulamasını yerelde çalıştır; ham GraphQL/CLI hatası sızdırmak yerine ne yapılması gerektiğini açıklayan net Türkçe uyarı döndür.
    - **Görsel Dürüstlük:** Eylemi olmayan öğede gereksiz buton gösterme; yalnızca yerel kalıntısı duran birleşmiş parabollerde `💻 Local` / `HEAD·Local` rozeti, alt ray kalıntı kuyruğu ve `🧹` butonu göster, tamamen temiz yeşil kapsüllerde `🧹` butonunu gizle.
 
@@ -36,13 +40,13 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 
 - `main.go` / `main_test.go`: HTTP sunucusu, güvenlik middleware (`root`, `guard`), 20 `/api/*` uç noktası, `-addr`, `-repo`, `-open`, `-mcp`, `-team` bayrakları, CSP & API güvenlik testleri.
 - `internal/model/model.go`: `CockpitSnapshot`, `RepoMeta`, `CommitNode`, `BranchArc`, `PRStatus`, `CIStatus`, `ConflictDetail`, `ConflictStudioPayload`, `ActionLogEntry`.
-- `internal/gitengine/collector.go`: `AppVersion` (`0.8.0`), `CollectLiveRepo`, SHA-bazlı `evalCache`, 40-dal sıralı penceresi, `collectLocalBranches`, `collectRemoteOnlyBranches`, `ParseMergeTreeOutput`, `BuildSuggestedCommand`.
+- `internal/gitengine/collector.go`: `AppVersion` (`0.8.0`), `CollectLiveRepo`, SHA-bazlı `evalCache`, 40-dal sıralı penceresi, `collectLocalBranches` (taze yerel dal ayrımı), `collectRemoteOnlyBranches`, `ParseMergeTreeOutput`, `BuildSuggestedCommand`.
 - `internal/gitengine/simulation.go`: `Manager`, in-memory `simRepo` sanal durum yönetimi, `SyncSpine`, `ProtectDefaultBranch`, `CheckForUpdates`, kalıcı `actionLogs`.
-- `internal/gitengine/live_mutations.go`: Canlı Git/GitHub mutasyonları (`commitWorkingTreeLive`, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive` & `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`).
+- `internal/gitengine/live_mutations.go`: Canlı Git/GitHub mutasyonları (`commitWorkingTreeLive` yerel `checkout -b` akışı, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive` & `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`).
 - `internal/gitengine/conflict_studio.go`, `diagnostics.go`, `lanes.go`: İzole 3-yollu `git merge-file` stüdyosu ve akıllı öneri, ters indeks Cross-PR çarpışma ve CI log ayıklama, interval packing şerit yerleşimi.
 - `internal/gitengine/engine_test.go`: Gerçek geçici bare/clone Git depolarıyla mutasyon, boş dal / otomatik `HEAD` temizliği ve iş akışı doğrulamaları dahil 17 test.
 - `internal/mcp/server.go` & `server_test.go`: Sıfır bağımlılıklı `stdio` JSON-RPC 2.0 MCP sunucusu (`gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`).
-- `web/index.html`, `web/tasarim.css`, `web/fallback.js`, `web/app.js`: Parabolik SVG kokpit, alt ray yerel kalıntı kuyruğu (`.svg-local-remnant-path` / `.cap-local-remnant`), Sağ Inspector (`suggestUniqueBranchName`), `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve modüler `LocalFallbackEngine` (`fallback.js`).
+- `web/index.html`, `web/tasarim.css`, `web/fallback.js`, `web/app.js`: Parabolik SVG kokpit, **PocketUI Alt Çekmece (Bottom Dock)** (`#bottom-dock` · Radar / Loglar / Son İşlemler), **Tam Genişlik Hata Radarı Kartları** (`.radar-card`), alt ray yerel kalıntı kuyruğu (`.svg-local-remnant-path` / `.cap-local-remnant`), Sağ Inspector (`suggestUniqueBranchName`), `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve modüler `LocalFallbackEngine` (`fallback.js`).
 
 ## 4. Zorunlu Doğrulama Adımları (Her Görev Sonu)
 
