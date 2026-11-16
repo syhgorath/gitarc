@@ -67,8 +67,10 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
   4. `#logs-modal`
   5. `#security-update-modal`
 - **`web/tasarim.css`:** Tüm tema renkleri (`--sky`, `--purple`, `--emerald`, `--danger`, `--warn`, `--warn-orange`), SVG yay animasyonları (`ciStrokePulse`, `ciRunningPulse`), kart nabız halkaları (`pulseRedRing`, `pulseRunningRing`, `dotBlink`) ve modal/form düzenleri.
+- **`web/fallback.js`:**
+  - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti bağımsız çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur, simüle CI extraction, çakışma ve pipeline yönetimini barındırır). `app.js`'den önce yüklenir (`window.LocalFallbackEngine`).
 - **`web/app.js`:**
-  - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti eksiksiz çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur).
+  - Ana kokpit kontrolcüsü, DOM/SVG render, durum yönetimi ve olay dinleyicileri.
   - `apiCall(path, method, body)`: Tüm POST isteklerine `X-Requested-With: gitarc` başlığı ekler.
   - 4 saniyelik sessiz canlı polling (`setInterval`, `snapshotSignature(snap)` değişirse `applySnapshot` çağırır; kullanıcı `INPUT`/`TEXTAREA`/`SELECT` odaklıyken veya modal/drag açıkken DOM'u ezmez).
   - `state.pendingAutoMerge`: `CI: RUNNING` iken Merge tetiklendiğinde dalı kuyruğa alır; polling `CI: SUCCESS` gördüğünde `executeMergeNow` çağırır, `FAILURE` veya çakışma görürse iptal eder.
