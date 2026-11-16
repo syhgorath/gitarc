@@ -508,9 +508,6 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 		return model.CockpitSnapshot{}, fmt.Errorf("aktif çalışma dalı (%s) silinemez; önce başka dala geçin", b.Name)
 	}
 	if b.IsHEAD {
-		if snap.Repo.DirtyCount > 0 || b.UncommittedCount > 0 {
-			return model.CockpitSnapshot{}, fmt.Errorf("aktif dalda kaydedilmemiş değişiklikler var; önce commitleyin veya başka dala geçin")
-		}
 		if m.IsTeamMode() {
 			return model.CockpitSnapshot{}, fmt.Errorf("Team Server modunda aktif çalışma dalı (%s) silinemez", b.Name)
 		}
@@ -519,8 +516,8 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 			defBranch = "main"
 		}
 		if out, _, swErr := runCmd(ctx, live.path, "git", "switch", defBranch); swErr != nil {
-			if _, _, coErr := runCmd(ctx, live.path, "git", "checkout", defBranch); coErr != nil {
-				return model.CockpitSnapshot{}, fmt.Errorf("%s dalına otomatik geçilemedi: %s", defBranch, strings.TrimSpace(out))
+			if outCo, _, coErr := runCmd(ctx, live.path, "git", "checkout", defBranch); coErr != nil {
+				return model.CockpitSnapshot{}, fmt.Errorf("%s omurgasına otomatik geçilemedi (kaydedilmemiş değişiklikleriniz çakışıyor olabilir): %s", defBranch, strings.TrimSpace(out)+" "+strings.TrimSpace(outCo))
 			}
 		}
 	}

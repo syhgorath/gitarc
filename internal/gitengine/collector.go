@@ -1256,10 +1256,10 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 	}
 
 	if headOnDefault && dirtyCount > 0 && lastSpine >= 0 {
-		commitMsg, prTitle, prBody := buildSuggestedCommitAndPR(repoPath, "wip/working-tree", dirtyFiles)
+		commitMsg, prTitle, prBody := buildSuggestedCommitAndPR(repoPath, "main", dirtyFiles)
 		branches = append(branches, model.BranchArc{
 			ID:               "local-wip-working-tree",
-			Name:             "wip/working-tree",
+			Name:             "Çalışma Alanı (Kaydedilmemiş)",
 			Hemisphere:       "lower",
 			State:            "open",
 			StartSpineIndex:  lastSpine,
