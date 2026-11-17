@@ -63,12 +63,14 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 - **`internal/mcp/server.go`:** MCP JSON-RPC 2.0 `stdio` sunucusu (`protocolVersion = "2024-11-05"`). Sunulan 5 araç: `gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`.
 
 ### Frontend (`web/`)
-- **`web/index.html`:** Üst bar (repo seçici, KPI çipleri, arama/filtre/mercek, Loglar/MCP/Güvenlik&Güncelleme butonları), sol SVG parabol sahnesi (`#rail-svg`), tuvalin altında **PocketUI Tabbed Bottom Dock** (`#bottom-dock` · 🚨 Hata & Uyarı Radarı, 📜 Sistem & Git Logları, ⚡ Son İşlemler, daraltma/temizleme araçları), sağ Inspector (`#inspector-detail`) ve 5 modal:
+- **`web/index.html`:** Üst bar (repo seçici, `➕ Proje Ekle`, `🎓 Tur`, KPI çipleri, arama/filtre/mercek, Loglar/MCP/Güvenlik&Güncelleme butonları), sol SVG parabol sahnesi (`#rail-svg`), tuvalin altında **PocketUI Tabbed Bottom Dock** (`#bottom-dock` · 🚨 Hata & Uyarı Radarı, 📜 Sistem & Git Logları, ⚡ Son İşlemler, daraltma/temizleme araçları), sağ Inspector (`#inspector-detail`) ve 7 modal/overlay:
   1. `#create-branch-modal`
   2. `#conflict-studio-modal`
   3. `#mcp-connect-modal`
   4. `#logs-modal`
   5. `#security-update-modal`
+  6. `#add-project-modal`
+  7. `#tour-backdrop` (Etkileşimli spotlight kokpit turu)
 - **`web/tasarim.css`:** Tüm tema renkleri (`--sky`, `--purple`, `--emerald`, `--danger`, `--warn`, `--warn-orange`), SVG yay animasyonları (`ciStrokePulse`, `ciRunningPulse`), kart nabız halkaları (`pulseRedRing`, `pulseRunningRing`, `dotBlink`), **PocketUI Bottom Dock** (`.bottom-dock`, `.dock-collapsed`), **Tam Genişlik Hata Radarı Kartları** (`.radar-card`, `.rc-header`, `.rc-badge`, `.rc-files-row`, `.rc-ci-snippet`, `.rc-cmd-row`), ve modal/form düzenleri.
 - **`web/fallback.js`:**
   - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti bağımsız çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur, simüle CI extraction, çakışma ve pipeline yönetimini barındırır). `app.js`'den önce yüklenir (`window.LocalFallbackEngine`).

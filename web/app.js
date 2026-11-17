@@ -111,6 +111,16 @@
     projectNameInput: document.getElementById('project-name-input'),
     addProjClose: document.getElementById('add-proj-close'),
     addProjCancel: document.getElementById('add-proj-cancel'),
+    btnStartTour: document.getElementById('btn-start-tour'),
+    tourBackdrop: document.getElementById('tour-backdrop'),
+    tourCard: document.getElementById('tour-card'),
+    tourStepBadge: document.getElementById('tour-step-badge'),
+    tourStepTitle: document.getElementById('tour-step-title'),
+    tourStepBody: document.getElementById('tour-step-body'),
+    tourPrevBtn: document.getElementById('tour-prev-btn'),
+    tourNextBtn: document.getElementById('tour-next-btn'),
+    tourCloseBtn: document.getElementById('tour-close-btn'),
+    tourDots: document.getElementById('tour-dots'),
   };
 
   // Fallback simulation engine for standalone file:// opening without Go server (defined in fallback.js)
@@ -240,11 +250,17 @@
     try {
       let snap = await apiCall('/api/snapshot');
       const savedId = localStorage.getItem(REPO_STORAGE_KEY);
+      const isSavedSimulation = savedId && savedId.startsWith('sim-');
+
+      // Eğer sunucu canlı bir git deposuyla açıldıysa (mode === 'live'),
+      // localStorage'daki eski simülasyon (sim-*) sunucuyu zorla ezmemeli!
       if (savedId && savedId !== snap.repo.id && (snap.repos || []).some((r) => r.id === savedId)) {
-        try {
-          snap = await apiCall('/api/repo/switch', 'POST', { repoId: savedId });
-        } catch {
-          // Keep initial snapshot if switch fails
+        if (!(snap.repo.mode === 'live' && isSavedSimulation)) {
+          try {
+            snap = await apiCall('/api/repo/switch', 'POST', { repoId: savedId });
+          } catch {
+            // Keep initial snapshot if switch fails
+          }
         }
       }
       localStorage.setItem(REPO_STORAGE_KEY, snap.repo.id);
@@ -844,7 +860,7 @@
     const maxApexX = Math.max(0, ...Array.from(apexLayout.values()).map((v) => v.apexX));
 
     const minY = Math.min(0, MAIN_Y - LANE_BASE_OFFSET - (maxMergedUpperLane - 1) * LANE_STEP_Y - 130);
-    const maxY = Math.max(600, MAIN_Y + LANE_BASE_OFFSET + 155);
+    const maxY = Math.max(680, MAIN_Y + LANE_BASE_OFFSET + 220);
     const sceneW = Math.max(1280, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140, maxApexX + 200);
     const sceneH = maxY - minY;
 
@@ -2366,6 +2382,128 @@
     }
   }
 
+  // =========================================================================
+  // INTERACTIVE COCKPIT TOUR (SPOTLIGHT HELPER)
+  // =========================================================================
+  const TOUR_STEPS = [
+    {
+      targetId: null,
+      targetSelector: '.repo-picker',
+      posClass: 'tour-pos-top-left',
+      badge: 'Adım 1 / 5',
+      title: '📂 Depo Seçimi & ➕ Proje Ekle',
+      body: '<p>Buradan çalıştığınız canlı Git depoları veya simülasyon demoları arasında anında geçiş yapabilirsiniz.</p><p><strong>➕ Proje Ekle</strong> butonuna basarak bilgisayarınızdaki herhangi bir yerel Git projesini tek tıkla GitArc kokpitine dahil edebilirsiniz.</p>',
+    },
+    {
+      targetId: null,
+      targetSelector: null,
+      posClass: 'tour-pos-center',
+      badge: 'Adım 2 / 5',
+      title: '🚀 Parabolik Ray Tuvali',
+      body: '<p>Git yaşam döngünüz burada <strong>parabolik raylar</strong> olarak görselleştirilir:</p><p>• <strong>Merkez Ray:</strong> <code>main</code> omurgası, commitler ve sürüm tag\'leri.<br>• <strong>Üst Ray:</strong> GitHub Remote ve Pull Request durumları.<br>• <strong>Alt Ray:</strong> Henüz pushlanmamış yerel dallarınız ve kaydedilmemiş çalışma dizininiz.</p>',
+    },
+    {
+      targetId: 'bottom-dock',
+      targetSelector: '#bottom-dock',
+      posClass: 'tour-pos-bottom-dock',
+      badge: 'Adım 3 / 5',
+      title: '🚨 PocketUI Alt Çekmece (Radar & Loglar)',
+      body: '<p><strong>Hata & Uyarı Radarı</strong> ekranın altında tam genişlikte çalışır. CI kırılmaları, merge çakışmaları ve silinmiş uzak dallar etkilenen dosya etiketleriyle burada listelenir.</p><p>Ayrıca <strong>📜 Loglar</strong> ve <strong>⚡ Son İşlemler</strong> sekmeleriyle sistemin attığı tüm adımları canlı takip edebilirsiniz.</p>',
+    },
+    {
+      targetId: 'inspector-detail',
+      targetSelector: '.inspector-pane',
+      posClass: 'tour-pos-inspector',
+      badge: 'Adım 4 / 5',
+      title: '🛠️ Dal, Çakışma & Commit Stüdyosu',
+      body: '<p>Grafikten bir dal veya commit seçtiğinizde sağ panelde stüdyo açılır:</p><p>• <strong>Tek Tıkla Dala Geçiş (Checkout)</strong> ve PR bilgisi düzenleme.<br>• <strong>Çakışma Stüdyosu:</strong> İzole <code>git worktree</code> üzerinde kayıpsız çakışma çözümü.<br>• <strong>Konsolsuz Commit:</strong> Terminal açmadan yerel değişikliklerinizi commitleyip PR açma.</p>',
+    },
+    {
+      targetId: null,
+      targetSelector: '.toolbar-actions',
+      posClass: 'tour-pos-toolbar',
+      badge: 'Adım 5 / 5',
+      title: '🛡️ Güvenlik, Temizlik & MCP AI',
+      body: '<p>Üst çubuktaki güçlü yardımcılar:</p><p>• <strong>🧹 Temizle:</strong> GitHub\'da birleşmiş veya silinmiş uzak kalıntı dalları temizler.<br>• <strong>🛡️ Koruma:</strong> main dal koruma durumunu denetler.<br>• <strong>🔌 MCP:</strong> GitArc\'ı Antigravity, Claude Code veya Cursor yapay zekanıza bağlar!</p>',
+    },
+  ];
+
+  let currentTourStep = 0;
+  let activeTourTargetEl = null;
+
+  function renderTourStep(stepIndex) {
+    if (stepIndex < 0 || stepIndex >= TOUR_STEPS.length) {
+      closeTour();
+      return;
+    }
+    currentTourStep = stepIndex;
+    const step = TOUR_STEPS[stepIndex];
+
+    if (activeTourTargetEl) {
+      activeTourTargetEl.classList.remove('tour-highlight-target');
+      activeTourTargetEl = null;
+    }
+
+    const target = step.targetId
+      ? document.getElementById(step.targetId)
+      : (step.targetSelector ? document.querySelector(step.targetSelector) : null);
+
+    if (target) {
+      activeTourTargetEl = target;
+      target.classList.add('tour-highlight-target');
+      try {
+        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (_) {}
+    }
+
+    el.tourCard.className = `tour-card ${step.posClass || 'tour-pos-center'}`;
+    el.tourStepBadge.textContent = step.badge;
+    el.tourStepTitle.textContent = step.title;
+    el.tourStepBody.innerHTML = step.body;
+
+    el.tourPrevBtn.disabled = stepIndex === 0;
+    el.tourNextBtn.textContent = stepIndex === TOUR_STEPS.length - 1 ? 'Tamamla ✓' : 'Sonraki ▶';
+
+    el.tourDots.innerHTML = '';
+    TOUR_STEPS.forEach((_, idx) => {
+      const dot = document.createElement('span');
+      dot.className = `tour-dot ${idx === stepIndex ? 'active' : ''}`;
+      dot.setAttribute('title', `Adım ${idx + 1}`);
+      dot.addEventListener('click', () => renderTourStep(idx));
+      el.tourDots.appendChild(dot);
+    });
+  }
+
+  function startTour() {
+    el.tourBackdrop.hidden = false;
+    el.tourCard.hidden = false;
+    renderTourStep(0);
+  }
+
+  function closeTour() {
+    el.tourBackdrop.hidden = true;
+    el.tourCard.hidden = true;
+    if (activeTourTargetEl) {
+      activeTourTargetEl.classList.remove('tour-highlight-target');
+      activeTourTargetEl = null;
+    }
+  }
+
+  function nextTourStep() {
+    if (currentTourStep >= TOUR_STEPS.length - 1) {
+      closeTour();
+      showToast('🎉 Tebrikler! GitArc kokpit turunu tamamladınız.', 'ok');
+    } else {
+      renderTourStep(currentTourStep + 1);
+    }
+  }
+
+  function prevTourStep() {
+    if (currentTourStep > 0) {
+      renderTourStep(currentTourStep - 1);
+    }
+  }
+
   async function handlePromoteBranch(branchId, explicitTitle, explicitBody, btnEl = null) {
     const b = state.snapshot?.branches?.find((x) => x.id === branchId);
     let title = explicitTitle;
@@ -2849,6 +2987,28 @@
   el.addProjClose.addEventListener('click', closeAddProjectModal);
   el.addProjCancel.addEventListener('click', closeAddProjectModal);
   el.addProjectForm.addEventListener('submit', handleAddProjectSubmit);
+
+  el.btnStartTour?.addEventListener('click', startTour);
+  el.tourCloseBtn?.addEventListener('click', closeTour);
+  el.tourNextBtn?.addEventListener('click', nextTourStep);
+  el.tourPrevBtn?.addEventListener('click', prevTourStep);
+  el.tourBackdrop?.addEventListener('click', (ev) => {
+    if (ev.target === el.tourBackdrop) {
+      closeTour();
+    }
+  });
+
+  window.addEventListener('keydown', (ev) => {
+    if (el.tourBackdrop && !el.tourBackdrop.hidden) {
+      if (ev.key === 'Escape') {
+        closeTour();
+      } else if (ev.key === 'ArrowRight') {
+        nextTourStep();
+      } else if (ev.key === 'ArrowLeft') {
+        prevTourStep();
+      }
+    }
+  });
 
   el.newBranchForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
