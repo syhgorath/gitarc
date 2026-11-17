@@ -382,92 +382,112 @@ export function renderInspector(callbacks = {}) {
     const candidateFiles = (b.changedFiles || []).filter(Boolean);
     const secretFile = candidateFiles.find((f) => isSecretFile(f, snap));
 
-    let defaultWtBranch = b.name;
-    let branchPlaceholder = 'feat/ozellik-adi';
-    let defaultCommitMsg = b.lastCommitMsg || '';
-    if (/update\s+\d+\s+files/i.test(defaultCommitMsg) || defaultCommitMsg.startsWith('Pushlanmamış yerel çalışma')) {
-      defaultCommitMsg = '';
-    }
-    let defaultPrTitle = b.draftPrTitle || defaultCommitMsg;
-    if (/update\s+\d+\s+files/i.test(defaultPrTitle)) {
-      defaultPrTitle = '';
-    }
-    let defaultPrBody = b.draftPrBody || '';
-
-    if (isVirtualWip || isMerged) {
-      defaultWtBranch = suggestUniqueBranchName('feat', candidateFiles, snap);
-      branchPlaceholder = 'Örn: ' + defaultWtBranch;
-
-      let prefix = 'feat';
-      let scope = '';
-      const first = (candidateFiles[0] || '').toLowerCase();
-      if (first.startsWith('internal/mcp')) { scope = '(mcp)'; prefix = 'feat'; }
-      else if (first.startsWith('web/')) { scope = '(ui)'; prefix = 'feat'; }
-      else if (first.startsWith('docs/') || first.endsWith('.md')) { scope = '(docs)'; prefix = 'docs'; }
-      else if (first.includes('test')) { scope = '(test)'; prefix = 'test'; }
-      else if (first.startsWith('.github/')) { scope = '(ci)'; prefix = 'ci'; }
-
-      const count = candidateFiles.length;
-      const countLabel = count === 1 ? '1 dosya' : `${count} dosya`;
-      const fileSummary = candidateFiles.slice(0, 2).map((x) => x.split('/').pop()).join(', ');
-      const moreSuffix = count > 2 ? '...' : '';
-      const desc = count > 0 ? `${countLabel} (${fileSummary}${moreSuffix}) güncellemeleri ve iyileştirmeler` : 'yeni özellik geliştirmeleri';
-
-      defaultCommitMsg = `${prefix}${scope}: ${desc}`;
-      defaultPrTitle = defaultCommitMsg;
-      defaultPrBody = `## Neler Değişti?\n- ${candidateFiles.slice(0, 8).map((f) => `\`${f}\` üzerinde geliştirmeler`).join('\n- ')}\n\n## Doğrulama\n- Yerel testler ve kontroller tamamlandı.`;
-    }
-
-    html += `
-      <div class="diag-card working-tree-card">
-        <h4>
-          <span>🚀 Konsolsuz Commit &amp; PR Stüdyosu</span>
-          <span class="chip ${secretFile ? 'danger' : 'purple'}">${secretFile ? '🛡️ Güvenlik Engeli' : (candidateFiles.length + ' Dosya Bekliyor')}</span>
-        </h4>
-        <div class="wt-note">
-          Terminal açmadan çalışma alanındaki açık dosyaları yeni bir dala aktarabilir, commit atabilir veya doğrudan origin'e pushlayıp GitHub PR açabilirsiniz.
-        </div>
-
-        ${secretFile ? `
-          <div class="wt-alert danger">
-            <strong>GÜVENLİK ENGELİ:</strong> '${esc(secretFile)}' dosyası gizli/hassas bilgi (secret/private key/env) olarak tespit edildi! Bu dosya güvenliğiniz için commitlenemez.
-          </div>
-        ` : ''}
-
-        <form id="form-wt-commit" class="edit-form">
-          <div class="wt-field">
-            <label class="wt-label" for="wt-branch-name">Hedef Dal Adı ${isMerged ? '<span class="chip warn">Birleşmiş Dal Koruması</span>' : ''}</label>
-            <input type="text" id="wt-branch-name" class="input-control mono" value="${esc(defaultWtBranch)}" placeholder="${esc(branchPlaceholder)}" required ${snap.repo.teamMode ? 'disabled' : ''}>
-          </div>
-          <div class="wt-field">
-            <label class="wt-label">Kaydedilecek Açık Dosyalar (${candidateFiles.length} dosya)</label>
-            <div class="file-list">
-              ${candidateFiles.map((f) => {
-                const isSec = isSecretFile(f, snap);
-                return `<span class="file-tag ${isSec ? 'special danger-file' : ''}" title="${isSec ? 'Güvenlik kalkanı tarafından engellendi' : ''}">${isSec ? '🛡️ ' : ''}${esc(f)}</span>`;
-              }).join('')}
-            </div>
-          </div>
-          <div class="wt-field">
-            <label class="wt-label" for="wt-commit-msg">Commit Mesajı</label>
-            <input type="text" id="wt-commit-msg" class="input-control mono" value="${esc(defaultCommitMsg)}" placeholder="Örn: feat(ui): add new interactive panel" required>
-          </div>
-          <div class="wt-field">
-            <label class="wt-label" for="wt-pr-title">PR Başlığı (Opsiyonel)</label>
-            <input type="text" id="wt-pr-title" class="input-control mono" value="${esc(defaultPrTitle)}" placeholder="Örn: feat: add new interactive panel">
-          </div>
-          <div class="wt-field">
-            <label class="wt-label" for="wt-pr-body">PR Açıklaması</label>
-            <textarea id="wt-pr-body" class="textarea-control" placeholder="Neler değişti ve nasıl doğrulandı?">${esc(defaultPrBody)}</textarea>
+    if (isMerged && !isVirtualWip) {
+      html += `
+        <div class="diag-card working-tree-card">
+          <h4>
+            <span>⚠️ Birleşmiş Kalıntı Dalda Açık Dosyalar</span>
+            <span class="chip warn">${candidateFiles.length} Dosya Bekliyor</span>
+          </h4>
+          <div class="wt-note">
+            Aktif dalınız (<strong>${esc(b.name)}</strong>) GitHub üzerinde birleşmiş ve silinmiştir (origin: gone). Birleşmiş bir dalın üzerine yeni commit veya PR açılamaz.<br><br>
+            Açık <strong>${candidateFiles.length}</strong> dosyanız güvenle korunmaktadır. Bu kalıntıyı temizleyip ana omurgaya geçebilir veya dosyaları yeni bir dala aktarabilirsiniz.
           </div>
           <div class="det-actions">
-            <button type="submit" class="btn emerald sm" id="act-wt-commit-only" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>💾 Sadece Dal Aç &amp; Commit At</button>
-            <button type="button" class="btn primary sm" id="act-wt-commit-push" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>${b.pr && b.pr.number > 0 ? `🚀 Commit &amp; PR #${b.pr.number}'a Pushla` : '🚀 Commit + Push &amp; PR Oluştur'}</button>
-            <button type="button" class="btn warn sm" id="act-wt-discard" ${snap.repo.teamMode ? 'disabled' : ''}>🗑️ Değişiklikleri Geri Al (Discard)</button>
+            ${b.hasLocal ? '<button type="button" class="btn primary sm" id="act-clean-and-switch-main">🧹 Kalıntıyı Temizle ve main\'e Geç</button>' : ''}
+            <button type="button" class="btn emerald sm" id="act-open-new-branch-modal">+ Yeni Dala Aktar</button>
+            <button type="button" class="btn warn sm" id="act-wt-discard">🗑️ Değişiklikleri Geri Al (Discard)</button>
           </div>
-        </form>
-      </div>
-    `;
+        </div>
+      `;
+    } else {
+      let defaultWtBranch = b.name;
+      let branchPlaceholder = 'feat/ozellik-adi';
+      let defaultCommitMsg = b.lastCommitMsg || '';
+      if (/update\s+\d+\s+files/i.test(defaultCommitMsg) || defaultCommitMsg.startsWith('Pushlanmamış yerel çalışma')) {
+        defaultCommitMsg = '';
+      }
+      let defaultPrTitle = b.draftPrTitle || defaultCommitMsg;
+      if (/update\s+\d+\s+files/i.test(defaultPrTitle)) {
+        defaultPrTitle = '';
+      }
+      let defaultPrBody = b.draftPrBody || '';
+
+      if (isVirtualWip) {
+        defaultWtBranch = suggestUniqueBranchName('feat', candidateFiles, snap);
+        branchPlaceholder = 'Örn: ' + defaultWtBranch;
+
+        let prefix = 'feat';
+        let scope = '';
+        const first = (candidateFiles[0] || '').toLowerCase();
+        if (first.startsWith('internal/mcp')) { scope = '(mcp)'; prefix = 'feat'; }
+        else if (first.startsWith('web/')) { scope = '(ui)'; prefix = 'feat'; }
+        else if (first.startsWith('docs/') || first.endsWith('.md')) { scope = '(docs)'; prefix = 'docs'; }
+        else if (first.includes('test')) { scope = '(test)'; prefix = 'test'; }
+        else if (first.startsWith('.github/')) { scope = '(ci)'; prefix = 'ci'; }
+
+        const count = candidateFiles.length;
+        const countLabel = count === 1 ? '1 dosya' : `${count} dosya`;
+        const fileSummary = candidateFiles.slice(0, 2).map((x) => x.split('/').pop()).join(', ');
+        const moreSuffix = count > 2 ? '...' : '';
+        const desc = count > 0 ? `${countLabel} (${fileSummary}${moreSuffix}) güncellemeleri ve iyileştirmeler` : 'yeni özellik geliştirmeleri';
+
+        defaultCommitMsg = `${prefix}${scope}: ${desc}`;
+        defaultPrTitle = defaultCommitMsg;
+        defaultPrBody = `## Neler Değişti?\n- ${candidateFiles.slice(0, 8).map((f) => `\`${f}\` üzerinde geliştirmeler`).join('\n- ')}\n\n## Doğrulama\n- Yerel testler ve kontroller tamamlandı.`;
+      }
+
+      html += `
+        <div class="diag-card working-tree-card">
+          <h4>
+            <span>🚀 Konsolsuz Commit &amp; PR Stüdyosu</span>
+            <span class="chip ${secretFile ? 'danger' : 'purple'}">${secretFile ? '🛡️ Güvenlik Engeli' : (candidateFiles.length + ' Dosya Bekliyor')}</span>
+          </h4>
+          <div class="wt-note">
+            Terminal açmadan çalışma alanındaki açık dosyaları yeni bir dala aktarabilir, commit atabilir veya doğrudan origin'e pushlayıp GitHub PR açabilirsiniz.
+          </div>
+
+          ${secretFile ? `
+            <div class="wt-alert danger">
+              <strong>GÜVENLİK ENGELİ:</strong> '${esc(secretFile)}' dosyası gizli/hassas bilgi (secret/private key/env) olarak tespit edildi! Bu dosya güvenliğiniz için commitlenemez.
+            </div>
+          ` : ''}
+
+          <form id="form-wt-commit" class="edit-form">
+            <div class="wt-field">
+              <label class="wt-label" for="wt-branch-name">Hedef Dal Adı</label>
+              <input type="text" id="wt-branch-name" class="input-control mono" value="${esc(defaultWtBranch)}" placeholder="${esc(branchPlaceholder)}" required ${snap.repo.teamMode ? 'disabled' : ''}>
+            </div>
+            <div class="wt-field">
+              <label class="wt-label">Kaydedilecek Açık Dosyalar (${candidateFiles.length} dosya)</label>
+              <div class="file-list">
+                ${candidateFiles.map((f) => {
+                  const isSec = isSecretFile(f, snap);
+                  return `<span class="file-tag ${isSec ? 'special danger-file' : ''}" title="${isSec ? 'Güvenlik kalkanı tarafından engellendi' : ''}">${isSec ? '🛡️ ' : ''}${esc(f)}</span>`;
+                }).join('')}
+              </div>
+            </div>
+            <div class="wt-field">
+              <label class="wt-label" for="wt-commit-msg">Commit Mesajı</label>
+              <input type="text" id="wt-commit-msg" class="input-control mono" value="${esc(defaultCommitMsg)}" placeholder="Örn: feat(ui): add new interactive panel" required>
+            </div>
+            <div class="wt-field">
+              <label class="wt-label" for="wt-pr-title">PR Başlığı (Opsiyonel)</label>
+              <input type="text" id="wt-pr-title" class="input-control mono" value="${esc(defaultPrTitle)}" placeholder="Örn: feat: add new interactive panel">
+            </div>
+            <div class="wt-field">
+              <label class="wt-label" for="wt-pr-body">PR Açıklaması</label>
+              <textarea id="wt-pr-body" class="textarea-control" placeholder="Neler değişti ve nasıl doğrulandı?">${esc(defaultPrBody)}</textarea>
+            </div>
+            <div class="det-actions">
+              <button type="submit" class="btn emerald sm" id="act-wt-commit-only" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>💾 Sadece Dal Aç &amp; Commit At</button>
+              <button type="button" class="btn primary sm" id="act-wt-commit-push" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>${b.pr && b.pr.number > 0 ? `🚀 Commit &amp; PR #${b.pr.number}'a Pushla` : '🚀 Commit + Push &amp; PR Oluştur'}</button>
+              <button type="button" class="btn warn sm" id="act-wt-discard" ${snap.repo.teamMode ? 'disabled' : ''}>🗑️ Değişiklikleri Geri Al (Discard)</button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
   }
 
   if (canPromote) {
@@ -668,6 +688,12 @@ export function renderInspector(callbacks = {}) {
   });
   document.getElementById('act-delete')?.addEventListener('click', (ev) => {
     if (onDeleteBranch) onDeleteBranch(b.id, ev.currentTarget);
+  });
+  document.getElementById('act-clean-and-switch-main')?.addEventListener('click', (ev) => {
+    if (onDeleteBranch) onDeleteBranch(b.id, ev.currentTarget);
+  });
+  document.getElementById('act-open-new-branch-modal')?.addEventListener('click', () => {
+    document.getElementById('btn-new-branch')?.click();
   });
 
   document.getElementById('form-edit-pr')?.addEventListener('submit', (ev) => {

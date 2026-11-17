@@ -178,14 +178,18 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/branch/fix-ci", a.guard(a.handleFixCI))
 	mux.HandleFunc("/api/branch/delete", a.guard(a.handleDeleteBranch))
 	mux.HandleFunc("/api/branch/prune", a.guard(a.handlePruneGone))
+	mux.HandleFunc("/api/branch/prune-gone", a.guard(a.handlePruneGone))
 	mux.HandleFunc("/api/pr/edit", a.guard(a.handleEditPR))
 	mux.HandleFunc("/api/commit/amend", a.guard(a.handleAmendCommit))
 	mux.HandleFunc("/api/spine/sync", a.guard(a.handleSyncSpine))
+	mux.HandleFunc("/api/sync-spine", a.guard(a.handleSyncSpine))
 	mux.HandleFunc("/api/logs/clear", a.guard(a.handleClearLogs))
 	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
+	mux.HandleFunc("/api/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/test/run", a.guard(a.handleRunLocalTest))
+	mux.HandleFunc("/api/run-local", a.guard(a.handleRunLocalTest))
 	return mux
 }
 

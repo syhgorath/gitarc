@@ -125,10 +125,28 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 	curOut, _, _ := runCmd(ctx, live.path, "git", "branch", "--show-current")
 	curBranch := strings.TrimSpace(curOut)
 
-	if branchName != "" && branchName != curBranch {
-		if pushAndPR && branchName == defBranch {
+	targetBranch := branchName
+	if targetBranch == "" {
+		targetBranch = curBranch
+	}
+
+	if pushAndPR {
+		if targetBranch == "" || targetBranch == defBranch {
 			return model.CockpitSnapshot{}, fmt.Errorf("PR açmak için %s dışında yeni bir özellik dalı adı girin", defBranch)
 		}
+		// Block pushing to an already merged branch BEFORE switching
+		snap, _ := m.Snapshot()
+		for _, b := range snap.Branches {
+			if strings.EqualFold(b.Name, targetBranch) {
+				if b.State == "merged" || b.OriginGone || (b.PR != nil && b.PR.ReviewState == "MERGED") {
+					return model.CockpitSnapshot{}, fmt.Errorf("'%s' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın üzerine push yapılamaz, lütfen yeni bir dal açın", targetBranch)
+				}
+				break
+			}
+		}
+	}
+
+	if branchName != "" && branchName != curBranch {
 		if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+branchName); err == nil {
 			if out, _, swErr := runCmd(ctx, live.path, "git", "switch", branchName); swErr != nil {
 				return model.CockpitSnapshot{}, fmt.Errorf("%s dalına geçilemedi: %s", branchName, strings.TrimSpace(out))
@@ -140,22 +158,6 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 			}
 		}
 		curBranch = branchName
-	}
-
-	if pushAndPR {
-		if curBranch == "" || curBranch == defBranch {
-			return model.CockpitSnapshot{}, fmt.Errorf("PR açmak için %s dışında bir özellik dalı adı girin", defBranch)
-		}
-		// Block pushing to an already merged branch
-		snap, _ := m.Snapshot()
-		for _, b := range snap.Branches {
-			if b.Name == curBranch {
-				if b.State == "merged" || b.OriginGone || (b.PR != nil && b.PR.ReviewState == "MERGED") {
-					return model.CockpitSnapshot{}, fmt.Errorf("'%s' dalı zaten birleşmiş (merged/gone). Birleşmiş bir dalın üzerine push yapılamaz, lütfen yeni bir dal açın", curBranch)
-				}
-				break
-			}
-		}
 	}
 
 	cfg := LoadGuardConfig(live.path)

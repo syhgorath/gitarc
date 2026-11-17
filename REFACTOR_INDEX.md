@@ -8,7 +8,15 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 
 | Katman | Dosya | Satır | Sorumluluk | Durum / Hedef |
 |---|---|---|---|---|
-| **Web Frontend** | `web/app.js` | 3.470 | Monolitik UI/SVG/State/Inspector/Modal orkestratörü | 🚨 **Modüler ES6 Modüllerine bölünecek** (Hedef: ~200 satır ana giriş) |
+| **Web Frontend** | `web/app.js` | 494 | Ana orkestratör ve yaşam döngüsü | ✅ 3.470 satırdan 494 satıra düşürüldü |
+| **Web Frontend** | `web/modules/canvas.js` | 756 | SVG paraboller, koordinatlar ve kapsül çizimleri | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/inspector.js` | 708 | Sağ detay paneli, formlar ve PR açıklama kartları | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/modals.js` | 327 | Çakışma stüdyosu, proje yöneticisi ve kokpit turu | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/dock.js` | 261 | PocketUI alt çekmece, radar ve log akışı | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/utils.js` | 215 | `esc`, `truncate`, zaman ve güvenlik yardımcıları | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/state.js` | 144 | Reaktif durum mağazası ve DOM kayıt defteri | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/api.js` | 25 | REST API istemcisi ve hata yönetimi | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/constants.js` | 16 | Layout ve geometri sabitleri | ✅ Modüler ayrıldı |
 | **Web Frontend** | `web/fallback.js` | 672 | Tarayıcı çevrimdışı (offline) simülasyon motoru | ✅ İyi durumda (Tri-Mode parity korunuyor) |
 | **Web Frontend** | `web/tasarim.css` | 2.931 | Tasarım sistemi, tema, PocketUI, animasyonlar | ✅ Düzenli, Strict CSP uyumlu |
 | **Go Engine** | `internal/gitengine/simulation.go` | 1.423 | In-memory simülasyon repo yöneticisi | ✅ `simulation_enterprise_mock.go` (523 satır) ayrıldı |
@@ -62,8 +70,9 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 - [x] **Adım 1:** Go - `simulation.go` içinden `buildEnterpriseSimulation` -> `simulation_enterprise_mock.go` ayrımı
 - [x] **Adım 2:** Go - `collector.go` içinden GitHub CLI/API fonksiyonları -> `collector_github.go` ayrımı
 - [x] **Adım 3:** Go testlerinin ve binary derlemesinin doğrulanması (`go test -v ./... && go build`) (25/25 PASS)
-- [ ] **Adım 4:** JS - `web/modules/utils.js` ve `web/modules/state.js` / `api.js` temel altyapısının kurulması
-- [ ] **Adım 5:** JS - `web/modules/canvas.js` (SVG render motoru) ayrımı
-- [ ] **Adım 6:** JS - `web/modules/inspector.js` ve `web/modules/dock.js` ayrımı
-- [ ] **Adım 7:** JS - `web/modules/modals.js` ayrımı
-- [ ] **Adım 8:** `TestWebAssetsStrictCSPCompliance` ve tam sistem entegrasyon doğrulaması
+- [x] **Adım 4:** JS - `web/modules/utils.js`, `constants.js`, `state.js` ve `api.js` altyapısının kurulması
+- [x] **Adım 5:** JS - `web/modules/canvas.js` (SVG render motoru) ayrımı
+- [x] **Adım 6:** JS - `web/modules/inspector.js` ve `web/modules/dock.js` ayrımı
+- [x] **Adım 7:** JS - `web/modules/modals.js` ayrımı
+- [x] **Adım 8:** JS - Üst/Alt Ray Popover (`renderRayPopovers`) ve etkileşim entegrasyonu tamamlandı
+- [x] **Adım 9:** `TestWebAssetsStrictCSPCompliance`, `node --check` ve tam sistem entegrasyon doğrulaması (25/25 PASS)
