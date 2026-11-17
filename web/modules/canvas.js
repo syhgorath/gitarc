@@ -14,8 +14,8 @@ export function xOfSpine(idx) {
 }
 
 export function yOfLane(hemisphere, lane, isMerged = false) {
-  const l = Math.max(1, lane || 1);
-  const offset = isMerged ? (84 + (l - 1) * 56) : (LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y);
+  const l = Math.min(4, Math.max(1, lane || 1));
+  const offset = isMerged ? (54 + (l - 1) * 32) : (LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y);
   return hemisphere === 'lower' ? MAIN_Y + offset : MAIN_Y - offset;
 }
 
@@ -51,10 +51,18 @@ export function computeBranchGeometry(b, tipXOverride = null, tipYOverride = nul
 
   if (isMerged && tipXOverride === null) {
     const endX = xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex));
+    const spanX = Math.max(SPINE_STEP_X, endX - startX);
     const apexX = (startX + endX) / 2;
-    const apexY = laneY;
-    const cp1X = startX + (apexX - startX) * 0.55;
-    const cp2X = apexX + (endX - apexX) * 0.45;
+
+    // Geniş açılı tepe yüksekliği: Mesafe daraldıkça tepeyi dikleştirmek yerine yatık ve zarif tut
+    const maxApexOffset = Math.min(160, Math.max(45, spanX * 0.40));
+    const baseLaneOffset = 50 + (Math.min(4, b.lane || 1) - 1) * 28;
+    const actualOffset = Math.min(baseLaneOffset, maxApexOffset);
+    const apexY = b.hemisphere === 'lower' ? MAIN_Y + actualOffset : MAIN_Y - actualOffset;
+
+    // Geniş açılı yatık Bezier gerilimi (dikey dikilme yerine tatlı yayvan kavis):
+    const cp1X = startX + (apexX - startX) * 0.65;
+    const cp2X = apexX + (endX - apexX) * 0.35;
     const openD = `M ${startX} ${MAIN_Y} C ${cp1X} ${MAIN_Y}, ${cp1X} ${apexY}, ${apexX} ${apexY}`;
     const closeD = `M ${apexX} ${apexY} C ${cp2X} ${apexY}, ${cp2X} ${MAIN_Y}, ${endX} ${MAIN_Y}`;
     const areaD = `${openD} C ${cp2X} ${apexY}, ${cp2X} ${MAIN_Y}, ${endX} ${MAIN_Y} Z`;
@@ -513,7 +521,20 @@ export function renderSVG(callbacks = {}) {
 
   const nodes = snap.nodes || [];
   const branches = snap.branches || [];
-  const visibleBranches = branches.filter((b) => state.showMergedArches || b.state !== 'merged');
+
+  // Akıllı Katlama: Kalabalık mega-repolarda dikey kuleyi önlemek için en güncel son 8 birleşmiş dalı aç
+  const mergedBranches = branches.filter((b) => b.state === 'merged');
+  const maxMergedArches = 8;
+  const recentMergedIds = new Set(
+    mergedBranches.slice(-maxMergedArches).map((b) => b.id)
+  );
+
+  const visibleBranches = branches.filter((b) => {
+    if (b.state !== 'merged') return true;
+    if (!state.showMergedArches) return false;
+    return recentMergedIds.has(b.id);
+  });
+
   const apexLayout = layoutOpenApexPositions(visibleBranches);
   state.apexLayout = apexLayout;
 
@@ -521,7 +542,7 @@ export function renderSVG(callbacks = {}) {
   const maxMergedUpperLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'upper' && b.state === 'merged').map((b) => b.lane || 1));
   const maxApexX = Math.max(0, ...Array.from(apexLayout.values()).map((v) => v.apexX));
 
-  // Dinamik dikey sınır hesaplama (ferah ve dengeli tuval):
+  // Dinamik dikey sınır hesaplama (ferah ve kuleyi önleyen tavanlı tuval):
   const upperBranches = visibleBranches.filter((b) => b.hemisphere === 'upper');
   const lowerBranches = visibleBranches.filter((b) => b.hemisphere === 'lower');
 
@@ -531,9 +552,9 @@ export function renderSVG(callbacks = {}) {
       const geom = computeBranchGeometry(b, null, null, apexLayout);
       return geom.apexY;
     }));
-    calcMinY = Math.min(calcMinY, highestUpperY - 70);
+    calcMinY = Math.max(MAIN_Y - 220, Math.min(calcMinY, highestUpperY - 60));
   } else {
-    calcMinY = MAIN_Y - 100;
+    calcMinY = MAIN_Y - 90;
   }
 
   let calcMaxY = MAIN_Y + 80;
@@ -542,15 +563,15 @@ export function renderSVG(callbacks = {}) {
       const geom = computeBranchGeometry(b, null, null, apexLayout);
       return geom.apexY;
     }));
-    calcMaxY = Math.max(calcMaxY, lowestLowerY + 125);
+    calcMaxY = Math.min(MAIN_Y + 220, Math.max(calcMaxY, lowestLowerY + 110));
   } else {
-    calcMaxY = MAIN_Y + 100;
+    calcMaxY = MAIN_Y + 90;
   }
 
-  const minY = calcMinY - 30;
-  const maxY = calcMaxY + 40;
+  const minY = calcMinY - 25;
+  const maxY = calcMaxY + 30;
   const sceneW = Math.max(1280, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140, maxApexX + 200);
-  const sceneH = Math.max(340, maxY - minY);
+  const sceneH = Math.min(460, Math.max(300, maxY - minY));
 
   const viewW = sceneW / state.zoom;
   const viewH = sceneH / state.zoom;

@@ -511,21 +511,39 @@ async function bootstrap() {
     }
   }
 
-  // 4-second live silent polling
+  // Smart Git FS Event Listener / Lightweight Ping
+  // Diskte .git/HEAD veya .git/index mtime değişmedikçe ağır snapshot çağrılmaz, sıfır zıplama!
+  let lastGitSig = '';
   setInterval(async () => {
     if (state.offlineMode || state.drag || state.panning) return;
     if (el.modal && !el.modal.hidden) return;
     if (el.conflictStudioModal && !el.conflictStudioModal.hidden) return;
+    if (state.selectedBranchId || state.selectedNodeSha) return; // Kullanıcı bir öğeyi incelerken tuvali zıplatma!
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
     try {
+      const ping = await apiCall('/api/system/git-status-ping', 'GET');
+      if (ping && ping.sig) {
+        if (!lastGitSig) {
+          lastGitSig = ping.sig;
+          return;
+        }
+        if (ping.sig === lastGitSig) {
+          // Git deposunda hiçbir dosya/dal/commit değişmemiş: Sıfır işlem, sıfır zıplama!
+          return;
+        }
+        lastGitSig = ping.sig;
+      }
+
+      // Sadece gerçek bir Git değişikliği algılandığında snapshot çek:
       const nextSnap = await apiCall('/api/snapshot');
       const sig = snapshotSignature(nextSnap);
       if (sig && sig !== state.lastSig) {
         applySnapshot(nextSnap);
       }
     } catch {}
-  }, 4000);
+  }, 2500);
 }
 
 // Start Application on DOM Ready

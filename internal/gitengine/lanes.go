@@ -13,6 +13,8 @@ type interval struct {
 	span  int
 }
 
+const MaxHemisphereLanes = 4
+
 // AssignLanes performs deterministic interval packing independently for
 // the upper (Remote/PR) and lower (Local/Unpushed) hemispheres.
 // Shorter spans are placed on inner lanes closest to the central spine (Lane = 1)
@@ -92,8 +94,13 @@ func assignHemisphereLanes(branches []model.BranchArc, hemisphere string) {
 			}
 		}
 		if !placed {
-			laneRanges = append(laneRanges, []spanRange{{s: it.start, e: it.end}})
-			branches[it.idx].Lane = len(laneRanges)
+			if len(laneRanges) < MaxHemisphereLanes {
+				laneRanges = append(laneRanges, []spanRange{{s: it.start, e: it.end}})
+				branches[it.idx].Lane = len(laneRanges)
+			} else {
+				// Dikey kule oluşmasını engellemek için tavan şeride sınırla
+				branches[it.idx].Lane = MaxHemisphereLanes
+			}
 		}
 	}
 }

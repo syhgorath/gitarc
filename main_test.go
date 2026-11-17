@@ -180,4 +180,20 @@ func TestSecurityGuardsAndAPIFlow(t *testing.T) {
 	if rec := doPost("/api/repo/add", `{"path":""}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty path, got %d", rec.Code)
 	}
+
+	// 10. Git status ping (zero-overhead change detection)
+	reqPing := httptest.NewRequest(http.MethodGet, "http://"+host+"/api/system/git-status-ping", nil)
+	reqPing.Host = host
+	reqPing.AddCookie(sessionCookie)
+	recPing := httptest.NewRecorder()
+	h.ServeHTTP(recPing, reqPing)
+	if recPing.Code != http.StatusOK {
+		t.Fatalf("git-status-ping failed: %d %s", recPing.Code, recPing.Body.String())
+	}
+	var pingRes struct {
+		Sig string `json:"sig"`
+	}
+	if err := json.Unmarshal(recPing.Body.Bytes(), &pingRes); err != nil || pingRes.Sig == "" {
+		t.Fatalf("invalid ping response: %s", recPing.Body.String())
+	}
 }
