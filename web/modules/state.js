@@ -48,10 +48,9 @@ export function initElements() {
     'add-proj-cancel', 'btn-start-tour', 'tour-backdrop', 'tour-card',
     'tour-step-badge', 'tour-step-title', 'tour-step-body', 'tour-prev-btn',
     'tour-next-btn', 'tour-dots', 'tour-close-btn',
-    'btn-upper-ray', 'btn-lower-ray', 'popover-upper-ray', 'popover-lower-ray',
-    'upper-ray-popover-body', 'lower-ray-popover-body', 'upper-ray-pill-count', 'lower-ray-pill-count',
-    'close-upper-ray', 'close-lower-ray',
-    'btn-canvas-sync', 'canvas-sync-dot', 'canvas-sync-text', 'dock-copy-btn'
+    'btn-upper-ray', 'btn-lower-ray', 'upper-ray-pill-count', 'lower-ray-pill-count',
+    'btn-canvas-sync', 'canvas-sync-dot', 'canvas-sync-text', 'dock-copy-btn',
+    'canvas-inspector', 'canvas-inspector-close', 'canvas-inspector-title'
   ];
 
   ids.forEach((id) => {
@@ -159,14 +158,12 @@ export function initElements() {
 
   el.btnUpperRay = el['btn-upper-ray'];
   el.btnLowerRay = el['btn-lower-ray'];
-  el.popoverUpperRay = el['popover-upper-ray'];
-  el.popoverLowerRay = el['popover-lower-ray'];
-  el.upperRayBody = el['upper-ray-popover-body'];
-  el.lowerRayBody = el['lower-ray-popover-body'];
   el.upperRayCount = el['upper-ray-pill-count'];
   el.lowerRayCount = el['lower-ray-pill-count'];
-  el.closeUpperRay = el['close-upper-ray'];
-  el.closeLowerRay = el['close-lower-ray'];
+
+  el.canvasInspector = el['canvas-inspector'];
+  el.canvasInspectorClose = el['canvas-inspector-close'];
+  el.canvasInspectorTitle = el['canvas-inspector-title'];
 
   return el;
 }

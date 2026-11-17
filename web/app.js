@@ -444,6 +444,13 @@ async function bootstrap() {
   // Global Keyboard Shortcuts
   window.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {
+      if (el.canvasInspector && !el.canvasInspector.hidden) {
+        state.selectedBranchId = null;
+        state.selectedNodeSha = null;
+        el.canvasInspector.hidden = true;
+        renderSVG(getActionCallbacks());
+      }
+      closeDiffViewer();
       if (el.modal && !el.modal.hidden) el.modal.hidden = true;
       if (el.conflictStudioModal && !el.conflictStudioModal.hidden) closeConflictStudio();
       if (el.securityUpdateModal && !el.securityUpdateModal.hidden) el.securityUpdateModal.hidden = true;

@@ -66,16 +66,9 @@
       <section class="canvas-pane dot-grid-canvas" aria-label="Parabolik Git SVG Tuvali">
         <div class="canvas-viewport-box">
           <div class="canvas-overlay-top">
-            <div class="ray-popover-anchor">
-              <button type="button" class="hemi-pill upper-pill" id="btn-upper-ray" title="Üst Ray (Remote / PR) detaylarını aç">▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS <span class="ray-pill-count" id="upper-ray-pill-count"></span></button>
-              <div class="ray-popover" id="popover-upper-ray" hidden>
-                <div class="ray-popover-head">
-                  <span class="ray-popover-title">☁️ Üst Ray · Remote &amp; PR Listesi</span>
-                  <button type="button" class="ray-popover-close" id="close-upper-ray" title="Kapat">✕</button>
-                </div>
-                <div class="ray-popover-body" id="upper-ray-popover-body"></div>
-              </div>
-            </div>
+            <button type="button" class="hemi-pill upper-pill" id="btn-upper-ray" title="Üst Ray (Remote PR &amp; CI) hatlarını odakla / filtrele">
+              ▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS <span class="ray-pill-count" id="upper-ray-pill-count"></span>
+            </button>
             <button type="button" class="spine-sync-badge interactive" id="btn-canvas-sync" title="main ↔ origin/main · Eşitlemek için tıklayın (git fetch &amp; fast-forward)">
               <span class="sync-dot synced" id="canvas-sync-dot"></span>
               <span id="canvas-sync-text">main ↔ origin/main (Synced)</span>
@@ -86,17 +79,22 @@
             <svg id="rail-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parabolik Git Dallanma Grafiği"></svg>
           </div>
 
-          <div class="canvas-overlay-bottom">
-            <div class="ray-popover-anchor">
-              <button type="button" class="hemi-pill lower-pill" id="btn-lower-ray" title="Alt Ray (Yerel Çalışma) detaylarını aç">▼ ALT RAY · LOCAL ONLY (KESİKLİ MOR PARABOL) <span class="ray-pill-count" id="lower-ray-pill-count"></span></button>
-              <div class="ray-popover ray-popover-bottom" id="popover-lower-ray" hidden>
-                <div class="ray-popover-head">
-                  <span class="ray-popover-title">💻 Alt Ray · Yerel Çalışma Alanı</span>
-                  <button type="button" class="ray-popover-close" id="close-lower-ray" title="Kapat">✕</button>
-                </div>
-                <div class="ray-popover-body" id="lower-ray-popover-body"></div>
+          <!-- Canvas-First Bağımsız Teşhis ve Aksiyon Kartı (Inspector Overlay) -->
+          <div class="canvas-inspector-overlay" id="canvas-inspector" hidden>
+            <div class="canvas-inspector-head">
+              <div class="canvas-inspector-title-row">
+                <span class="canvas-inspector-icon">🎯</span>
+                <span class="canvas-inspector-title" id="canvas-inspector-title">Dal ve Ray Detayları</span>
               </div>
+              <button type="button" class="icon-close" id="canvas-inspector-close" title="Kapat (ESC)">✕</button>
             </div>
+            <div class="canvas-inspector-body" id="inspector-detail"></div>
+          </div>
+
+          <div class="canvas-overlay-bottom">
+            <button type="button" class="hemi-pill lower-pill" id="btn-lower-ray" title="Alt Ray (Yerel Çalışma &amp; Taslaklar) hatlarını odakla / filtrele">
+              ▼ ALT RAY · LOCAL ONLY (YEREL ÇALIŞMA &amp; TASLAKLAR) <span class="ray-pill-count" id="lower-ray-pill-count"></span>
+            </button>
             <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
               <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
               <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>
@@ -120,6 +118,7 @@
               </button>
             </div>
             <div class="dock-tools">
+              <span class="foot-ready" id="engine-status">● Hazır</span>
               <button type="button" class="dock-tool-btn" id="dock-copy-btn" title="Görüntülenen tüm logları panoya kopyala">📋 Kopyala</button>
               <button type="button" class="dock-tool-btn" id="dock-clear-btn" title="Logları temizle">🧹 Temizle</button>
               <button type="button" class="dock-tool-btn" id="dock-toggle-btn" title="Alt paneli daralt / genişlet">▼</button>
@@ -138,17 +137,6 @@
           </div>
         </footer>
       </section>
-
-      <aside class="inspector-pane" aria-label="Dal ve Commit Stüdyosu">
-        <div class="panel-section detail-section" id="inspector-detail">
-          <div class="empty-detail">İncelemek için soldaki parabolik grafikten bir dal kapsülü veya düğüm seçin.</div>
-        </div>
-
-        <div class="inspector-foot">
-          <span>Parabolik Topoloji Motoru</span>
-          <span class="foot-ready" id="engine-status">● Hazır</span>
-        </div>
-      </aside>
     </main>
 
     <!-- MODAL: + YENİ PARABOLİK DAL AÇ -->

@@ -101,6 +101,9 @@ export function renderInspector(callbacks = {}) {
   if (state.selectedNodeSha) {
     const node = snap.nodes.find((n) => n.shortSha === state.selectedNodeSha);
     if (node) {
+      if (el.canvasInspector) el.canvasInspector.hidden = false;
+      if (el.canvasInspectorTitle) el.canvasInspectorTitle.textContent = `Commit ${node.shortSha}`;
+
       el.detail.innerHTML = `
         <div class="det-header">
           <div class="det-title-row">
@@ -122,6 +125,12 @@ export function renderInspector(callbacks = {}) {
         </div>
         <div class="lock-note">🔒 <strong>main</strong> omurgasındaki commit mesajları tarihçe güvenliği için kilitlidir.</div>
       `;
+      document.getElementById('canvas-inspector-close')?.addEventListener('click', () => {
+        state.selectedNodeSha = null;
+        state.selectedBranchId = null;
+        if (el.canvasInspector) el.canvasInspector.hidden = true;
+        if (callbacks.onSelectNode) callbacks.onSelectNode(null);
+      });
       document.getElementById('act-node-diff')?.addEventListener('click', () => {
         if (onOpenDiff) onOpenDiff(node.sha || node.shortSha, 'commit');
       });
@@ -209,21 +218,25 @@ export function renderInspector(callbacks = {}) {
 
   const b = snap.branches.find((x) => x.id === state.selectedBranchId);
   if (!b) {
-    el.detail.innerHTML = `
-      ${proposalHtml}
-      <div class="empty-detail">
-        <p>İncelemek için bir parabol eğrisine, commit düğümüne veya radar uyarısına tıklayın.</p>
-        <p class="empty-hint">İpucu: Üst raydaki açık PR'lar uzaktaki dalları, alt raydaki mor eğriler yerel dalları temsil eder.</p>
-      </div>
-    `;
     if (snap.pendingProposal) {
+      if (el.canvasInspector) el.canvasInspector.hidden = false;
+      if (el.canvasInspectorTitle) el.canvasInspectorTitle.textContent = '🤖 AI Commit & PR Önerisi';
+      el.detail.innerHTML = proposalHtml;
+      document.getElementById('canvas-inspector-close')?.addEventListener('click', () => {
+        if (el.canvasInspector) el.canvasInspector.hidden = true;
+      });
       wireProposalActions(onApplySnapshot);
+      return;
     }
+    if (el.canvasInspector) el.canvasInspector.hidden = true;
+    el.detail.innerHTML = '';
     return;
   }
 
   const isOpen = b.state === 'open';
   const isVirtualWip = b.id === 'local-wip-working-tree';
+  if (el.canvasInspector) el.canvasInspector.hidden = false;
+  if (el.canvasInspectorTitle) el.canvasInspectorTitle.textContent = isVirtualWip ? '✏️ Çalışma Alanı (Taslak)' : b.name;
   const hasConflict = Boolean(b.conflict?.hasConflict && !b.conflict.resolved);
   const isRemoteOnly = !b.hasLocal && b.hasRemote && isOpen;
   const isLive = snap.repo.mode === 'live';
@@ -779,6 +792,12 @@ export function renderInspector(callbacks = {}) {
   });
   document.getElementById('act-fix-ci')?.addEventListener('click', () => {
     if (onFixCI) onFixCI(b.id);
+  });
+  document.getElementById('canvas-inspector-close')?.addEventListener('click', () => {
+    state.selectedBranchId = null;
+    state.selectedNodeSha = null;
+    if (el.canvasInspector) el.canvasInspector.hidden = true;
+    if (callbacks.onSelectBranch) callbacks.onSelectBranch(null);
   });
   document.getElementById('act-delete')?.addEventListener('click', (ev) => {
     if (onDeleteBranch) onDeleteBranch(b.id, ev.currentTarget);
