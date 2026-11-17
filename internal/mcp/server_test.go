@@ -21,6 +21,9 @@ func TestMCPServeStdioTools(t *testing.T) {
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"gitarc_ci_failure_digest","arguments":{}}}`,
 		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"gitarc_sync_main","arguments":{}}}`,
 		`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"gitarc_resolve_conflict","arguments":{"branchId":"br-open-421","strategy":"ours"}}}`,
+		`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"gitarc_cleanup_candidates","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"gitarc_scan_secrets","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"gitarc_audit_log","arguments":{"limit":10}}}`,
 	}, "\n") + "\n"
 
 	var out bytes.Buffer
@@ -29,8 +32,8 @@ func TestMCPServeStdioTools(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 7 {
-		t.Fatalf("expected 7 JSON-RPC responses (notification skipped), got %d:\n%s", len(lines), out.String())
+	if len(lines) != 10 {
+		t.Fatalf("expected 10 JSON-RPC responses (notification skipped), got %d:\n%s", len(lines), out.String())
 	}
 
 	// Verify initialize
@@ -58,8 +61,8 @@ func TestMCPServeStdioTools(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &r2); err != nil {
 		t.Fatal(err)
 	}
-	if len(r2.Result.Tools) != 6 {
-		t.Fatalf("expected 6 MCP tools (including gitarc_resolve_conflict and gitarc_propose_commit), got %d", len(r2.Result.Tools))
+	if len(r2.Result.Tools) != 9 {
+		t.Fatalf("expected 9 MCP tools, got %d", len(r2.Result.Tools))
 	}
 
 	// Verify gitarc_check_conflicts mentions CHANGELOG.md and conflictHunks
@@ -75,6 +78,21 @@ func TestMCPServeStdioTools(t *testing.T) {
 	// Verify gitarc_resolve_conflict resolved br-open-421
 	if !strings.Contains(lines[6], `\"resolved\": true`) || strings.Contains(lines[6], `"isError":true`) {
 		t.Fatalf("expected gitarc_resolve_conflict to resolve cleanly, got: %s", lines[6])
+	}
+
+	// Verify gitarc_cleanup_candidates
+	if !strings.Contains(lines[7], "candidates") || strings.Contains(lines[7], `"isError":true`) {
+		t.Fatalf("expected clean candidates payload, got: %s", lines[7])
+	}
+
+	// Verify gitarc_scan_secrets
+	if !strings.Contains(lines[8], "clean") || strings.Contains(lines[8], `"isError":true`) {
+		t.Fatalf("expected scan secrets output, got: %s", lines[8])
+	}
+
+	// Verify gitarc_audit_log
+	if !strings.Contains(lines[9], "logs") || strings.Contains(lines[9], `"isError":true`) {
+		t.Fatalf("expected audit log output, got: %s", lines[9])
 	}
 }
 

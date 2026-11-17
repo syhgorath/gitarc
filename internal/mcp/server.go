@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gitarc/internal/gitengine"
@@ -211,7 +214,7 @@ func listTools() []toolDefinition {
 						"items": map[string]any{
 							"type": "string",
 						},
-						"description": "Açıkça commitlenecek dosyaların göreceli yolları listesi (opsiyonel, boşsa çalışma ağacındaki güvenli değişmiş dosyalar kullanılır).",
+						"description": "Commitlenecek açık dosyaların göreceli yolları listesi. Boş bırakılamaz ve en az bir dosya içermelidir.",
 					},
 					"pr_title": map[string]any{
 						"type":        "string",
@@ -223,6 +226,40 @@ func listTools() []toolDefinition {
 					},
 				},
 				"required": []string{"branch_name", "message", "files"},
+			},
+		},
+		{
+			Name:        "gitarc_cleanup_candidates",
+			Description: "Uzakta birleşmiş (merged) veya silinmiş (gone) olan temizlenebilir yerel ve uzak dalları kanıtlarıyla listeler. Doğrudan silme yapmaz; güvenli silme komutunu metin olarak önerir.",
+			InputSchema: emptySchema,
+		},
+		{
+			Name:        "gitarc_scan_secrets",
+			Description: "Çalışma ağacındaki veya belirtilen dosyalardaki API anahtarları, özel anahtarlar (RSA/SSH), .env dosyaları ve kişisel kullanıcı yollarını (/Users/...) tarar.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"paths": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "string",
+						},
+						"description": "Taranacak dosya yolları (opsiyonel; boşsa çalışma ağacındaki tüm kirli/değişen dosyalar taranır).",
+					},
+				},
+			},
+		},
+		{
+			Name:        "gitarc_audit_log",
+			Description: "GitArc kokpiti ve MCP üzerinden gerçekleştirilen son işlemleri, önerileri ve onay kayıtlarını zaman damgalı olarak listeler.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Döndürülecek maksimum log kaydı sayısı (varsayılan: 25).",
+					},
+				},
 			},
 		},
 	}
@@ -304,8 +341,211 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 			"branches": buildStatusPayload(snap)["branches"],
 		})
 
+	case "gitarc_cleanup_candidates":
+		snap, err := mgr.Snapshot()
+		if err != nil {
+			return errResult(err.Error())
+		}
+		return jsonTextResult(buildCleanupCandidatesPayload(snap))
+
+	case "gitarc_scan_secrets":
+		var paths []string
+		if rawPaths, ok := params.Arguments["paths"].([]any); ok {
+			for _, p := range rawPaths {
+				if s, ok := p.(string); ok && strings.TrimSpace(s) != "" {
+					paths = append(paths, strings.TrimSpace(s))
+				}
+			}
+		}
+		return jsonTextResult(buildScanSecretsPayload(paths, mgr))
+
+	case "gitarc_audit_log":
+		snap, err := mgr.Snapshot()
+		if err != nil {
+			return errResult(err.Error())
+		}
+		limit := 25
+		if l, ok := params.Arguments["limit"].(float64); ok && l > 0 {
+			limit = int(l)
+		}
+		logs := snap.Logs
+		if len(logs) > limit {
+			logs = logs[:limit]
+		}
+		mode := snap.Repo.Mode
+		if mode == "" {
+			mode = "live"
+		}
+		return jsonTextResult(map[string]any{
+			"mode":  mode,
+			"repo":  snap.Repo.Name,
+			"count": len(logs),
+			"logs":  logs,
+		})
+
 	default:
 		return errResult(fmt.Sprintf("bilinmeyen araç: %s", params.Name))
+	}
+}
+
+func buildCleanupCandidatesPayload(snap model.CockpitSnapshot) map[string]any {
+	type cleanupCandidate struct {
+		Name         string `json:"name"`
+		HasLocal     bool   `json:"hasLocal"`
+		HasRemote    bool   `json:"hasRemote"`
+		OriginGone   bool   `json:"originGone"`
+		PRNumber     int    `json:"prNumber,omitempty"`
+		PRState      string `json:"prState,omitempty"`
+		Proof        string `json:"proof"`
+		SuggestedCmd string `json:"suggestedCmd"`
+	}
+	var candidates []cleanupCandidate
+	for _, b := range snap.Branches {
+		if b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
+			continue
+		}
+		isMerged := b.State == "merged" || (b.PR != nil && b.PR.ReviewState == "MERGED")
+		if !isMerged && !b.OriginGone && b.State != "gone" {
+			continue
+		}
+
+		proof := "Uzak dal silinmiş (origin: gone)."
+		if b.PR != nil && b.PR.ReviewState == "MERGED" {
+			proof = fmt.Sprintf("GitHub PR #%d birleştirildi (MERGED).", b.PR.Number)
+		} else if isMerged {
+			proof = "Git geçmişinde main omurgasına birleştirilmiş (merged)."
+		}
+
+		cmd := b.SuggestedCmd
+		if cmd == "" {
+			if b.HasLocal {
+				cmd = fmt.Sprintf("git branch -D %s", b.Name)
+			} else if b.HasRemote {
+				cmd = fmt.Sprintf("git push origin --delete %s", b.Name)
+			}
+		}
+
+		prNum := 0
+		prState := ""
+		if b.PR != nil {
+			prNum = b.PR.Number
+			prState = b.PR.ReviewState
+		}
+
+		candidates = append(candidates, cleanupCandidate{
+			Name:         b.Name,
+			HasLocal:     b.HasLocal,
+			HasRemote:    b.HasRemote,
+			OriginGone:   b.OriginGone,
+			PRNumber:     prNum,
+			PRState:      prState,
+			Proof:        proof,
+			SuggestedCmd: cmd,
+		})
+	}
+
+	mode := snap.Repo.Mode
+	if mode == "" {
+		mode = "live"
+	}
+	return map[string]any{
+		"mode":       mode,
+		"repo":       snap.Repo.Name,
+		"count":      len(candidates),
+		"summary":    fmt.Sprintf("%d adet temizlenebilir birleşmiş/silinmiş dal adayı bulundu.", len(candidates)),
+		"candidates": candidates,
+		"note":       "MCP üzerinden hiçbir dal doğrudan silinmez. Temizlemek için 'suggestedCmd' komutunu terminalde çalıştırabilir veya GitArc UI üzerindeki 'Temizle' butonunu kullanabilirsiniz.",
+	}
+}
+
+func buildScanSecretsPayload(paths []string, mgr *gitengine.Manager) map[string]any {
+	snap, _ := mgr.Snapshot()
+	mode := snap.Repo.Mode
+	if mode == "" {
+		mode = "live"
+	}
+
+	if len(paths) == 0 {
+		for _, b := range snap.Branches {
+			if b.ID == "local-wip-working-tree" || b.IsHEAD {
+				paths = append(paths, b.ChangedFiles...)
+			}
+		}
+	}
+
+	type finding struct {
+		Path    string `json:"path"`
+		Pattern string `json:"pattern"`
+		Reason  string `json:"reason"`
+	}
+
+	var findings []finding
+	userHomePattern := regexp.MustCompile(`/(?:Users|home)/[a-zA-Z0-9._-]+`)
+
+	repoPath := snap.Repo.Path
+	if repoPath == "" {
+		repoPath = "."
+	}
+
+	for _, p := range paths {
+		base := filepath.Base(p)
+		if strings.HasPrefix(base, ".env") && !strings.HasSuffix(base, ".example") {
+			findings = append(findings, finding{
+				Path:    p,
+				Pattern: ".env*",
+				Reason:  "Ortam değişkenleri dosyası (.env) gizli parolalar/anahtarlar barındırabilir; repoya eklenmemelidir.",
+			})
+		}
+		if strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key") || strings.HasSuffix(base, ".p12") {
+			findings = append(findings, finding{
+				Path:    p,
+				Pattern: "*.pem|*.key|*.p12",
+				Reason:  "Kriptografik özel anahtar / sertifika dosyası.",
+			})
+		}
+		if base == ".mcp.json" {
+			findings = append(findings, finding{
+				Path:    p,
+				Pattern: ".mcp.json",
+				Reason:  "MCP yapılandırması hassas API anahtarları veya çevre değişkenleri içerebilir.",
+			})
+		}
+
+		fullPath := filepath.Join(repoPath, p)
+		if data, err := os.ReadFile(fullPath); err == nil {
+			content := string(data)
+			keyMarker := strings.Join([]string{"BEGIN", "PRIVATE", "KEY"}, " ")
+			keySSHMarker := strings.Join([]string{"BEGIN", "OPENSSH", "PRIVATE", "KEY"}, " ")
+			keyRSAMarker := strings.Join([]string{"BEGIN", "RSA", "PRIVATE", "KEY"}, " ")
+			if strings.Contains(content, keySSHMarker) || strings.Contains(content, keyRSAMarker) || strings.Contains(content, keyMarker) {
+				findings = append(findings, finding{
+					Path:    p,
+					Pattern: "BEGIN * PRIVATE KEY",
+					Reason:  "Dosya içeriğinde özel SSH/RSA anahtarı tespit edildi!",
+				})
+			}
+			if loc := userHomePattern.FindString(content); loc != "" {
+				findings = append(findings, finding{
+					Path:    p,
+					Pattern: "User Home Path Leak",
+					Reason:  fmt.Sprintf("Kişisel kullanıcı dosya yolu sızıntısı (%s). Kodda taşınabilir/göreceli yollar kullanılmalıdır.", loc),
+				})
+			}
+		}
+	}
+
+	clean := len(findings) == 0
+	summary := "✓ Taranan dosyalarda secret, özel anahtar veya kişisel dosya yolu bulunamadı (Temiz)."
+	if !clean {
+		summary = fmt.Sprintf("⚠️ DİKKAT: %d adet güvenlik/gizlilik bulgusu tespit edildi!", len(findings))
+	}
+
+	return map[string]any{
+		"mode":     mode,
+		"clean":    clean,
+		"scanned":  len(paths),
+		"summary":  summary,
+		"findings": findings,
 	}
 }
 
@@ -360,15 +600,20 @@ func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 		mode = "live"
 	}
 	return map[string]any{
-		"mode":              mode,
+		"mode":             mode,
 		"openPRCount":      openPRCount,
 		"localBranchCount": localBranchCount,
 		"mergedCount":      mergedCount,
-		"summary":          fmt.Sprintf("%s (%s): %d açık PR, %d yerel dal, %d birleşmiş/temizleme adayı", snap.Repo.Name, mode, openPRCount, localBranchCount, mergedCount),
-		"repo":             snap.Repo,
-		"branches":         briefs,
-		"diagnostics":      snap.Diagnostics,
-		"logs":             snap.Logs,
+		"metricsGlossary": map[string]string{
+			"openPRCount":      "GitHub üzerinde açık (state=open) ve henüz birleştirilmemiş Pull Request sayısı.",
+			"localBranchCount": "Yerel Git deposunda fiziksel olarak var olan dalların sayısı (hasLocal=true).",
+			"mergedCount":      "GitHub'da birleşmiş (merged) veya remote dalı silinmiş (origin: gone) temizleme adayı dal sayısı.",
+		},
+		"summary":     fmt.Sprintf("%s (%s): %d açık PR, %d yerel dal, %d birleşmiş/temizleme adayı", snap.Repo.Name, mode, openPRCount, localBranchCount, mergedCount),
+		"repo":        snap.Repo,
+		"branches":    briefs,
+		"diagnostics": snap.Diagnostics,
+		"logs":        snap.Logs,
 	}
 }
 
