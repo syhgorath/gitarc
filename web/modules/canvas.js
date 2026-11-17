@@ -176,14 +176,23 @@ export function renderTopbar(callbacks = {}) {
   if (el.engineStatus) el.engineStatus.textContent = snap.repo.mode === 'live' ? '● Canlı Repo Bağlı' : '● Simülasyon Hazır';
 
   if (el.repoSelect) {
-    el.repoSelect.innerHTML = '';
-    (snap.repos || []).forEach((r) => {
-      const opt = document.createElement('option');
-      opt.value = r.id;
-      opt.textContent = r.name;
-      if (r.id === snap.repo.id) opt.selected = true;
-      el.repoSelect.appendChild(opt);
-    });
+    const currentVal = snap.repo.id;
+    const existingOptions = Array.from(el.repoSelect.options).map((o) => o.value);
+    const newOptions = (snap.repos || []).map((r) => r.id);
+    const needsRebuild = existingOptions.join(',') !== newOptions.join(',');
+
+    if (needsRebuild || el.repoSelect.options.length === 0) {
+      el.repoSelect.innerHTML = '';
+      (snap.repos || []).forEach((r) => {
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = r.name;
+        if (r.id === snap.repo.id) opt.selected = true;
+        el.repoSelect.appendChild(opt);
+      });
+    } else {
+      el.repoSelect.value = currentVal;
+    }
   }
 
   if (el.btnRemoveProject) el.btnRemoveProject.hidden = snap.repo.mode !== 'live';

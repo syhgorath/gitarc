@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -187,6 +188,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/logs/clear", a.guard(a.handleClearLogs))
 	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
+	mux.HandleFunc("/api/system/choose-folder", a.guard(a.handleChooseFolder))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/test/run", a.guard(a.handleRunLocalTest))
@@ -251,6 +253,57 @@ func (a *App) handleRemoveProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleChooseFolder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "POST bekleniyor")
+		return
+	}
+
+	var selectedPath string
+	var err error
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd := exec.Command("osascript", "-e", `POSIX path of (choose folder with prompt "GitArc için Git Deposu / Proje Klasörünü Seçin:")`)
+		out, e := cmd.Output()
+		if e == nil {
+			selectedPath = strings.TrimSpace(string(out))
+		} else {
+			err = e
+		}
+	case "linux":
+		cmd := exec.Command("zenity", "--file-selection", "--directory", "--title=GitArc için Git Proje Klasörünü Seçin")
+		out, e := cmd.Output()
+		if e == nil {
+			selectedPath = strings.TrimSpace(string(out))
+		} else {
+			err = e
+		}
+	case "windows":
+		psScript := `Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; if($f.ShowDialog() -eq 'OK'){ $f.SelectedPath }`
+		cmd := exec.Command("powershell", "-NoProfile", "-Command", psScript)
+		out, e := cmd.Output()
+		if e == nil {
+			selectedPath = strings.TrimSpace(string(out))
+		} else {
+			err = e
+		}
+	default:
+		err = fmt.Errorf("otomatik klasör seçici bu işletim sisteminde desteklenmiyor")
+	}
+
+	if err != nil || selectedPath == "" {
+		writeJSONError(w, http.StatusBadRequest, "Klasör seçimi iptal edildi")
+		return
+	}
+
+	name := filepath.Base(selectedPath)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"path": selectedPath,
+		"name": name,
+	})
 }
 
 func (a *App) handleDiscardWorkingTree(w http.ResponseWriter, r *http.Request) {
