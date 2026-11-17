@@ -185,7 +185,12 @@ export function suggestUniqueBranchName(arg1, arg2, arg3) {
   }
   const candidateBase = `${prefix}/${slug}`.slice(0, 40);
   const existing = new Set((snap?.branches || []).map((x) => (x.name || '').toLowerCase()));
-  if (!existing.has(candidateBase)) {
+  const matchesPrefixOrExact = (cand) => {
+    const cLow = cand.toLowerCase();
+    return Array.from(existing).some((ex) => ex === cLow || ex.startsWith(cLow + '-'));
+  };
+
+  if (!matchesPrefixOrExact(candidateBase)) {
     return candidateBase;
   }
   const shortSha = (snap?.nodes?.[snap.nodes.length - 1]?.shortSha || '').slice(0, 5);
