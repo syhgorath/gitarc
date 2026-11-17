@@ -512,36 +512,36 @@ export function renderSVG(callbacks = {}) {
   const maxMergedUpperLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'upper' && b.state === 'merged').map((b) => b.lane || 1));
   const maxApexX = Math.max(0, ...Array.from(apexLayout.values()).map((v) => v.apexX));
 
-  // Dinamik dikey sınır hesaplama (ölü boşlukları yok eder):
+  // Dinamik dikey sınır hesaplama (ferah ve dengeli tuval):
   const upperBranches = visibleBranches.filter((b) => b.hemisphere === 'upper');
   const lowerBranches = visibleBranches.filter((b) => b.hemisphere === 'lower');
 
-  let calcMinY = MAIN_Y - 60;
+  let calcMinY = MAIN_Y - 80;
   if (upperBranches.length > 0) {
     const highestUpperY = Math.min(...upperBranches.map((b) => {
       const geom = computeBranchGeometry(b, null, null, apexLayout);
       return geom.apexY;
     }));
-    calcMinY = Math.min(calcMinY, highestUpperY - 80);
+    calcMinY = Math.min(calcMinY, highestUpperY - 70);
   } else {
-    calcMinY = MAIN_Y - 90;
+    calcMinY = MAIN_Y - 100;
   }
 
-  let calcMaxY = MAIN_Y + 60;
+  let calcMaxY = MAIN_Y + 80;
   if (lowerBranches.length > 0) {
     const lowestLowerY = Math.max(...lowerBranches.map((b) => {
       const geom = computeBranchGeometry(b, null, null, apexLayout);
       return geom.apexY;
     }));
-    calcMaxY = Math.max(calcMaxY, lowestLowerY + 85);
+    calcMaxY = Math.max(calcMaxY, lowestLowerY + 125);
   } else {
-    calcMaxY = MAIN_Y + 90;
+    calcMaxY = MAIN_Y + 100;
   }
 
-  const minY = calcMinY - 20;
-  const maxY = calcMaxY + 20;
+  const minY = calcMinY - 30;
+  const maxY = calcMaxY + 40;
   const sceneW = Math.max(1280, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140, maxApexX + 200);
-  const sceneH = Math.max(220, maxY - minY);
+  const sceneH = Math.max(340, maxY - minY);
 
   const viewW = sceneW / state.zoom;
   const viewH = sceneH / state.zoom;
@@ -570,20 +570,9 @@ export function renderSVG(callbacks = {}) {
   `;
   el.svg.appendChild(defs);
 
-  // 2. Background horizontal dashed guide rails & Ray Track Labels
-  el.svg.appendChild(svgEl('line', { x1: 40, y1: MAIN_Y - LANE_BASE_OFFSET, x2: sceneW - 40, y2: MAIN_Y - LANE_BASE_OFFSET, class: 'svg-guide-line' }));
-  el.svg.appendChild(svgEl('text', {
-    x: 45,
-    y: MAIN_Y - LANE_BASE_OFFSET - 8,
-    class: 'svg-ray-label upper',
-  }, '☁️ ÜST RAY · GITHUB REMOTE & PR HATLARI'));
-
-  el.svg.appendChild(svgEl('line', { x1: 40, y1: MAIN_Y + LANE_BASE_OFFSET, x2: sceneW - 40, y2: MAIN_Y + LANE_BASE_OFFSET, class: 'svg-guide-line' }));
-  el.svg.appendChild(svgEl('text', {
-    x: 45,
-    y: MAIN_Y + LANE_BASE_OFFSET + 18,
-    class: 'svg-ray-label lower',
-  }, '💻 ALT RAY · YEREL ÇALIŞMA & TASLAK HATLARI'));
+  // 2. Background horizontal dashed guide rails (temiz, metinsiz zarif çizgiler)
+  el.svg.appendChild(svgEl('line', { x1: 20, y1: MAIN_Y - LANE_BASE_OFFSET, x2: sceneW - 20, y2: MAIN_Y - LANE_BASE_OFFSET, class: 'svg-guide-line' }));
+  el.svg.appendChild(svgEl('line', { x1: 20, y1: MAIN_Y + LANE_BASE_OFFSET, x2: sceneW - 20, y2: MAIN_Y + LANE_BASE_OFFSET, class: 'svg-guide-line' }));
 
   const upperCount = branches.filter((b) => b.hemisphere === 'upper' && b.state === 'open').length;
   const lowerCount = branches.filter((b) => b.hemisphere === 'lower' && b.state === 'open').length;

@@ -65,40 +65,71 @@
     <main class="workspace">
       <section class="canvas-pane dot-grid-canvas" aria-label="Parabolik Git SVG Tuvali">
         <div class="canvas-viewport-box">
-          <div class="canvas-overlay-top">
-            <button type="button" class="hemi-pill upper-pill" id="btn-upper-ray" title="Üst Ray (Remote PR &amp; CI) hatlarını odakla / filtrele">
-              ▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS <span class="ray-pill-count" id="upper-ray-pill-count"></span>
-            </button>
-            <button type="button" class="spine-sync-badge interactive" id="btn-canvas-sync" title="main ↔ origin/main · Eşitlemek için tıklayın (git fetch &amp; fast-forward)">
-              <span class="sync-dot synced" id="canvas-sync-dot"></span>
-              <span id="canvas-sync-text">main ↔ origin/main (Synced)</span>
-            </button>
-          </div>
+          <div class="canvas-viewport-wrapper">
+            <!-- Sol Yapışkan Kulvar Şeridi (Sticky Lane Sidebar) -->
+            <aside class="canvas-left-rail" aria-label="Git Hat ve Kulvarları">
+              <!-- Kulvar 1: Üst Ray (Remote / PR) -->
+              <button type="button" class="lane-label-card upper" id="btn-upper-ray" title="Üst Ray: GitHub Remote &amp; PR hatlarını odakla / filtrele">
+                <div class="lane-label-head">
+                  <span class="lane-dot upper"></span>
+                  <span class="lane-name">Üst Ray</span>
+                  <span class="ray-pill-count" id="upper-ray-pill-count"></span>
+                </div>
+                <div class="lane-sub">Remote · PR Hatları</div>
+              </button>
 
-          <div class="svg-viewport" id="svg-viewport">
-            <svg id="rail-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parabolik Git Dallanma Grafiği"></svg>
-          </div>
-
-          <!-- Canvas-First Bağımsız Teşhis ve Aksiyon Kartı (Inspector Overlay) -->
-          <div class="canvas-inspector-overlay" id="canvas-inspector" hidden>
-            <div class="canvas-inspector-head">
-              <div class="canvas-inspector-title-row">
-                <span class="canvas-inspector-icon">🎯</span>
-                <span class="canvas-inspector-title" id="canvas-inspector-title">Dal ve Ray Detayları</span>
+              <!-- Kulvar 2: main Omurgası -->
+              <div class="lane-label-card spine" id="btn-main-lane">
+                <div class="lane-label-head">
+                  <span class="lane-dot spine"></span>
+                  <span class="lane-name">main</span>
+                </div>
+                <div class="lane-sub">Production · Korunan</div>
               </div>
-              <button type="button" class="icon-close" id="canvas-inspector-close" title="Kapat (ESC)">✕</button>
-            </div>
-            <div class="canvas-inspector-body" id="inspector-detail"></div>
-          </div>
 
-          <div class="canvas-overlay-bottom">
-            <button type="button" class="hemi-pill lower-pill" id="btn-lower-ray" title="Alt Ray (Yerel Çalışma &amp; Taslaklar) hatlarını odakla / filtrele">
-              ▼ ALT RAY · LOCAL ONLY (YEREL ÇALIŞMA &amp; TASLAKLAR) <span class="ray-pill-count" id="lower-ray-pill-count"></span>
-            </button>
-            <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
-              <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
-              <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>
-              <button type="button" class="z-btn" id="zoom-in" title="Yakınlaştır">+</button>
+              <!-- Kulvar 3: Alt Ray (Yerel & Taslak) -->
+              <button type="button" class="lane-label-card lower" id="btn-lower-ray" title="Alt Ray: Yerel Çalışma &amp; Taslak hatlarını odakla / filtrele">
+                <div class="lane-label-head">
+                  <span class="lane-dot lower"></span>
+                  <span class="lane-name">Alt Ray</span>
+                  <span class="ray-pill-count" id="lower-ray-pill-count"></span>
+                </div>
+                <div class="lane-sub">Yerel &amp; Taslaklar</div>
+              </button>
+            </aside>
+
+            <!-- SVG Tuval Alanı -->
+            <div class="svg-viewport" id="svg-viewport">
+              <svg id="rail-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parabolik Git Dallanma Grafiği"></svg>
+            </div>
+
+            <!-- Sağ Üst Kayan main Sync Rozeti -->
+            <div class="canvas-float-topright">
+              <button type="button" class="spine-sync-badge interactive" id="btn-canvas-sync" title="main ↔ origin/main · Eşitlemek için tıklayın">
+                <span class="sync-dot synced" id="canvas-sync-dot"></span>
+                <span id="canvas-sync-text">main ↔ origin/main (Synced)</span>
+              </button>
+            </div>
+
+            <!-- Sağ Alt Kayan Zoom Kontrolleri -->
+            <div class="canvas-float-bottomright">
+              <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
+                <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
+                <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>
+                <button type="button" class="z-btn" id="zoom-in" title="Yakınlaştır">+</button>
+              </div>
+            </div>
+
+            <!-- Canvas-First Bağımsız Teşhis ve Aksiyon Kartı (Inspector Overlay) -->
+            <div class="canvas-inspector-overlay" id="canvas-inspector" hidden>
+              <div class="canvas-inspector-head">
+                <div class="canvas-inspector-title-row">
+                  <span class="canvas-inspector-icon">🎯</span>
+                  <span class="canvas-inspector-title" id="canvas-inspector-title">Dal ve Ray Detayları</span>
+                </div>
+                <button type="button" class="icon-close" id="canvas-inspector-close" title="Kapat (ESC)">✕</button>
+              </div>
+              <div class="canvas-inspector-body" id="inspector-detail"></div>
             </div>
           </div>
         </div>

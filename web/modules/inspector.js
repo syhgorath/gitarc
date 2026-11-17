@@ -18,7 +18,7 @@ export async function renderStudioInlineDiff(targetObj, onOpenDiff = null) {
   if (el.studioDiffMeta) el.studioDiffMeta.textContent = 'Yükleniyor...';
 
   const isCommit = Boolean(targetObj.shortSha && !targetObj.name);
-  const isWorkingTree = Boolean(targetObj.isWorkingTreeWip);
+  const isWorkingTree = Boolean(targetObj.isWorkingTreeWip || targetObj.id === 'local-wip-working-tree');
   const target = isWorkingTree ? 'working-tree' : (isCommit ? (targetObj.sha || targetObj.shortSha) : targetObj.name);
   const diffType = isWorkingTree ? 'working-tree' : (isCommit ? 'commit' : 'branch');
 
