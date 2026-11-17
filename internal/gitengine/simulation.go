@@ -211,6 +211,43 @@ func (m *Manager) repoOptionsLocked() []model.RepoOption {
 	return opts
 }
 
+// QuickRepoSignature returns an ultra-fast filesystem-based signature of the active repository
+// (.git/HEAD and .git/index mtime) without running heavy git commands or parsing the graph.
+func (m *Manager) QuickRepoSignature() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	active := m.activeRepoID
+	var live *repoEntry
+	for i := range m.liveRepos {
+		if m.liveRepos[i].id == active {
+			entry := m.liveRepos[i]
+			live = &entry
+			break
+		}
+	}
+	if live == nil || !isGitDir(live.path) {
+		return fmt.Sprintf("sim-%d", m.logSeq)
+	}
+
+	gitDir := filepath.Join(live.path, ".git")
+	headPath := filepath.Join(gitDir, "HEAD")
+	headInfo, err := os.Stat(headPath)
+	var headMod int64
+	if err == nil {
+		headMod = headInfo.ModTime().UnixNano()
+	}
+
+	indexPath := filepath.Join(gitDir, "index")
+	indexInfo, err := os.Stat(indexPath)
+	var indexMod int64
+	if err == nil {
+		indexMod = indexInfo.ModTime().UnixNano()
+	}
+
+	return fmt.Sprintf("%s:%d:%d", live.id, headMod, indexMod)
+}
+
 // Snapshot returns the current CockpitSnapshot for the active repository.
 func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 	m.mu.RLock()

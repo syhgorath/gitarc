@@ -241,8 +241,14 @@
             }
           }
           if (!placed) {
-            lanes.push([{ s: it.s, e: it.e }]);
-            branches[it.idx].lane = lanes.length;
+            if (lanes.length < 4) {
+              lanes.push([{ s: it.s, e: it.e }]);
+              branches[it.idx].lane = lanes.length;
+            } else {
+              // Cap at lane 4 to prevent vertical tower explosion (Tri-Mode Parity)
+              lanes[3].push({ s: it.s, e: it.e });
+              branches[it.idx].lane = 4;
+            }
           }
         });
       });

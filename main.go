@@ -189,6 +189,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/system/choose-folder", a.guard(a.handleChooseFolder))
+	mux.HandleFunc("/api/system/git-status-ping", a.guard(a.handleGitStatusPing))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/reset", a.guard(a.handleResetSimulation))
 	mux.HandleFunc("/api/test/run", a.guard(a.handleRunLocalTest))
@@ -303,6 +304,17 @@ func (a *App) handleChooseFolder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"path": selectedPath,
 		"name": name,
+	})
+}
+
+func (a *App) handleGitStatusPing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "GET bekleniyor")
+		return
+	}
+	sig := a.mgr.QuickRepoSignature()
+	writeJSON(w, http.StatusOK, map[string]string{
+		"sig": sig,
 	})
 }
 
