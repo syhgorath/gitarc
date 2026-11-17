@@ -194,6 +194,33 @@
     }, timeoutMs);
   }
 
+  async function runWithBtnBusy(btnEl, busyText, fn) {
+    if (!btnEl) return await fn();
+    const origText = btnEl.innerHTML;
+    btnEl.disabled = true;
+    btnEl.classList.add('btn-busy');
+    btnEl.textContent = busyText || '⏳ İşleniyor...';
+
+    const statusEl = el.engineStatus;
+    const origStatus = statusEl ? statusEl.textContent : '';
+    if (statusEl) {
+      statusEl.textContent = '● Git İşlemi Yürütülüyor...';
+      statusEl.classList.add('running-pulse');
+    }
+
+    try {
+      return await fn();
+    } finally {
+      btnEl.disabled = false;
+      btnEl.classList.remove('btn-busy');
+      btnEl.innerHTML = origText;
+      if (statusEl) {
+        statusEl.textContent = origStatus || '● Hazır';
+        statusEl.classList.remove('running-pulse');
+      }
+    }
+  }
+
   function svgEl(tag, attrs = {}, text = null) {
     const node = document.createElementNS(SVG_NS, tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -1078,6 +1105,7 @@
   }
 
   function buildCapsuleForeignObject(b, geom, isSelected, visible, tone) {
+    const snap = state.snapshot;
     const isMerged = b.state === 'merged';
     const pos = capsulePositionForApex(b, geom.apexX, geom.apexY);
     const fo = svgEl('foreignObject', {
@@ -1193,7 +1221,11 @@
       `;
     } else if (isLower) {
       if (isWorkingTreeWip) {
-        actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🚀 Commit &amp; PR Stüdyosu</button>`;
+        if (snap.pendingProposal) {
+          actionRowHtml = `<button type="button" class="cap-btn sky running-pulse" data-act="inspect">✨ AI Önerisini İncele &amp; Onayla</button>`;
+        } else {
+          actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🚀 Commit &amp; PR Stüdyosu</button>`;
+        }
       } else {
         const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
         actionRowHtml = `
@@ -1221,9 +1253,10 @@
       <div class="cap-top-row">
         <span class="cap-badge ${badgeTone} ${badgePulse ? 'running-pulse' : ''}">${esc(badgeText)}</span>
         ${b.isHead ? '<span class="cap-head-pill">HEAD</span>' : ''}
+        ${isWorkingTreeWip && snap.pendingProposal ? '<span class="cap-badge-ai running-pulse">✨ AI Önerisi Hazır</span>' : ''}
       </div>
       <div class="cap-name">${isWorkingTreeWip ? '✏️ Kaydedilmemiş Değişiklikler' : esc(b.name)}</div>
-      <div class="cap-sub">${isWorkingTreeWip ? `${b.uncommittedCount || 0} dosya bekliyor · Commit stüdyosu` : esc(truncate(subText, 34))}${!isWorkingTreeWip && b.uncommittedCount > 0 ? ` · ●${b.uncommittedCount} dirty` : ''}</div>
+      <div class="cap-sub">${isWorkingTreeWip ? (snap.pendingProposal ? '🤖 Claude / AI Commit &amp; PR Önerisi Hazır' : `${b.uncommittedCount || 0} dosya bekliyor · Commit stüdyosu`) : esc(truncate(subText, 34))}${!isWorkingTreeWip && b.uncommittedCount > 0 ? ` · ●${b.uncommittedCount} dirty` : ''}</div>
       ${alertsHtml ? `<div class="cap-alerts">${alertsHtml}</div>` : ''}
       <div class="cap-actions">${actionRowHtml}</div>
     `;
@@ -1234,11 +1267,11 @@
         ev.stopPropagation();
         const act = btn.getAttribute('data-act');
         if (act === 'inspect') selectBranch(b.id);
-        else if (act === 'checkout') handleCheckoutBranch(b.id);
-        else if (act === 'merge') handleMergeBranch(b.id);
+        else if (act === 'checkout') handleCheckoutBranch(b.id, btn);
+        else if (act === 'merge') handleMergeBranch(b.id, btn);
         else if (act === 'promote') handlePromoteBranch(b.id, undefined, undefined, btn);
         else if (act === 'resolve') openConflictStudio(b.id);
-        else if (act === 'delete') handleDeleteBranch(b.id);
+        else if (act === 'delete') handleDeleteBranch(b.id, btn);
       });
     });
 
@@ -1811,6 +1844,12 @@
         defaultPrTitle = '';
         defaultPrBody = '';
       }
+      if (snap.pendingProposal) {
+        defaultWtBranch = snap.pendingProposal.branchName || defaultWtBranch;
+        defaultCommitMsg = snap.pendingProposal.message || defaultCommitMsg;
+        defaultPrTitle = snap.pendingProposal.prTitle || defaultCommitMsg;
+        defaultPrBody = snap.pendingProposal.prBody || defaultPrBody;
+      }
       const defBranch = snap.repo?.defaultBranch || 'main';
       const wtNote = isMerged
         ? `Bu dal (<strong>${esc(b.name)}</strong>) GitHub'da birleşmiş. Kaydedilmemiş değişiklikleriniz korunarak <strong>origin/${esc(defBranch)}</strong> tabanlı yeni bir dala aktarılacaktır.`
@@ -1953,7 +1992,7 @@
 
     wireProposalActions();
 
-    document.getElementById('act-checkout')?.addEventListener('click', () => handleCheckoutBranch(b.id));
+    document.getElementById('act-checkout')?.addEventListener('click', (ev) => handleCheckoutBranch(b.id, ev.currentTarget));
     document.getElementById('act-promote')?.addEventListener('click', (ev) => {
       const titleInput = document.getElementById('promote-pr-title');
       if (titleInput) {
@@ -1978,7 +2017,7 @@
       const btn = document.getElementById('act-wt-commit-only');
       handleCommitWorkingTree(bName, cMsg, pTitle, pBody, false, btn);
     });
-    document.getElementById('act-wt-commit-push')?.addEventListener('click', () => {
+    document.getElementById('act-wt-commit-push')?.addEventListener('click', (ev) => {
       const form = document.getElementById('form-commit-wt');
       if (form && form.reportValidity && !form.reportValidity()) return;
       const bName = document.getElementById('wt-branch-name').value.trim();
@@ -1990,10 +2029,10 @@
       const cMsg = document.getElementById('wt-commit-msg').value;
       const pTitle = document.getElementById('wt-pr-title').value;
       const pBody = document.getElementById('wt-pr-body').value;
-      const btn = document.getElementById('act-wt-commit-push');
+      const btn = ev.currentTarget || document.getElementById('act-wt-commit-push');
       handleCommitWorkingTree(bName, cMsg, pTitle, pBody, true, btn);
     });
-    document.getElementById('act-wt-discard')?.addEventListener('click', handleDiscardWorkingTree);
+    document.getElementById('act-wt-discard')?.addEventListener('click', (ev) => handleDiscardWorkingTree(ev.currentTarget));
     document.getElementById('promote-pr-title')?.addEventListener('input', (ev) => {
       state.draftPrEdits[b.name] = {
         title: ev.target.value,
@@ -2016,11 +2055,11 @@
     document.getElementById('merge-strategy')?.addEventListener('change', (ev) => {
       state.mergeStrategy = ev.target.value;
     });
-    document.getElementById('act-merge')?.addEventListener('click', () => handleMergeBranch(b.id));
+    document.getElementById('act-merge')?.addEventListener('click', (ev) => handleMergeBranch(b.id, ev.currentTarget));
     document.getElementById('act-resolve')?.addEventListener('click', () => openConflictStudio(b.id));
     document.getElementById('act-resolve-card')?.addEventListener('click', () => openConflictStudio(b.id));
     document.getElementById('act-fix-ci')?.addEventListener('click', () => handleFixCI(b.id));
-    document.getElementById('act-delete')?.addEventListener('click', () => handleDeleteBranch(b.id));
+    document.getElementById('act-delete')?.addEventListener('click', (ev) => handleDeleteBranch(b.id, ev.currentTarget));
     document.getElementById('form-edit-pr')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const title = document.getElementById('pr-edit-title').value;
@@ -2066,16 +2105,18 @@
   }
 
   // Action Handlers
-  async function handleCheckoutBranch(branchId) {
-    try {
-      const snap = state.offlineMode
-        ? LocalFallbackEngine.checkoutBranch(branchId)
-        : await apiCall('/api/branch/checkout', 'POST', { branchId });
-      applySnapshot(snap);
-      showToast('Çalışma dalı (HEAD) değiştirildi', 'ok');
-    } catch (err) {
-      showToast(err.message, 'danger');
-    }
+  async function handleCheckoutBranch(branchId, btnEl = null) {
+    await runWithBtnBusy(btnEl, '⏳ Dala Geçiliyor...', async () => {
+      try {
+        const snap = state.offlineMode
+          ? LocalFallbackEngine.checkoutBranch(branchId)
+          : await apiCall('/api/branch/checkout', 'POST', { branchId });
+        applySnapshot(snap);
+        showToast('Çalışma dalı (HEAD) değiştirildi', 'ok');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    });
   }
 
   async function handleEditPR(branchId, title, body) {
@@ -2102,25 +2143,27 @@
     }
   }
 
-  async function executeMergeNow(branchId, strategy = 'merge', fromQueue = false) {
-    try {
-      const snap = state.offlineMode
-        ? LocalFallbackEngine.mergeBranch(branchId, strategy)
-        : await apiCall('/api/branch/merge', 'POST', { branchId, strategy });
-      applySnapshot(snap);
-      showToast(
-        fromQueue
-          ? `✅ CI başarılı! Dal otomatik olarak (${strategy}) main'e birleştirildi.`
-          : `Dal merkez main omurgasına (${strategy}) birleşti — Tam parabol tamamlandı!`,
-        'ok',
-      );
-    } catch (err) {
-      showToast(err.message, 'warn');
-      renderSVG();
-    }
+  async function executeMergeNow(branchId, strategy = 'merge', fromQueue = false, btnEl = null) {
+    await runWithBtnBusy(btnEl, '⏳ Birleştiriliyor...', async () => {
+      try {
+        const snap = state.offlineMode
+          ? LocalFallbackEngine.mergeBranch(branchId, strategy)
+          : await apiCall('/api/branch/merge', 'POST', { branchId, strategy });
+        applySnapshot(snap);
+        showToast(
+          fromQueue
+            ? `✅ CI başarılı! Dal otomatik olarak (${strategy}) main'e birleştirildi.`
+            : `Dal merkez main omurgasına (${strategy}) birleşti — Tam parabol tamamlandı!`,
+          'ok',
+        );
+      } catch (err) {
+        showToast(err.message, 'warn');
+        renderSVG();
+      }
+    });
   }
 
-  async function handleMergeBranch(branchId) {
+  async function handleMergeBranch(branchId, btnEl = null) {
     const b = state.snapshot?.branches?.find((x) => x.id === branchId);
     if (!b) return;
     const strategy = state.mergeStrategy || 'merge';
@@ -2165,7 +2208,7 @@
       renderInspector();
       return;
     }
-    await executeMergeNow(branchId, strategy, false);
+    await executeMergeNow(branchId, strategy, false, btnEl);
   }
 
   async function handleCommitWorkingTree(branchName, commitMsg, prTitle, prBody, pushAndPr, btnEl = null, explicitFiles = null) {
@@ -2255,53 +2298,54 @@
       }
     }
 
-    if (btnEl) btnEl.disabled = true;
-    try {
-      const snapResult = state.offlineMode
-        ? LocalFallbackEngine.commitWorkingTree(cleanBranch, cleanCommit, prTitle || '', prBody || '', Boolean(pushAndPr), candidateFiles)
-        : await apiCall('/api/working-tree/commit', 'POST', {
-          branchName: cleanBranch,
-          commitMsg: cleanCommit,
-          prTitle: (prTitle || '').trim(),
-          prBody: (prBody || '').trim(),
-          pushAndPr: Boolean(pushAndPr),
-          files: candidateFiles,
-        });
-      const created = (snapResult.branches || []).find((x) => x.name === cleanBranch);
-      if (created) {
-        state.selectedBranchId = created.id;
+    await runWithBtnBusy(btnEl, pushAndPr ? '⏳ Push & PR Oluşturuluyor...' : '⏳ Commitleniyor...', async () => {
+      try {
+        const snapResult = state.offlineMode
+          ? LocalFallbackEngine.commitWorkingTree(cleanBranch, cleanCommit, prTitle || '', prBody || '', Boolean(pushAndPr), candidateFiles)
+          : await apiCall('/api/working-tree/commit', 'POST', {
+            branchName: cleanBranch,
+            commitMsg: cleanCommit,
+            prTitle: (prTitle || '').trim(),
+            prBody: (prBody || '').trim(),
+            pushAndPr: Boolean(pushAndPr),
+            files: candidateFiles,
+          });
+        const created = (snapResult.branches || []).find((x) => x.name === cleanBranch);
+        if (created) {
+          state.selectedBranchId = created.id;
+        }
+        applySnapshot(snapResult);
+        showToast(
+          pushAndPr
+            ? `Dal açıldı, commitlendi, pushlandı ve PR oluşturuldu (${cleanBranch})!`
+            : `Değişiklikler '${cleanBranch}' dalına commitlendi!`,
+          'ok',
+        );
+      } catch (err) {
+        showToast(err.message, 'danger');
       }
-      applySnapshot(snapResult);
-      showToast(
-        pushAndPr
-          ? `Dal açıldı, commitlendi, pushlandı ve PR oluşturuldu (${cleanBranch})!`
-          : `Değişiklikler '${cleanBranch}' dalına commitlendi!`,
-        'ok',
-      );
-    } catch (err) {
-      showToast(err.message, 'danger');
-    } finally {
-      if (btnEl) btnEl.disabled = false;
-    }
+    });
   }
 
-  async function handleDiscardWorkingTree() {
+  async function handleDiscardWorkingTree(btnEl = null) {
     const dirtyCount = state.snapshot?.repo?.dirtyCount || 0;
     const ok = window.confirm(`⚠️ DİKKAT: Kaydedilmemiş ${dirtyCount} adet değişiklik/dosya (staged ve untracked) tamamen geri alınacak ve temizlenecektir.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`);
     if (!ok) return;
 
-    try {
-      let snap;
-      if (state.offlineMode) {
-        snap = LocalFallbackEngine.discardWorkingTree();
-      } else {
-        snap = await apiCall('/api/working-tree/discard', 'POST');
+    await runWithBtnBusy(btnEl, '⏳ Sıfırlanıyor...', async () => {
+      try {
+        let snap;
+        if (state.offlineMode) {
+          snap = LocalFallbackEngine.discardWorkingTree();
+        } else {
+          snap = await apiCall('/api/working-tree/discard', 'POST');
+        }
+        applySnapshot(snap);
+        showToast('✓ Kaydedilmemiş değişiklikler temizlendi', 'info');
+      } catch (err) {
+        showToast(`Hata: ${err.message}`, 'danger');
       }
-      applySnapshot(snap);
-      showToast('✓ Kaydedilmemiş değişiklikler temizlendi', 'info');
-    } catch (err) {
-      showToast(`Hata: ${err.message}`, 'danger');
-    }
+    });
   }
 
   function openAddProjectModal() {
@@ -2381,33 +2425,23 @@
     );
     if (!confirmed) return;
 
-    if (btnEl) {
-      btnEl.disabled = true;
-      btnEl.dataset.origText = btnEl.textContent;
-      btnEl.textContent = '⏳ PR Açılıyor...';
-      btnEl.classList.add('running-pulse');
-    }
     showToast('⏳ Dal pushlanıyor ve GitHub PR oluşturuluyor...', 'info');
-    try {
-      const snap = state.offlineMode
-        ? LocalFallbackEngine.promoteBranch(branchId, title || '', body || '')
-        : await apiCall('/api/branch/promote', 'POST', {
-          branchId,
-          title: (title || '').trim(),
-          body: (body || '').trim(),
-        });
-      if (b?.name) delete state.draftPrEdits[b.name];
-      applySnapshot(snap);
-      showToast('Dal origin’e pushlandı ve PR açılarak üst raya taşındı!', 'ok');
-    } catch (err) {
-      showToast(err.message, 'danger');
-    } finally {
-      if (btnEl) {
-        btnEl.disabled = false;
-        if (btnEl.dataset.origText) btnEl.textContent = btnEl.dataset.origText;
-        btnEl.classList.remove('running-pulse');
+    await runWithBtnBusy(btnEl, '⏳ Push & PR Açılıyor...', async () => {
+      try {
+        const snap = state.offlineMode
+          ? LocalFallbackEngine.promoteBranch(branchId, title || '', body || '')
+          : await apiCall('/api/branch/promote', 'POST', {
+            branchId,
+            title: (title || '').trim(),
+            body: (body || '').trim(),
+          });
+        if (b?.name) delete state.draftPrEdits[b.name];
+        applySnapshot(snap);
+        showToast('Dal origin’e pushlandı ve PR açılarak üst raya taşındı!', 'ok');
+      } catch (err) {
+        showToast(err.message, 'danger');
       }
-    }
+    });
   }
 
   const STUDIO_MODE_LABELS = {
@@ -2688,7 +2722,7 @@
     }
   }
 
-  async function handleDeleteBranch(branchId) {
+  async function handleDeleteBranch(branchId, btnEl = null) {
     const b = state.snapshot?.branches?.find((x) => x.id === branchId);
     const branchName = b ? b.name : branchId;
     const isRemote = b && !b.hasLocal && b.hasRemote;
@@ -2729,18 +2763,20 @@
     );
     if (!confirmed) return;
 
-    try {
-      const snap = state.offlineMode
-        ? LocalFallbackEngine.deleteBranch(branchId)
-        : await apiCall('/api/branch/delete', 'POST', { branchId });
-      applySnapshot(snap);
-      showToast('Dal kaldırıldı', 'warn');
-    } catch (err) {
-      showToast(err.message, 'danger');
-    }
+    await runWithBtnBusy(btnEl, '⏳ Siliniyor...', async () => {
+      try {
+        const snap = state.offlineMode
+          ? LocalFallbackEngine.deleteBranch(branchId)
+          : await apiCall('/api/branch/delete', 'POST', { branchId });
+        applySnapshot(snap);
+        showToast('Dal kaldırıldı', 'warn');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    });
   }
 
-  async function handlePruneGone() {
+  async function handlePruneGone(btnEl = null) {
     const dirtyCount = state.snapshot?.repo?.dirtyCount || 0;
     let warningText = '';
     if (dirtyCount > 0) {
@@ -2752,35 +2788,39 @@
     );
     if (!confirmed) return;
 
-    try {
-      let snap;
-      let removed = 0;
-      if (state.offlineMode) {
-        const res = LocalFallbackEngine.pruneGone();
-        snap = res.snapshot;
-        removed = res.removed;
-      } else {
-        const res = await apiCall('/api/branch/prune', 'POST', {});
-        snap = res.snapshot;
-        removed = res.removed;
+    await runWithBtnBusy(btnEl, '⏳ Temizleniyor...', async () => {
+      try {
+        let snap;
+        let removed = 0;
+        if (state.offlineMode) {
+          const res = LocalFallbackEngine.pruneGone();
+          snap = res.snapshot;
+          removed = res.removed;
+        } else {
+          const res = await apiCall('/api/branch/prune', 'POST', {});
+          snap = res.snapshot;
+          removed = res.removed;
+        }
+        applySnapshot(snap);
+        showToast(`${removed} adet silinmiş/birleşmiş dal temizlendi`, 'ok');
+      } catch (err) {
+        showToast(err.message, 'danger');
       }
-      applySnapshot(snap);
-      showToast(`${removed} adet silinmiş/birleşmiş dal temizlendi`, 'ok');
-    } catch (err) {
-      showToast(err.message, 'danger');
-    }
+    });
   }
 
-  async function handleSyncSpine() {
-    try {
-      const snap = state.offlineMode
-        ? LocalFallbackEngine.syncSpine()
-        : await apiCall('/api/spine/sync', 'POST', {});
-      applySnapshot(snap);
-      showToast('main ile origin/main senkronize edildi', 'ok');
-    } catch (err) {
-      showToast(err.message, 'danger');
-    }
+  async function handleSyncSpine(btnEl = null) {
+    await runWithBtnBusy(btnEl, '⏳ Senkronize Ediliyor...', async () => {
+      try {
+        const snap = state.offlineMode
+          ? LocalFallbackEngine.syncSpine()
+          : await apiCall('/api/spine/sync', 'POST', {});
+        applySnapshot(snap);
+        showToast('main ile origin/main senkronize edildi', 'ok');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    });
   }
 
   async function handleLocalTestRun(branchId, cmd) {
@@ -2829,7 +2869,7 @@
     renderSVG();
   });
 
-  el.spineSyncBadge.addEventListener('click', handleSyncSpine);
+  el.spineSyncBadge.addEventListener('click', (ev) => handleSyncSpine(ev.currentTarget));
 
   function openNewBranchModal() {
     el.modal.hidden = false;
@@ -2879,7 +2919,7 @@
     }
   });
 
-  document.getElementById('btn-prune-gone').addEventListener('click', handlePruneGone);
+  document.getElementById('btn-prune-gone').addEventListener('click', (ev) => handlePruneGone(ev.currentTarget));
   el.btnProtectBranch.addEventListener('click', openSecurityUpdateModal);
   el.btnUpdateCheck.addEventListener('click', openSecurityUpdateModal);
   el.lensPathInput.addEventListener('input', () => {
@@ -2888,7 +2928,7 @@
   });
   el.btnLogsModal.addEventListener('click', openLogsModal);
   document.getElementById('btn-mcp-connect').addEventListener('click', openMCPConnectModal);
-  document.getElementById('btn-sync-spine').addEventListener('click', handleSyncSpine);
+  document.getElementById('btn-sync-spine').addEventListener('click', (ev) => handleSyncSpine(ev.currentTarget));
 
   document.getElementById('sec-close').addEventListener('click', closeSecurityUpdateModal);
   document.getElementById('sec-close-btn').addEventListener('click', closeSecurityUpdateModal);
