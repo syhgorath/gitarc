@@ -48,6 +48,7 @@
         <button type="button" class="btn ghost mono" id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v0.8.0</button>
         <button type="button" class="btn ghost" id="btn-logs-modal" title="Sistem ve hata kayıtlarını görüntüle">📜 Loglar <span class="badge-count" id="log-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP</button>
+        <button type="button" class="btn ghost sm" id="btn-start-tour" title="GitArc etkileşimli kullanım turunu başlat">🎓 Tur</button>
         <button type="button" class="btn ghost" id="btn-sync-spine" title="main ile origin/main arasındaki farkı eşitle">Sync ↑↓</button>
         <button type="button" class="btn emerald" id="btn-new-branch" title="main omurgasından yeni parabolik dal aç">+ Yeni Dal</button>
         <button type="button" class="btn ghost" id="btn-reset-sim" title="Simülasyon sahnesini sıfırla">Sıfırla</button>
@@ -66,21 +67,23 @@
 
     <main class="workspace">
       <section class="canvas-pane dot-grid-canvas" aria-label="Parabolik Git SVG Tuvali">
-        <div class="canvas-overlay-top">
-          <div class="hemi-pill upper-pill">▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS</div>
-          <div class="spine-sync-badge" id="spine-sync-badge">main ↔ origin/main</div>
-        </div>
+        <div class="canvas-viewport-box">
+          <div class="canvas-overlay-top">
+            <div class="hemi-pill upper-pill">▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS</div>
+            <div class="spine-sync-badge" id="spine-sync-badge">main ↔ origin/main</div>
+          </div>
 
-        <div class="svg-viewport" id="svg-viewport">
-          <svg id="rail-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parabolik Git Dallanma Grafiği"></svg>
-        </div>
+          <div class="svg-viewport" id="svg-viewport">
+            <svg id="rail-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parabolik Git Dallanma Grafiği"></svg>
+          </div>
 
-        <div class="canvas-overlay-bottom">
-          <div class="hemi-pill lower-pill">▼ ALT RAY · LOCAL ONLY (KESİKLİ MOR PARABOL)</div>
-          <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
-            <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
-            <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>
-            <button type="button" class="z-btn" id="zoom-in" title="Yakınlaştır">+</button>
+          <div class="canvas-overlay-bottom">
+            <div class="hemi-pill lower-pill">▼ ALT RAY · LOCAL ONLY (KESİKLİ MOR PARABOL)</div>
+            <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
+              <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
+              <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>
+              <button type="button" class="z-btn" id="zoom-in" title="Yakınlaştır">+</button>
+            </div>
           </div>
         </div>
 
@@ -362,6 +365,22 @@
             <button type="button" class="btn ghost sm" id="add-proj-cancel">İptal</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- INTERACTIVE TOUR (SPOTLIGHT REHBERİ) -->
+    <div class="tour-backdrop" id="tour-backdrop" hidden></div>
+    <div class="tour-card" id="tour-card" hidden role="dialog" aria-modal="true" aria-labelledby="tour-step-title">
+      <div class="tour-head">
+        <div class="tour-step-badge" id="tour-step-badge">Adım 1 / 5</div>
+        <h3 class="tour-title" id="tour-step-title">Kokpit Turu</h3>
+        <button type="button" class="icon-close" id="tour-close-btn" aria-label="Turu Kapat">✕</button>
+      </div>
+      <div class="tour-body" id="tour-step-body"></div>
+      <div class="tour-foot">
+        <button type="button" class="btn ghost sm" id="tour-prev-btn">◀ Geri</button>
+        <div class="tour-dots" id="tour-dots"></div>
+        <button type="button" class="btn primary sm" id="tour-next-btn">Sonraki ▶</button>
       </div>
     </div>
 

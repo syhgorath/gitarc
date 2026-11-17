@@ -5,6 +5,7 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 ## [0.8.0] - 2026-11-17
 
 ### Eklenenler
+- **Etkileşimli Kokpit Turu & Spotlight Rehberi (`🎓 Tur` / `#tour-backdrop`):** Ekranı yarı saydam karartıp adım adım hedef bileşenleri (Depo seçici, Parabolik Raylar, PocketUI Bottom Dock, Çakışma & Commit Stüdyosu, Güvenlik & MCP) aydınlatan 5 adımlı rehber eklendi; klavye ok tuşları (`◀/▶`) ve `Escape` desteği ile sıfır dış kütüphane ve sıkı CSP uyumlu olarak uygulandı.
 - **Kalıcı Yerel Proje Yönetimi (`➕ Proje Ekle` / `~/.gitarc/projects.json`):** Kullanıcıların yerel Git depolarını arayüzdeki modal üzerinden yol girerek ekleyebilmesi, eklenen projelerin kalıcı olarak saklanması, üst bardan seçilmesi ve `🗑️` ile listeden çıkarılabilmesi eklendi (`/api/repo/add`, `/api/repo/remove`).
 - **Büyük Proje Demosu (MegaCorp Platform · 50 Geliştirici & 4 Ana Dal):** Ekran görüntüsü ve dokümantasyon için 4 ana entegrasyon/sürüm hattı (`develop`, `staging`, `release/v3.3`, `support/lts-2.x`), 50 farklı ekip üyesi, `CI: RUNNING` nabız efekti, panik loglu `CI: FAILURE`, Cross-PR çakışması (`api/v1/auth.go`), Helm values çakışması, squash kalıntısı ve taze yerel dal içeren zengin kurumsal simülasyon deposu (`sim-enterprise`) eklendi.
 - **Çalışma Ağacını Güvenle Sıfırlama (`🗑️ Değişiklikleri Geri Al` / `/api/working-tree/discard`):** Staged veya untracked açık değişiklikleri tek tıkla ve onay penceresiyle temizleyen güvenli sıfırlama mekanizması eklendi.
