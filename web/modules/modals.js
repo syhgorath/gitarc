@@ -171,6 +171,43 @@ export function closeAddProjectModal() {
   if (el.addProjectModal) el.addProjectModal.hidden = true;
 }
 
+export async function handleBrowseFolderClick() {
+  const btn = document.getElementById('btn-browse-folder');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await apiCall('/api/system/choose-folder', 'POST', {});
+    if (res && res.path) {
+      if (el.projectPathInput) el.projectPathInput.value = res.path;
+      if (el.projectNameInput && !el.projectNameInput.value) {
+        el.projectNameInput.value = res.name || '';
+      }
+      showToast(`✓ Klasör seçildi: ${res.name}`, 'ok');
+    }
+  } catch (err) {
+    const fallbackPicker = document.getElementById('fallback-folder-picker');
+    if (fallbackPicker) {
+      fallbackPicker.click();
+    } else {
+      showToast(`Klasör seçilemedi: ${err.message}`, 'warn');
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+export function handleFallbackFolderPicker(ev) {
+  const files = ev.target.files;
+  if (!files || files.length === 0) return;
+  const first = files[0];
+  const relativePath = first.webkitRelativePath || '';
+  const folderName = relativePath.split('/')[0] || '';
+  if (folderName && el.projectNameInput && !el.projectNameInput.value) {
+    el.projectNameInput.value = folderName;
+  }
+  showToast(`✓ Klasör algılandı: ${folderName}`, 'info');
+}
+
 export async function handleAddProjectSubmit(ev, onApplySnapshot = null) {
   ev.preventDefault();
   const repoPath = el.projectPathInput?.value.trim() || '';

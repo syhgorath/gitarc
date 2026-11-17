@@ -9,6 +9,7 @@ import { renderInspector } from './modules/inspector.js';
 import {
   openConflictStudio, closeConflictStudio, applyConflictStudio,
   openAddProjectModal, closeAddProjectModal, handleAddProjectSubmit, handleRemoveCurrentProject,
+  handleBrowseFolderClick, handleFallbackFolderPicker,
   startCockpitTour, closeTour, nextTourStep, prevTourStep,
   openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText,
   openDiffViewer, closeDiffViewer, initDiffViewerListeners
@@ -392,12 +393,38 @@ async function bootstrap() {
     });
   });
 
+  // Repo / Project Switcher
+  el.repoSelect?.addEventListener('change', async () => {
+    const targetRepoId = el.repoSelect.value;
+    if (!targetRepoId || targetRepoId === state.snapshot?.repo?.id) return;
+
+    showToast('⏳ Proje yükleniyor...', 'info');
+    try {
+      let snap;
+      if (!state.offlineMode) {
+        snap = await apiCall('/api/repo/switch', 'POST', { repoId: targetRepoId });
+      } else if (window.LocalFallbackEngine) {
+        snap = window.LocalFallbackEngine.switchRepo(targetRepoId);
+      }
+      localStorage.setItem(REPO_STORAGE_KEY, targetRepoId);
+      applySnapshot(snap);
+      showToast(`✓ Proje değiştirildi: ${snap.repo.name}`, 'ok');
+    } catch (err) {
+      showToast(`Proje değiştirilemedi: ${err.message}`, 'danger');
+      if (el.repoSelect && state.snapshot?.repo?.id) {
+        el.repoSelect.value = state.snapshot.repo.id;
+      }
+    }
+  });
+
   // Project Modal
   el.btnAddProject?.addEventListener('click', openAddProjectModal);
   el.addProjClose?.addEventListener('click', closeAddProjectModal);
   el.addProjCancel?.addEventListener('click', closeAddProjectModal);
   el.addProjectForm?.addEventListener('submit', (ev) => handleAddProjectSubmit(ev, applySnapshot));
   el.btnRemoveProject?.addEventListener('click', () => handleRemoveCurrentProject(applySnapshot));
+  document.getElementById('btn-browse-folder')?.addEventListener('click', handleBrowseFolderClick);
+  document.getElementById('fallback-folder-picker')?.addEventListener('change', handleFallbackFolderPicker);
 
   // Interactive Tour
   el.btnStartTour?.addEventListener('click', startCockpitTour);

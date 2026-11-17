@@ -465,7 +465,11 @@
         <form id="add-project-form" class="modal-body">
           <div class="wt-field">
             <label class="wt-label" for="project-path-input">Yerel Depo Dizin Yolu (.git içeren klasör)</label>
-            <input type="text" id="project-path-input" class="input-control mono" placeholder="/Users/kullanici/Projects/my-repo" required autocomplete="off">
+            <div class="input-with-button">
+              <input type="text" id="project-path-input" class="input-control mono" placeholder="/Users/kullanici/Projects/my-repo" required autocomplete="off">
+              <button type="button" class="btn primary sm" id="btn-browse-folder" title="Finder / Yerel Dosya Yöneticisinden Klasör Seç">📂 Gözat / Seç...</button>
+            </div>
+            <input type="file" id="fallback-folder-picker" webkitdirectory directory hidden>
           </div>
           <div class="wt-field">
             <label class="wt-label" for="project-name-input">Görünen Proje Adı (İsteğe bağlı)</label>
