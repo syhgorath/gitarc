@@ -1746,38 +1746,59 @@
           ${!isVirtualWip && (b.state !== 'merged' || b.hasLocal || b.originGone || b.hasRemote) ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
         </div>
       </div>
-
-      <div class="det-grid">
-        <div class="layer-box">
-          <h3>Üst Ray · Remote / PR</h3>
-          ${b.pr ? `
-            <div class="layer-line">PR #${b.pr.number} · ${esc(b.pr.reviewState)}</div>
-            <div class="layer-line">${esc(truncate(b.pr.title, 48))}</div>
-            <div class="layer-line">CI: ${esc(b.pr.ci?.workflow || 'ci.yml')} (${esc(b.pr.ci?.duration || '—')})</div>
-          ` : `
-            <div class="layer-line">${isRemoteOnly ? `Remote aktif: origin/${esc(b.name)}` : (b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok')}</div>
-            <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Alt rayda yerel çalışma'}</div>
-          `}
-        </div>
-        <div class="layer-box">
-          <h3>Alt Ray · Local</h3>
-          ${isVirtualWip ? `
-            <div class="layer-line">Konum: main omurgası (Kaydedilmemiş Çalışma)</div>
-            <div class="layer-line">Durum: Henüz bir dala veya commite aktarılmamış</div>
-            <div class="layer-line">Değişen Dosyalar: ${b.uncommittedCount || state.snapshot?.repo?.dirtyCount || 0} adet dosya</div>
-          ` : (!b.hasLocal ? `
-            <div class="layer-line">${b.state === 'merged' && !b.originGone ? '✓ Yerel kalıntı dal temizlendi' : `Yerelde dal yok (origin/${esc(b.name)})`}</div>
-            <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
-            <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
-          ` : `
-            ${b.state === 'merged' ? '<div class="layer-line">⚠ Birleşmiş yerel kalıntı (tek tıkla temizlenebilir)</div>' : (b.aheadMain === 0 && !isVirtualWip ? '<div class="layer-line">🌱 main omurgasında taze dal (ilk commitinizi bekliyor)</div>' : '')}
-            <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
-            <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
-            <div class="layer-line">Uncommitted (Staged + Untracked): ${b.uncommittedCount || (b.isHead ? state.snapshot?.repo?.dirtyCount : 0) || 0} dosya</div>
-          `)}
-        </div>
-      </div>
     `;
+
+    const upperSummary = b.pr
+      ? `PR #${b.pr.number} · ${b.pr.reviewState}`
+      : (isRemoteOnly ? `origin/${truncate(b.name, 16)}` : (b.originGone ? 'origin: gone' : 'PR Yok'));
+
+    const lowerSummary = isVirtualWip
+      ? `${b.uncommittedCount || snap.repo?.dirtyCount || 0} dosya bekliyor`
+      : (!b.hasLocal ? 'Yerelde Yok' : (b.isHead ? 'HEAD (Aktif)' : `↑${b.aheadMain || 0} / ↓${b.behindMain || 0}`));
+
+    html += `
+        <div class="layer-accordion-container">
+          <details class="layer-accordion">
+            <summary class="layer-summary">
+              <span class="layer-summary-title">☁️ Üst Ray · Remote / PR</span>
+              <span class="layer-summary-badge">${esc(upperSummary)}</span>
+            </summary>
+            <div class="layer-scroll-body">
+              ${b.pr ? `
+                <div class="layer-line">PR #${b.pr.number} · ${esc(b.pr.reviewState)}</div>
+                <div class="layer-line">${esc(truncate(b.pr.title, 56))}</div>
+                <div class="layer-line">CI: ${esc(b.pr.ci?.workflow || 'ci.yml')} (${esc(b.pr.ci?.duration || '—')})</div>
+              ` : `
+                <div class="layer-line">${isRemoteOnly ? `Remote aktif: origin/${esc(b.name)}` : (b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok')}</div>
+                <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Alt rayda yerel çalışma'}</div>
+              `}
+            </div>
+          </details>
+
+          <details class="layer-accordion">
+            <summary class="layer-summary">
+              <span class="layer-summary-title">💻 Alt Ray · Local</span>
+              <span class="layer-summary-badge">${esc(lowerSummary)}</span>
+            </summary>
+            <div class="layer-scroll-body">
+              ${isVirtualWip ? `
+                <div class="layer-line">Konum: main omurgası (Kaydedilmemiş Çalışma)</div>
+                <div class="layer-line">Durum: Henüz bir dala veya commite aktarılmamış</div>
+                <div class="layer-line">Değişen Dosyalar: ${b.uncommittedCount || state.snapshot?.repo?.dirtyCount || 0} adet dosya</div>
+              ` : (!b.hasLocal ? `
+                <div class="layer-line">${b.state === 'merged' && !b.originGone ? '✓ Yerel kalıntı dal temizlendi' : `Yerelde dal yok (origin/${esc(b.name)})`}</div>
+                <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
+                <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
+              ` : `
+                ${b.state === 'merged' ? '<div class="layer-line">⚠ Birleşmiş yerel kalıntı (tek tıkla temizlenebilir)</div>' : (b.aheadMain === 0 && !isVirtualWip ? '<div class="layer-line">🌱 main omurgasında taze dal (ilk commitinizi bekliyor)</div>' : '')}
+                <div class="layer-line">SHA: ${esc(b.localSha || b.mergeSha || b.baseSha)}</div>
+                <div class="layer-line">main farkı: ↑${b.aheadMain || 0} / ↓${b.behindMain || 0}</div>
+                <div class="layer-line">Uncommitted (Staged + Untracked): ${b.uncommittedCount || (b.isHead ? state.snapshot?.repo?.dirtyCount : 0) || 0} dosya</div>
+              `)}
+            </div>
+          </details>
+        </div>
+      `;
 
     if (b.conflict) {
       const resolved = b.conflict.resolved;
