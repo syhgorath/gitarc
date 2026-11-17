@@ -270,7 +270,7 @@ body {
   white-space: nowrap;
 }
 
-@media (min-width: 1340px) {
+@media (min-width: 1750px) {
   .legend-bar {
     display: flex;
   }
@@ -575,6 +575,8 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -588,6 +590,130 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.canvas-viewport-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Sol Yapışkan Kulvar Şeridi (Sticky Lane Sidebar) */
+.canvas-left-rail {
+  width: 160px;
+  flex-shrink: 0;
+  background: var(--surface-glass);
+  backdrop-filter: blur(14px);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px 10px;
+  z-index: 5;
+  user-select: none;
+}
+
+.lane-label-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.14s ease;
+  text-align: left;
+}
+
+.lane-label-card:hover {
+  background: var(--surface-3);
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+
+.lane-label-card.spine {
+  cursor: default;
+  background: rgba(63, 185, 80, 0.08);
+  border-color: rgba(63, 185, 80, 0.25);
+}
+
+.lane-label-card.spine:hover {
+  transform: none;
+}
+
+.lane-label-card.upper {
+  border-color: rgba(88, 166, 255, 0.25);
+  background: rgba(88, 166, 255, 0.06);
+}
+
+.lane-label-card.lower {
+  border-color: rgba(188, 140, 255, 0.25);
+  background: rgba(188, 140, 255, 0.06);
+}
+
+.lane-label-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lane-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.lane-dot.upper {
+  background: var(--sky);
+  box-shadow: 0 0 6px var(--sky);
+}
+
+.lane-dot.spine {
+  background: var(--emerald);
+  box-shadow: 0 0 6px var(--emerald);
+}
+
+.lane-dot.lower {
+  background: var(--purple);
+  box-shadow: 0 0 6px var(--purple);
+}
+
+.lane-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.lane-sub {
+  font-size: 9.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  padding-left: 14px;
+}
+
+/* Sağ Üst & Sağ Alt Kayan Rozetler */
+.canvas-float-topright {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 6;
+  pointer-events: auto;
+}
+
+.canvas-float-bottomright {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  z-index: 6;
+  pointer-events: auto;
 }
 
 .dot-grid-canvas {
@@ -1478,17 +1604,17 @@ body {
   flex-direction: column;
   background: var(--surface);
   border-top: 1px solid var(--border);
-  height: 38vh;
-  min-height: 220px;
-  max-height: 52vh;
+  height: 25vh;
+  min-height: 160px;
+  max-height: 28vh;
   transition: height 0.18s ease;
   z-index: 10;
   flex-shrink: 0;
 }
 
 .bottom-dock.dock-collapsed {
-  height: 36px;
-  min-height: 36px;
+  height: 32px;
+  min-height: 32px;
 }
 
 .bottom-dock.dock-collapsed .dock-body {
@@ -1497,9 +1623,9 @@ body {
 
 .studio-brand-badge {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
   background: rgba(88, 166, 255, 0.12);
   color: var(--accent);
@@ -1511,7 +1637,7 @@ body {
 .split-studio-body {
   display: flex;
   flex-direction: row;
-  height: calc(100% - 36px);
+  height: calc(100% - 32px);
   min-height: 0;
   width: 100%;
   overflow: hidden;
@@ -1550,11 +1676,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
-  height: 28px;
+  padding: 4px 10px;
+  height: 24px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--text-2);
   user-select: none;
@@ -1565,14 +1691,14 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text);
 }
 
 .studio-branch-chip {
   font-family: var(--mono);
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 9.5px;
+  padding: 1px 5px;
   border-radius: var(--radius-sm);
   background: var(--surface-3);
   color: var(--muted);
@@ -1584,7 +1710,7 @@ body {
 
 .studio-mid-status {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--emerald);
 }
 
@@ -1596,7 +1722,7 @@ body {
 
 .studio-diff-meta {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--muted);
 }
 
@@ -1604,8 +1730,8 @@ body {
   background: transparent;
   border: 1px solid var(--border-subtle);
   color: var(--text-2);
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 9.5px;
+  padding: 1px 5px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.12s;
@@ -1622,7 +1748,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px;
+  padding: 6px 8px;
 }
 
 .studio-col-scrollable.terminal-bg {
@@ -1631,10 +1757,10 @@ body {
 }
 
 .studio-col-scrollable.diff-bg {
-  padding: 6px;
+  padding: 4px 6px;
   background: #090d16;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .studio-placeholder {
@@ -1643,16 +1769,16 @@ body {
   justify-content: center;
   height: 100%;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 11px;
   text-align: center;
-  padding: 16px;
+  padding: 12px;
 }
 
 /* Sol Kolon Dal & CI Kartları */
 .studio-detail-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
 .studio-card-row {
@@ -1664,15 +1790,15 @@ body {
 
 .studio-branch-name {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 700;
   color: var(--text);
   word-break: break-all;
 }
 
 .studio-author-pill {
-  font-size: 10px;
-  padding: 2px 7px;
+  font-size: 9.5px;
+  padding: 1px 6px;
   border-radius: var(--radius-pill);
   background: var(--surface-3);
   color: var(--text-2);
@@ -1680,10 +1806,10 @@ body {
 
 .studio-sha-badge {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--muted);
   background: var(--surface-2);
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
 }
@@ -1692,9 +1818,9 @@ body {
 .studio-step-tree {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 4px;
-  padding: 6px;
+  gap: 3px;
+  margin-top: 2px;
+  padding: 4px 6px;
   background: var(--surface-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
@@ -1704,11 +1830,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   cursor: pointer;
   transition: background 0.12s;
 }
@@ -1720,13 +1846,13 @@ body {
 .studio-step-name {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   color: var(--text);
 }
 
 .studio-step-badge {
-  font-size: 9.5px;
-  padding: 1px 5px;
+  font-size: 9px;
+  padding: 1px 4px;
   border-radius: 999px;
   font-weight: 600;
 }
@@ -1755,7 +1881,7 @@ body {
 }
 
 .studio-step-time {
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--muted);
 }
 
@@ -1763,8 +1889,8 @@ body {
 .studio-actions-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 /* Sağ Kolon Satır İçi Diff Satırları */
