@@ -69,7 +69,16 @@
       <section class="canvas-pane dot-grid-canvas" aria-label="Parabolik Git SVG Tuvali">
         <div class="canvas-viewport-box">
           <div class="canvas-overlay-top">
-            <div class="hemi-pill upper-pill">▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS</div>
+            <div class="ray-popover-anchor">
+              <button type="button" class="hemi-pill upper-pill" id="btn-upper-ray" title="Üst Ray (Remote / PR) detaylarını aç">▲ ÜST RAY · REMOTE / PULL REQUEST / GITHUB ACTIONS <span class="ray-pill-count" id="upper-ray-pill-count"></span></button>
+              <div class="ray-popover" id="popover-upper-ray" hidden>
+                <div class="ray-popover-head">
+                  <span class="ray-popover-title">☁️ Üst Ray · Remote &amp; PR Listesi</span>
+                  <button type="button" class="ray-popover-close" id="close-upper-ray" title="Kapat">✕</button>
+                </div>
+                <div class="ray-popover-body" id="upper-ray-popover-body"></div>
+              </div>
+            </div>
             <div class="spine-sync-badge" id="spine-sync-badge">main ↔ origin/main</div>
           </div>
 
@@ -78,7 +87,16 @@
           </div>
 
           <div class="canvas-overlay-bottom">
-            <div class="hemi-pill lower-pill">▼ ALT RAY · LOCAL ONLY (KESİKLİ MOR PARABOL)</div>
+            <div class="ray-popover-anchor">
+              <button type="button" class="hemi-pill lower-pill" id="btn-lower-ray" title="Alt Ray (Yerel Çalışma) detaylarını aç">▼ ALT RAY · LOCAL ONLY (KESİKLİ MOR PARABOL) <span class="ray-pill-count" id="lower-ray-pill-count"></span></button>
+              <div class="ray-popover ray-popover-bottom" id="popover-lower-ray" hidden>
+                <div class="ray-popover-head">
+                  <span class="ray-popover-title">💻 Alt Ray · Yerel Çalışma Alanı</span>
+                  <button type="button" class="ray-popover-close" id="close-lower-ray" title="Kapat">✕</button>
+                </div>
+                <div class="ray-popover-body" id="lower-ray-popover-body"></div>
+              </div>
+            </div>
             <div class="zoom-controls" role="group" aria-label="Tuval yakınlaştırma">
               <button type="button" class="z-btn" id="zoom-out" title="Uzaklaştır">−</button>
               <button type="button" class="z-btn z-label" id="zoom-reset" title="Görünümü sıfırla">100%</button>

@@ -121,6 +121,16 @@
     tourNextBtn: document.getElementById('tour-next-btn'),
     tourCloseBtn: document.getElementById('tour-close-btn'),
     tourDots: document.getElementById('tour-dots'),
+    btnUpperRay: document.getElementById('btn-upper-ray'),
+    btnLowerRay: document.getElementById('btn-lower-ray'),
+    popoverUpperRay: document.getElementById('popover-upper-ray'),
+    popoverLowerRay: document.getElementById('popover-lower-ray'),
+    upperRayBody: document.getElementById('upper-ray-popover-body'),
+    lowerRayBody: document.getElementById('lower-ray-popover-body'),
+    upperRayCount: document.getElementById('upper-ray-pill-count'),
+    lowerRayCount: document.getElementById('lower-ray-pill-count'),
+    closeUpperRay: document.getElementById('close-upper-ray'),
+    closeLowerRay: document.getElementById('close-lower-ray'),
   };
 
   // Fallback simulation engine for standalone file:// opening without Go server (defined in fallback.js)
@@ -369,7 +379,94 @@
     renderRadar();
     renderSVG();
     renderInspector();
+    renderRayPopovers();
     populateBaseCommitOptions();
+  }
+
+  function renderRayPopovers() {
+    const snap = state.snapshot;
+    if (!snap) return;
+
+    // 1. Üst Ray: Açık PR'lar ve Remote Dallar
+    const upperBranches = (snap.branches || []).filter((b) => b.hemisphere === 'upper' && b.state === 'open');
+    if (el.upperRayCount) {
+      el.upperRayCount.textContent = upperBranches.length > 0 ? String(upperBranches.length) : '';
+    }
+    if (el.upperRayBody) {
+      if (upperBranches.length === 0) {
+        el.upperRayBody.innerHTML = '<div class="ray-empty">Üst rayda şu an açık PR veya uzak dal bulunmuyor.</div>';
+      } else {
+        el.upperRayBody.innerHTML = upperBranches.map((b) => {
+          const prTxt = b.pr ? `PR #${b.pr.number} · ${b.pr.reviewState}` : 'Remote Dal';
+          const ciTxt = b.pr?.ci?.state ? ` · CI: ${b.pr.ci.state}` : '';
+          return `
+            <div class="ray-item" data-branch-id="${esc(b.id)}">
+              <div>
+                <div class="ray-item-title">${esc(b.name)}</div>
+                <div class="ray-item-sub">${esc(prTxt)}${esc(ciTxt)}</div>
+              </div>
+              <span class="chip ${b.state === 'merged' ? 'ok' : 'accent'}">İncele</span>
+            </div>
+          `;
+        }).join('');
+
+        el.upperRayBody.querySelectorAll('.ray-item').forEach((item) => {
+          item.addEventListener('click', () => {
+            const bId = item.getAttribute('data-branch-id');
+            selectBranch(bId);
+            if (el.popoverUpperRay) el.popoverUpperRay.hidden = true;
+          });
+        });
+      }
+    }
+
+    // 2. Alt Ray: Yerel Dallar ve Kaydedilmemiş Çalışma Alanı
+    const lowerBranches = (snap.branches || []).filter((b) => b.hemisphere === 'lower' && b.state === 'open');
+    const dirtyCount = snap.repo?.dirtyCount || 0;
+    const lowerTotal = lowerBranches.length + (dirtyCount > 0 ? 1 : 0);
+    if (el.lowerRayCount) {
+      el.lowerRayCount.textContent = lowerTotal > 0 ? String(lowerTotal) : '';
+    }
+    if (el.lowerRayBody) {
+      let itemsHtml = '';
+      if (dirtyCount > 0) {
+        itemsHtml += `
+          <div class="ray-item" data-branch-id="local-wip-working-tree">
+            <div>
+              <div class="ray-item-title">✏️ Kaydedilmemiş Çalışma Alanı</div>
+              <div class="ray-item-sub">${dirtyCount} dosya bekliyor · Commit stüdyosu</div>
+            </div>
+            <span class="chip purple">Taslak</span>
+          </div>
+        `;
+      }
+      lowerBranches.forEach((b) => {
+        if (b.id === 'local-wip-working-tree') return;
+        const headTxt = b.isHead ? 'HEAD · Aktif' : `↑${b.aheadMain || 0} / ↓${b.behindMain || 0}`;
+        itemsHtml += `
+          <div class="ray-item" data-branch-id="${esc(b.id)}">
+            <div>
+              <div class="ray-item-title">${esc(b.name)}</div>
+              <div class="ray-item-sub">${headTxt}</div>
+            </div>
+            <span class="chip ${b.isHead ? 'ok' : 'purple'}">Seç</span>
+          </div>
+        `;
+      });
+
+      if (!itemsHtml) {
+        el.lowerRayBody.innerHTML = '<div class="ray-empty">Alt rayda açık yerel dal veya bekleyen değişiklik yok.</div>';
+      } else {
+        el.lowerRayBody.innerHTML = itemsHtml;
+        el.lowerRayBody.querySelectorAll('.ray-item').forEach((item) => {
+          item.addEventListener('click', () => {
+            const bId = item.getAttribute('data-branch-id');
+            selectBranch(bId);
+            if (el.popoverLowerRay) el.popoverLowerRay.hidden = true;
+          });
+        });
+      }
+    }
   }
 
   function renderTopbar() {
@@ -3124,6 +3221,41 @@
   el.btnLogsModal.addEventListener('click', openLogsModal);
   document.getElementById('btn-mcp-connect').addEventListener('click', openMCPConnectModal);
   document.getElementById('btn-sync-spine').addEventListener('click', (ev) => handleSyncSpine(ev.currentTarget));
+
+  el.btnUpperRay?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (el.popoverLowerRay) el.popoverLowerRay.hidden = true;
+    if (el.popoverUpperRay) {
+      el.popoverUpperRay.hidden = !el.popoverUpperRay.hidden;
+      if (!el.popoverUpperRay.hidden) renderRayPopovers();
+    }
+  });
+  el.closeUpperRay?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (el.popoverUpperRay) el.popoverUpperRay.hidden = true;
+  });
+
+  el.btnLowerRay?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (el.popoverUpperRay) el.popoverUpperRay.hidden = true;
+    if (el.popoverLowerRay) {
+      el.popoverLowerRay.hidden = !el.popoverLowerRay.hidden;
+      if (!el.popoverLowerRay.hidden) renderRayPopovers();
+    }
+  });
+  el.closeLowerRay?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (el.popoverLowerRay) el.popoverLowerRay.hidden = true;
+  });
+
+  window.addEventListener('click', (ev) => {
+    if (!ev.target.closest('#btn-upper-ray') && !ev.target.closest('#popover-upper-ray')) {
+      if (el.popoverUpperRay) el.popoverUpperRay.hidden = true;
+    }
+    if (!ev.target.closest('#btn-lower-ray') && !ev.target.closest('#popover-lower-ray')) {
+      if (el.popoverLowerRay) el.popoverLowerRay.hidden = true;
+    }
+  });
 
   document.getElementById('sec-close').addEventListener('click', closeSecurityUpdateModal);
   document.getElementById('sec-close-btn').addEventListener('click', closeSecurityUpdateModal);
