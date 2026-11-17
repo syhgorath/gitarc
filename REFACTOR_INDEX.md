@@ -1,0 +1,69 @@
+# GitArc Mimari ve Refaktör Takip İndeksi (Refactor Index)
+
+Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, tespit edilen tekrarları ve refaktör ilerlemesini takip etmek amacıyla tutulur.
+
+---
+
+## 📊 1. Mevcut Kod Boyutları ve Durum Haritası
+
+| Katman | Dosya | Satır | Sorumluluk | Durum / Hedef |
+|---|---|---|---|---|
+| **Web Frontend** | `web/app.js` | 3.470 | Monolitik UI/SVG/State/Inspector/Modal orkestratörü | 🚨 **Modüler ES6 Modüllerine bölünecek** (Hedef: ~200 satır ana giriş) |
+| **Web Frontend** | `web/fallback.js` | 672 | Tarayıcı çevrimdışı (offline) simülasyon motoru | ✅ İyi durumda (Tri-Mode parity korunuyor) |
+| **Web Frontend** | `web/tasarim.css` | 2.931 | Tasarım sistemi, tema, PocketUI, animasyonlar | ✅ Düzenli, Strict CSP uyumlu |
+| **Go Engine** | `internal/gitengine/simulation.go` | 1.423 | In-memory simülasyon repo yöneticisi | ✅ `simulation_enterprise_mock.go` (523 satır) ayrıldı |
+| **Go Engine** | `internal/gitengine/simulation_enterprise_mock.go` | 523 | MegaCorp 50 geliştirici demo simülasyon veri yükü | ✅ Temiz ayrıldı |
+| **Go Engine** | `internal/gitengine/collector.go` | 1.200 | Yerel Git komutları (`git log`, `merge-tree`, `for-each-ref`) | ✅ `collector_github.go` ayrıldı |
+| **Go Engine** | `internal/gitengine/collector_github.go` | 334 | GitHub CLI/API metadata, PR listeleri ve ruleset kontrolleri | ✅ Temiz ayrıldı |
+| **Go Engine** | `internal/gitengine/conflict_studio.go` | 714 | İzole 3-yollu çakışma stüdyosu ve motoru | ✅ İyi durumda |
+| **Go Engine** | `internal/gitengine/live_mutations.go` | 584 | Canlı Git/GitHub mutasyonları | ✅ İyi durumda |
+| **Go Engine** | `internal/gitengine/diagnostics.go` | 403 | Ters indeks Cross-PR ve CI log regex parser | ✅ İyi durumda |
+| **Go Engine** | `internal/gitengine/proposals.go` | 280 | AI commit/PR teklif stüdyosu | ✅ İyi durumda |
+| **Go Engine** | `internal/gitengine/guard_config.go` | 264 | Güvenlik kalkanı ve secret engelleme kuralları | ✅ İyi durumda |
+| **Go Engine** | `internal/gitengine/projects.go` | 233 | Kalıcı proje yönetimi (`projects.json`) | ✅ İyi durumda |
+| **Go Engine** | `internal/gitengine/lanes.go` | 99 | Interval packing şerit yerleşim algoritması | ✅ Kompakt ve odaklı |
+| **Go MCP** | `internal/mcp/server.go` | 897 | Sıfır bağımlılıklı JSON-RPC 2.0 MCP sunucusu | ✅ Canlı `activeContext` entegreli |
+| **Go HTTP/API** | `main.go` | 674 | HTTP router, güvenlik middleware'leri, CLI bayrakları | ✅ Temiz ve güvenli |
+
+---
+
+## 🔍 2. Tespit Edilen Tekrarlar (Code Duplications) ve İyileştirme Alanları
+
+### A. Go Motoru Tarafı
+1. **GitHub Metadata & Yerel Git Ayrımı (`collector.go`):**
+   - Yerel Git komutları (`git log`, `git merge-tree`, `git for-each-ref`) ile harici GitHub CLI (`gh pr list`, `gh api`) kodları aynı dosyada iç içe geçmiş durumda.
+   - **Çözüm:** GitHub sorguları `collector_github.go` dosyasına taşınacak.
+2. **Enterprise Simülasyon Veri Yükü (`simulation.go`):**
+   - 50 kişilik geliştirici kadrosu, 16 commit düğümü ve 12 dal mock verisi `simulation.go` dosyasının %27'sini kaplıyor.
+   - **Çözüm:** `simulation_enterprise_mock.go` içine alınacak.
+3. **Mükerrer CLI/Komut Çalıştırıcıları:**
+   - `runCmd` fonksiyonu ve zaman aşımı kalıpları kontrol edilip standartlaştırılacak.
+
+### B. JavaScript / Web Arayüzü Tarafı
+1. **Monolitik `app.js` Yapısı:**
+   - Tek dosyada 3.470 satır kod bulunuyor. SVG koordinat hesaplamaları, Inspector DOM oluşturucuları, modal kontrolleri ve REST istekleri iç içe.
+2. **Kopya HTML Kart Şablonları:**
+   - Eylem butonları (`🎯 Dala Geç`, `🧹 Sil / Temizle`, `🚀 Push & PR`) hem SVG içinde (`buildCapsuleForeignObject`), hem sağ Inspector'da (`renderInspector`), hem de Bottom Dock radar kartlarında benzer biçimde tekrar ediyor.
+3. **Planlanan Modüler Yapı (Vanilla ES Modules - Sıfır Dış Bağımlılık):**
+   - `web/modules/state.js` -> Global durum, reaktif seçimler, snapshot cache
+   - `web/modules/api.js` -> `/api/*` REST uç noktaları ve hata yönetimi
+   - `web/modules/canvas.js` -> SVG omurga, paraboller, bezier eğrileri, zoom/pan
+   - `web/modules/inspector.js` -> Sağ panel (Inspector) kartları ve form işleyicileri
+   - `web/modules/dock.js` -> PocketUI alt çekmece, radar ve log akışı
+   - `web/modules/modals.js` -> Çakışma stüdyosu, proje yöneticisi ve kokpit turu
+   - `web/modules/utils.js` -> `esc`, `truncate`, zaman formatlama, DOM yardımcıları
+   - `web/app.js` -> Ana orkestratör (~150 satır)
+
+---
+
+## 📋 3. Refaktör İlerleme Takip Listesi
+
+- [x] **Adım 0:** Refaktör Envanter İndeksinin Kurulması (`REFACTOR_INDEX.md`)
+- [x] **Adım 1:** Go - `simulation.go` içinden `buildEnterpriseSimulation` -> `simulation_enterprise_mock.go` ayrımı
+- [x] **Adım 2:** Go - `collector.go` içinden GitHub CLI/API fonksiyonları -> `collector_github.go` ayrımı
+- [x] **Adım 3:** Go testlerinin ve binary derlemesinin doğrulanması (`go test -v ./... && go build`) (25/25 PASS)
+- [ ] **Adım 4:** JS - `web/modules/utils.js` ve `web/modules/state.js` / `api.js` temel altyapısının kurulması
+- [ ] **Adım 5:** JS - `web/modules/canvas.js` (SVG render motoru) ayrımı
+- [ ] **Adım 6:** JS - `web/modules/inspector.js` ve `web/modules/dock.js` ayrımı
+- [ ] **Adım 7:** JS - `web/modules/modals.js` ayrımı
+- [ ] **Adım 8:** `TestWebAssetsStrictCSPCompliance` ve tam sistem entegrasyon doğrulaması
