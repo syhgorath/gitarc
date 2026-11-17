@@ -194,8 +194,6 @@ export function renderTopbar(callbacks = {}) {
   if (btnPrune) btnPrune.disabled = cleanableCount === 0 && snap.repo.mode !== 'live';
   const btnSync = document.getElementById('btn-sync-spine');
   if (btnSync) btnSync.disabled = snap.repo.mode !== 'live' && snap.repo.ahead === 0 && snap.repo.behind === 0;
-  const btnReset = document.getElementById('btn-reset-sim');
-  if (btnReset) btnReset.hidden = snap.repo.mode === 'live';
 
   const isProtected = Boolean(snap.repo.branchProtected);
   if (el.btnProtectBranch) {
