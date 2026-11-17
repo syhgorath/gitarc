@@ -2148,6 +2148,22 @@ body {
   margin-top: 6px;
 }
 
+.pr-body-box {
+  background: var(--surface-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 6px;
+}
+
 .file-list {
   display: flex;
   flex-wrap: wrap;

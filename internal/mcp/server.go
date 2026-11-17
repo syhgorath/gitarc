@@ -151,7 +151,7 @@ func listTools() []toolDefinition {
 	return []toolDefinition{
 		{
 			Name:        "gitarc_status",
-			Description: "Aktif Git deposunun main omurga farkını, üst raydaki açık PR'ları, alt raydaki yerel dalları ve temizlenebilir dalları özetler.",
+			Description: "GitArc kokpitindeki anlık tam durumu, aktif HEAD dalını, çalışma alanı kirli dosyalarını, açık PR'ları (başlık ve açıklamalarıyla), yerel dalları ve son birleşmiş PR'ları detaylıca döndürür.",
 			InputSchema: emptySchema,
 		},
 		{
@@ -551,44 +551,143 @@ func buildScanSecretsPayload(paths []string, mgr *gitengine.Manager) map[string]
 
 func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 	type branchBrief struct {
-		Name         string `json:"name"`
-		Hemisphere   string `json:"hemisphere"`
-		State        string `json:"state"`
-		IsHEAD       bool   `json:"isHead"`
-		PRNumber     int    `json:"prNumber,omitempty"`
-		CIState      string `json:"ciState,omitempty"`
-		OriginGone   bool   `json:"originGone,omitempty"`
-		HasConflict  bool   `json:"hasConflict,omitempty"`
-		CrossPRCount int    `json:"crossPrCount,omitempty"`
-		SuggestedCmd string `json:"suggestedCmd,omitempty"`
+		Name             string   `json:"name"`
+		Hemisphere       string   `json:"hemisphere"`
+		State            string   `json:"state"`
+		IsHEAD           bool     `json:"isHead"`
+		PRNumber         int      `json:"prNumber,omitempty"`
+		PRTitle          string   `json:"prTitle,omitempty"`
+		PRBody           string   `json:"prBody,omitempty"`
+		ReviewState      string   `json:"reviewState,omitempty"`
+		CIState          string   `json:"ciState,omitempty"`
+		LastCommitMsg    string   `json:"lastCommitMsg,omitempty"`
+		DraftPRTitle     string   `json:"draftPrTitle,omitempty"`
+		DraftPRBody      string   `json:"draftPrBody,omitempty"`
+		AheadMain        int      `json:"aheadMain,omitempty"`
+		BehindMain       int      `json:"behindMain,omitempty"`
+		UncommittedCount int      `json:"uncommittedCount,omitempty"`
+		ChangedFiles     []string `json:"changedFiles,omitempty"`
+		OriginGone       bool     `json:"originGone,omitempty"`
+		HasConflict      bool     `json:"hasConflict,omitempty"`
+		CrossPRCount     int      `json:"crossPrCount,omitempty"`
+		SuggestedCmd     string   `json:"suggestedCmd,omitempty"`
 	}
+
+	type openPRItem struct {
+		Number       int      `json:"number"`
+		Branch       string   `json:"branch"`
+		Title        string   `json:"title"`
+		Body         string   `json:"body,omitempty"`
+		Author       string   `json:"author,omitempty"`
+		ReviewState  string   `json:"reviewState,omitempty"`
+		CIState      string   `json:"ciState,omitempty"`
+		URL          string   `json:"url,omitempty"`
+		ChangedFiles []string `json:"changedFiles,omitempty"`
+	}
+
+	type localBranchItem struct {
+		Name             string   `json:"name"`
+		IsHEAD           bool     `json:"isHead"`
+		AheadMain        int      `json:"aheadMain"`
+		BehindMain       int      `json:"behindMain"`
+		UncommittedCount int      `json:"uncommittedCount"`
+		LastCommitMsg    string   `json:"lastCommitMsg,omitempty"`
+		DraftPRTitle     string   `json:"draftPrTitle,omitempty"`
+		DraftPRBody      string   `json:"draftPrBody,omitempty"`
+		ChangedFiles     []string `json:"changedFiles,omitempty"`
+	}
+
+	type mergedPRItem struct {
+		Number      int    `json:"number"`
+		Branch      string `json:"branch"`
+		Title       string `json:"title"`
+		Body        string `json:"body,omitempty"`
+		Author      string `json:"author,omitempty"`
+		ReviewState string `json:"reviewState,omitempty"`
+		URL         string `json:"url,omitempty"`
+	}
+
 	var briefs []branchBrief
+	var openPRs []openPRItem
+	var localBranches []localBranchItem
+	var recentMergedPRs []mergedPRItem
+
 	openPRCount := 0
 	localBranchCount := 0
 	mergedCount := 0
 
 	for _, b := range snap.Branches {
 		br := branchBrief{
-			Name:         b.Name,
-			Hemisphere:   b.Hemisphere,
-			State:        b.State,
-			IsHEAD:       b.IsHEAD,
-			OriginGone:   b.OriginGone,
-			HasConflict:  b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved,
-			CrossPRCount: len(b.CrossPR),
-			SuggestedCmd: b.SuggestedCmd,
+			Name:             b.Name,
+			Hemisphere:       b.Hemisphere,
+			State:            b.State,
+			IsHEAD:           b.IsHEAD,
+			LastCommitMsg:    b.LastCommitMsg,
+			DraftPRTitle:     b.DraftPRTitle,
+			DraftPRBody:      b.DraftPRBody,
+			AheadMain:        b.AheadMain,
+			BehindMain:       b.BehindMain,
+			UncommittedCount: b.UncommittedCount,
+			ChangedFiles:     b.ChangedFiles,
+			OriginGone:       b.OriginGone,
+			HasConflict:      b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved,
+			CrossPRCount:     len(b.CrossPR),
+			SuggestedCmd:     b.SuggestedCmd,
 		}
 		if b.PR != nil {
 			br.PRNumber = b.PR.Number
+			br.PRTitle = b.PR.Title
+			br.PRBody = b.PR.Body
+			br.ReviewState = b.PR.ReviewState
 			if b.PR.CI != nil {
 				br.CIState = b.PR.CI.State
 			}
 			if b.State == "open" && b.PR.Number > 0 && b.PR.ReviewState != "MERGED" {
 				openPRCount++
+				ciSt := ""
+				if b.PR.CI != nil {
+					ciSt = b.PR.CI.State
+				}
+				openPRs = append(openPRs, openPRItem{
+					Number:       b.PR.Number,
+					Branch:       b.Name,
+					Title:        b.PR.Title,
+					Body:         b.PR.Body,
+					Author:       b.PR.Author,
+					ReviewState:  b.PR.ReviewState,
+					CIState:      ciSt,
+					URL:          b.PR.URL,
+					ChangedFiles: b.ChangedFiles,
+				})
+			} else if b.State == "merged" || b.PR.ReviewState == "MERGED" {
+				if len(recentMergedPRs) < 15 {
+					recentMergedPRs = append(recentMergedPRs, mergedPRItem{
+						Number:      b.PR.Number,
+						Branch:      b.Name,
+						Title:       b.PR.Title,
+						Body:        b.PR.Body,
+						Author:      b.PR.Author,
+						ReviewState: b.PR.ReviewState,
+						URL:         b.PR.URL,
+					})
+				}
 			}
 		}
 		if b.HasLocal && !strings.HasPrefix(b.ID, "gh-merged-") {
 			localBranchCount++
+			if b.ID != "local-wip-working-tree" {
+				localBranches = append(localBranches, localBranchItem{
+					Name:             b.Name,
+					IsHEAD:           b.IsHEAD,
+					AheadMain:        b.AheadMain,
+					BehindMain:       b.BehindMain,
+					UncommittedCount: b.UncommittedCount,
+					LastCommitMsg:    b.LastCommitMsg,
+					DraftPRTitle:     b.DraftPRTitle,
+					DraftPRBody:      b.DraftPRBody,
+					ChangedFiles:     b.ChangedFiles,
+				})
+			}
 		}
 		if b.State == "merged" || b.OriginGone {
 			mergedCount++
@@ -599,11 +698,40 @@ func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 	if mode == "" {
 		mode = "live"
 	}
+
+	currentBranch := snap.Repo.DefaultBranch
+	var dirtyFiles []string
+	for _, b := range snap.Branches {
+		if b.IsHEAD {
+			currentBranch = b.Name
+		}
+		if b.ID == "local-wip-working-tree" || (b.IsHEAD && b.UncommittedCount > 0) {
+			if len(dirtyFiles) == 0 {
+				dirtyFiles = b.ChangedFiles
+			}
+		}
+	}
+
+	activeContext := map[string]any{
+		"currentBranch":      currentBranch,
+		"defaultBranch":      snap.Repo.DefaultBranch,
+		"isWorkingTreeClean": snap.Repo.DirtyCount == 0,
+		"dirtyCount":         snap.Repo.DirtyCount,
+		"dirtyFiles":         dirtyFiles,
+		"openPRs":            openPRs,
+		"localBranches":      localBranches,
+		"recentMergedPRs":    recentMergedPRs,
+	}
+	if snap.PendingProposal != nil {
+		activeContext["pendingProposal"] = snap.PendingProposal
+	}
+
 	return map[string]any{
 		"mode":             mode,
 		"openPRCount":      openPRCount,
 		"localBranchCount": localBranchCount,
 		"mergedCount":      mergedCount,
+		"activeContext":    activeContext,
 		"metricsGlossary": map[string]string{
 			"openPRCount":      "GitHub üzerinde açık (state=open) ve henüz birleştirilmemiş Pull Request sayısı.",
 			"localBranchCount": "Yerel Git deposunda fiziksel olarak var olan dalların sayısı (hasLocal=true).",

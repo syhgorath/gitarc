@@ -1272,6 +1272,8 @@
     let badgeTone = 'sky';
     let badgePulse = false;
     let badgeText = b.pr ? `PR #${b.pr.number} · ${b.pr.reviewState}` : 'Remote Ray';
+    const isFreshLocal = isLower && !isWorkingTreeWip && b.aheadMain === 0;
+    const isSyncedLocal = isLower && !isWorkingTreeWip && b.aheadMain === 0 && (b.uncommittedCount || 0) === 0;
     if (isFailed) {
       badgeTone = 'danger';
       badgeText = `PR #${b.pr.number} · CI Failed`;
@@ -1287,18 +1289,24 @@
       badgeText = 'origin: gone';
     } else if (isLower) {
       badgeTone = 'purple';
-      const isFreshLocal = b.aheadMain === 0 && (b.uncommittedCount === 0 || !b.isHead);
-      badgeText = isWorkingTreeWip
-        ? 'Yerel Taslak · Uncommitted'
-        : (isFreshLocal ? '🌱 Yeni Yerel Dal' : 'Yarım Parabol · Local');
+      if (isWorkingTreeWip) {
+        badgeText = 'Yerel Taslak · Uncommitted';
+      } else if (isSyncedLocal) {
+        badgeText = '✓ main ile Senkronize';
+      } else if (isFreshLocal) {
+        badgeText = '🌱 Yeni Yerel Dal';
+      } else {
+        badgeText = 'Yarım Parabol · Local';
+      }
     }
 
-    const isFreshLocal = isLower && !isWorkingTreeWip && b.aheadMain === 0;
     const subText = isWorkingTreeWip
       ? `${b.uncommittedCount || 0} dosya bekliyor · İncelemek için tıklayın`
-      : (isFreshLocal
-        ? 'main omurgasında taze dal · İlk commitinizi bekliyor'
-        : (b.lastCommitMsg ? b.lastCommitMsg : (isLower ? `↑${b.aheadMain || 0} yerel · ${b.uncommittedCount || 0} dirty` : `↑${b.aheadMain || 0} ↓${b.behindMain || 0}`)));
+      : (isSyncedLocal
+        ? 'main omurgasıyla eşitlendi · Yeni commit veya değişiklik yok'
+        : (isFreshLocal
+          ? 'main omurgasında taze dal · İlk commitinizi bekliyor'
+          : (b.lastCommitMsg ? b.lastCommitMsg : (isLower ? `↑${b.aheadMain || 0} yerel · ${b.uncommittedCount || 0} dirty` : `↑${b.aheadMain || 0} ↓${b.behindMain || 0}`))));
 
     const card = document.createElementNS(XHTML_NS, 'div');
     card.className = `cap-card ${tone} ${isSelected ? 'selected' : ''}`;
@@ -1341,12 +1349,20 @@
         }
       } else {
         const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
-        actionRowHtml = `
-          <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
-          ${hasOpenPR ? `<button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>` : ''}
-          ${checkoutBtn}
-          <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
-        `;
+        const isSynced = b.aheadMain === 0 && (b.uncommittedCount || 0) === 0;
+        if (isSynced) {
+          actionRowHtml = `
+            ${b.isHead ? '<button type="button" class="cap-btn sky" data-act="checkout-main">🎯 main\'e Geç</button>' : checkoutBtn}
+            <button type="button" class="cap-btn-del" data-act="delete" title="Kalıntı dalı sil">🧹</button>
+          `;
+        } else {
+          actionRowHtml = `
+            <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
+            ${hasOpenPR ? `<button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>` : ''}
+            ${checkoutBtn}
+            <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
+          `;
+        }
       }
     } else if (isRunning) {
       actionRowHtml = `
@@ -1381,6 +1397,7 @@
         const act = btn.getAttribute('data-act');
         if (act === 'inspect') selectBranch(b.id);
         else if (act === 'checkout') handleCheckoutBranch(b.id, btn);
+        else if (act === 'checkout-main') handleCheckoutBranch('main', btn);
         else if (act === 'merge') handleMergeBranch(b.id, btn);
         else if (act === 'promote') handlePromoteBranch(b.id, undefined, undefined, btn);
         else if (act === 'resolve') openConflictStudio(b.id);
@@ -1796,7 +1813,8 @@
     const isRunning = ciState === 'RUNNING';
     const isQueued = Boolean(state.pendingAutoMerge[b.id]);
     const canCommitWorkingTree = isVirtualWip || (b.uncommittedCount || 0) > 0 || (b.isHead && (state.snapshot?.repo?.dirtyCount || 0) > 0);
-    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip && !canCommitWorkingTree;
+    const isAlreadySynced = b.aheadMain === 0 && (b.uncommittedCount || 0) === 0 && !isVirtualWip;
+    const canPromote = isOpen && b.hemisphere === 'lower' && !isVirtualWip && !canCommitWorkingTree && !isAlreadySynced;
     const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
     const canMerge = isOpen && hasOpenPR && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
 
@@ -1812,7 +1830,7 @@
         <div class="det-title-row">
           <h3 class="det-branch-name">${isVirtualWip ? '✏️ Çalışma Alanı (Kaydedilmemiş Değişiklikler)' : esc(b.name)}</h3>
           <span class="chip ${b.state === 'merged' ? 'ok' : (isVirtualWip ? 'purple' : (b.hemisphere === 'lower' ? 'purple' : 'accent'))}">
-            ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : (b.hemisphere === 'lower' && b.aheadMain === 0 ? '🌱 Yeni Yerel Dal' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR'))}
+            ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : (isAlreadySynced ? '✓ main ile Eşit (Kalıntı Dal)' : (b.hemisphere === 'lower' && b.aheadMain === 0 ? '🌱 Yeni Yerel Dal' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR')))}
           </span>
         </div>
         <div class="det-badges">
@@ -1825,6 +1843,7 @@
         </div>
         <div class="det-actions">
           ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout" ${snap.repo.teamMode ? 'disabled title="Team Server modunda paylaşılan HEAD kilitlidir"' : ''}>${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
+          ${b.isHead && isAlreadySynced && !isVirtualWip ? `<button type="button" class="btn primary sm" id="act-checkout-main">🎯 main Omurgasına Geç</button>` : ''}
           ${canPromote && !hasOpenPR ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
           ${hasOpenPR && !isVirtualWip ? `
             <div class="merge-group">
@@ -2077,6 +2096,22 @@
           </form>
         </div>
       `;
+    } else if (isAlreadySynced && b.hemisphere === 'lower') {
+      html += `
+        <div class="diag-card">
+          <h4>
+            <span>✓ main Omurgası ile Senkronize</span>
+            <span class="chip ok">Kalıntı Dal</span>
+          </h4>
+          <div class="wt-note">
+            Bu dal (<strong>${esc(b.name)}</strong>) GitHub <strong>main</strong> omurgasıyla tamamen eşitlendi. Push edilecek yeni bir commit veya kaydedilmemiş açık değişiklik bulunmuyor.
+          </div>
+          <div class="det-actions">
+            ${b.isHead ? '<button type="button" class="btn primary sm" id="act-checkout-main-synced">🎯 main Omurgasına Geç</button>' : ''}
+            <button type="button" class="btn warn sm" id="act-delete-synced">🧹 Kalıntı Dalı Temizle</button>
+          </div>
+        </div>
+      `;
     }
 
     if (b.changedFiles?.length) {
@@ -2104,6 +2139,21 @@
               <button type="submit" class="btn primary sm">PR Bilgisini Güncelle</button>
             </div>
           </form>
+        </div>
+      `;
+    } else if (b.pr && !isOpen) {
+      html += `
+        <div class="diag-card">
+          <h4>
+            <span>📜 PR #${b.pr.number} Detayı</span>
+            <span class="chip ok">${esc(b.pr.reviewState || 'MERGED')}</span>
+          </h4>
+          <div class="layer-line"><strong>Başlık:</strong> ${esc(b.pr.title)}</div>
+          ${b.pr.author ? `<div class="layer-line"><strong>Yazar:</strong> @${esc(b.pr.author)}</div>` : ''}
+          ${b.pr.body ? `
+            <div class="wt-label">PR Açıklaması</div>
+            <pre class="pr-body-box">${esc(b.pr.body)}</pre>
+          ` : '<div class="wt-note">Bu PR için GitHub açıklaması kaydedilmemiş veya gövde boş.</div>'}
         </div>
       `;
     }
@@ -2204,6 +2254,10 @@
       state.mergeStrategy = ev.target.value;
     });
     document.getElementById('act-merge')?.addEventListener('click', (ev) => handleMergeBranch(b.id, ev.currentTarget));
+    document.getElementById('act-checkout')?.addEventListener('click', (ev) => handleCheckoutBranch(b.id, ev.currentTarget));
+    document.getElementById('act-checkout-main')?.addEventListener('click', (ev) => handleCheckoutBranch('main', ev.currentTarget));
+    document.getElementById('act-checkout-main-synced')?.addEventListener('click', (ev) => handleCheckoutBranch('main', ev.currentTarget));
+    document.getElementById('act-delete-synced')?.addEventListener('click', (ev) => handleDeleteBranch(b.id, ev.currentTarget));
     document.getElementById('act-resolve')?.addEventListener('click', () => openConflictStudio(b.id));
     document.getElementById('act-resolve-card')?.addEventListener('click', () => openConflictStudio(b.id));
     document.getElementById('act-fix-ci')?.addEventListener('click', () => handleFixCI(b.id));

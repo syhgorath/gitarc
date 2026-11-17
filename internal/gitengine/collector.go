@@ -587,6 +587,7 @@ type ghMergedPRPayload struct {
 	Number      int    `json:"number"`
 	HeadRefName string `json:"headRefName"`
 	Title       string `json:"title"`
+	Body        string `json:"body"`
 	URL         string `json:"url"`
 	Author      struct {
 		Login string `json:"login"`
@@ -697,7 +698,7 @@ func fetchGHMergedPRs(ctx context.Context, repoPath string, nodes []model.Commit
 	ghCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	out, _, err := runCmd(ghCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--limit", "60",
-		"--json", "number,headRefName,title,author,mergeCommit,url")
+		"--json", "number,headRefName,title,body,author,mergeCommit,url")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return mergedMap, nil
 	}
@@ -711,6 +712,7 @@ func fetchGHMergedPRs(ctx context.Context, repoPath string, nodes []model.Commit
 		prObj := model.PRStatus{
 			Number:      it.Number,
 			Title:       it.Title,
+			Body:        it.Body,
 			Author:      it.Author.Login,
 			URL:         it.URL,
 			ReviewState: "MERGED",
@@ -1039,6 +1041,16 @@ func isSquashMerged(ctx context.Context, repoPath, branchName, defaultBranch, ba
 	return false
 }
 
+func isAncestor(ctx context.Context, repoPath, branchName, baseBranch string) bool {
+	if branchName == "" || baseBranch == "" || branchName == baseBranch {
+		return false
+	}
+	if _, _, err := runCmd(ctx, repoPath, "git", "merge-base", "--is-ancestor", branchName, baseBranch); err == nil {
+		return true
+	}
+	return false
+}
+
 func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser string, nodes []model.CommitNode, shaToIdx map[string]int, dirtyCount int, dirtyFiles []string, ghPRs, mergedPRs map[string]model.PRStatus, mergedArches []model.BranchArc) ([]model.BranchArc, int) {
 	out, _, err := runCmd(ctx, repoPath, "git", "for-each-ref",
 		"--sort=-committerdate",
@@ -1114,7 +1126,8 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 		// (aheadMain > 0 olsa bile) PR 'merged' ise dalı "birleşmiş (squash)" say:
 		// çakışma, Cross-PR ve uyarı hesaplarına katma; yalnız temizleme adayı göster.
 		mergedPR, isGHMerged := mergedPRs[name]
-		isActuallyMerged := isGHMerged || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)) || (originGone && aheadMain == 0)
+		isAncest := isAncestor(ctx, repoPath, name, defaultBranch)
+		isActuallyMerged := isGHMerged || (isAncest && aheadMain == 0) || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)) || (originGone && aheadMain == 0)
 		if prPtr == nil && isActuallyMerged {
 			if archIdx, exists := mergedArchByName[name]; exists {
 				mergedArches[archIdx].HasLocal = true
