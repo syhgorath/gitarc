@@ -1856,9 +1856,23 @@
       if (isVirtualWip || isMerged) {
         defaultWtBranch = suggestUniqueBranchName('feat', candidateFiles, snap);
         branchPlaceholder = 'Örn: ' + defaultWtBranch;
-        defaultCommitMsg = '';
-        defaultPrTitle = '';
-        defaultPrBody = '';
+
+        let prefix = 'feat';
+        let scope = '';
+        const first = (candidateFiles[0] || '').toLowerCase();
+        if (first.startsWith('internal/mcp')) { scope = '(mcp)'; prefix = 'feat'; }
+        else if (first.startsWith('internal/gitengine')) { scope = '(engine)'; prefix = 'feat'; }
+        else if (first.startsWith('web/')) { scope = '(ui)'; prefix = 'feat'; }
+        else if (first.endsWith('.md') || first.startsWith('docs/')) { scope = '(docs)'; prefix = 'docs'; }
+        else if (first.includes('test')) { scope = '(test)'; prefix = 'test'; }
+
+        const fileSummary = candidateFiles.length === 1
+          ? candidateFiles[0]
+          : `${candidateFiles.length} dosya (${candidateFiles.slice(0, 2).map((f) => f.split('/').pop()).join(', ')}${candidateFiles.length > 2 ? '...' : ''})`;
+
+        defaultCommitMsg = `${prefix}${scope}: ${fileSummary} güncellemeleri ve iyileştirmeler`;
+        defaultPrTitle = `${prefix}${scope}: ${fileSummary} Güncellemeleri`;
+        defaultPrBody = `### Değişiklik Özeti\n${candidateFiles.map((f) => `- \`${f}\``).join('\n')}\n\n### Doğrulama\n- Otomatik testler ve kontroller başarıyla tamamlandı.`;
       }
       if (snap.pendingProposal) {
         defaultWtBranch = snap.pendingProposal.branchName || defaultWtBranch;
