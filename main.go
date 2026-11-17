@@ -646,13 +646,22 @@ func openBrowser(url string) {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7432", "dinlenecek yerel adres (örn. 127.0.0.1:7432 veya 127.0.0.1:0)")
-	repoPath := flag.String("repo", ".", "doğrudan açılacak yerel git deposu yolu ('sim' = demo simülasyon)")
+	repoPath := flag.String("repo", ".", "doğrudan açılacak yerel git deposu yolu")
+	demoMode := flag.Bool("demo", false, "örnek GitArc playground deposuyla başlat")
 	openUI := flag.Bool("open", true, "başlatınca varsayılan tarayıcıda aç")
 	mcpMode := flag.Bool("mcp", false, "stdio üzerinden MCP JSON-RPC 2.0 sunucusu olarak çalıştır")
 	teamMode := flag.Bool("team", false, "paylaşılan ekip sunucusu modu (sunucudaki HEAD dalı korur)")
 	flag.Parse()
 
 	targetRepo := *repoPath
+	if *demoMode || *repoPath == "demo" || *repoPath == "playground" {
+		playgroundPath, err := gitengine.EnsurePlaygroundRepo("", false)
+		if err != nil {
+			log.Fatalf("playground hazırlanamadı: %v", err)
+		}
+		targetRepo = playgroundPath
+	}
+
 	mgr := gitengine.NewManager(targetRepo)
 	if *teamMode {
 		mgr.SetTeamMode(true)

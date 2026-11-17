@@ -352,21 +352,6 @@ async function bootstrap() {
   document.getElementById('btn-canvas-sync')?.addEventListener('click', (ev) => handleSyncSpine(ev.currentTarget));
   document.getElementById('btn-sync-spine')?.addEventListener('click', (ev) => handleSyncSpine(ev.currentTarget));
 
-  document.getElementById('btn-reset-sim')?.addEventListener('click', async () => {
-    if (!window.confirm('Simülasyon deposunu başlangıç durumuna sıfırlamak istiyor musunuz?')) return;
-    try {
-      const snap = state.offlineMode
-        ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.reset() : state.snapshot)
-        : await apiCall('/api/simulation/reset', 'POST', {});
-      state.selectedBranchId = null;
-      state.selectedNodeSha = null;
-      applySnapshot(snap);
-      showToast('Simülasyon başlangıç durumuna sıfırlandı', 'info');
-    } catch (err) {
-      showToast(err.message, 'danger');
-    }
-  });
-
   document.getElementById('btn-prune-gone')?.addEventListener('click', handlePruneGone);
 
   // New Branch Modal
