@@ -218,12 +218,24 @@ export function renderTopbar(callbacks = {}) {
   const remoteName = snap.repo.remoteName || 'origin';
   const defBranch = snap.repo.defaultBranch || 'main';
   if (el.spineSyncBadge) {
-    if (ahead === 0 && behind === 0) {
-      el.spineSyncBadge.textContent = `${defBranch} ↔ ${remoteName}/${defBranch} (Synced)`;
-      el.spineSyncBadge.classList.remove('skewed');
+    const isSynced = ahead === 0 && behind === 0;
+    const txt = isSynced
+      ? `${defBranch} ↔ ${remoteName}/${defBranch} (Synced)`
+      : `${defBranch} ↔ ${remoteName}/${defBranch}  ↑${ahead} · ↓${behind}`;
+    if (el.canvasSyncText) {
+      el.canvasSyncText.textContent = txt;
     } else {
-      el.spineSyncBadge.textContent = `${defBranch} ↔ ${remoteName}/${defBranch}  ↑${ahead} · ↓${behind}`;
+      el.spineSyncBadge.textContent = txt;
+    }
+    if (el.canvasSyncDot) {
+      el.canvasSyncDot.className = `sync-dot ${isSynced ? 'synced' : 'pending'}`;
+    }
+    if (isSynced) {
+      el.spineSyncBadge.classList.remove('skewed');
+      el.spineSyncBadge.title = `${defBranch} ile ${remoteName}/${defBranch} eşitlendi · Eşitlemek için tıklayın (git fetch & fast-forward)`;
+    } else {
       el.spineSyncBadge.classList.add('skewed');
+      el.spineSyncBadge.title = `Fark var (↑${ahead} / ↓${behind}) · Şimdi senkronize etmek için tıklayın!`;
     }
   }
 }

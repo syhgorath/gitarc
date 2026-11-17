@@ -759,22 +759,43 @@ body {
   height: 22px;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   border-radius: var(--radius-sm);
   background: var(--emerald-weak);
   border: 1px solid var(--emerald-border);
   color: var(--emerald);
   cursor: pointer;
-  transition: transform 0.08s;
+  transition: transform 0.08s, background 0.15s, border-color 0.15s;
 }
 
 .spine-sync-badge:hover {
   transform: translateY(-1px);
+  filter: brightness(1.1);
 }
 
 .spine-sync-badge.skewed {
   background: var(--warn-weak);
   border-color: var(--warn-border);
   color: var(--warn);
+}
+
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.sync-dot.synced {
+  background: var(--emerald);
+  box-shadow: 0 0 6px rgba(63, 185, 80, 0.45);
+}
+
+.sync-dot.pending {
+  background: var(--warn);
+  box-shadow: 0 0 6px rgba(210, 153, 34, 0.6);
+  animation: pulse-ring 1.8s infinite;
 }
 
 .zoom-controls {

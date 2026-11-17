@@ -46,10 +46,8 @@
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-protect-branch" title="GitHub main dal koruma ve güvenlik durumu">🛡️ Koruma</button>
         <button type="button" class="btn ghost mono" id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v0.8.0</button>
-        <button type="button" class="btn ghost" id="btn-logs-modal" title="Sistem ve hata kayıtlarını görüntüle">📜 Loglar <span class="badge-count" id="log-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP</button>
         <button type="button" class="btn ghost sm" id="btn-start-tour" title="GitArc etkileşimli kullanım turunu başlat">🎓 Tur</button>
-        <button type="button" class="btn ghost" id="btn-sync-spine" title="main ile origin/main arasındaki farkı eşitle">Sync ↑↓</button>
         <button type="button" class="btn emerald" id="btn-new-branch" title="main omurgasından yeni parabolik dal aç">+ Yeni Dal</button>
         <button type="button" class="btn ghost" id="btn-reset-sim" title="Simülasyon sahnesini sıfırla">Sıfırla</button>
         <button type="button" class="icon-btn" id="btn-theme" title="Tema değiştir (Koyu / Açık)" aria-label="Tema değiştir">◐</button>
@@ -79,7 +77,10 @@
                 <div class="ray-popover-body" id="upper-ray-popover-body"></div>
               </div>
             </div>
-            <div class="spine-sync-badge" id="spine-sync-badge">main ↔ origin/main</div>
+            <button type="button" class="spine-sync-badge interactive" id="btn-canvas-sync" title="main ↔ origin/main · Eşitlemek için tıklayın (git fetch &amp; fast-forward)">
+              <span class="sync-dot synced" id="canvas-sync-dot"></span>
+              <span id="canvas-sync-text">main ↔ origin/main (Synced)</span>
+            </button>
           </div>
 
           <div class="svg-viewport" id="svg-viewport">
@@ -120,6 +121,7 @@
               </button>
             </div>
             <div class="dock-tools">
+              <button type="button" class="dock-tool-btn" id="dock-copy-btn" title="Görüntülenen tüm logları panoya kopyala">📋 Kopyala</button>
               <button type="button" class="dock-tool-btn" id="dock-clear-btn" title="Logları temizle">🧹 Temizle</button>
               <button type="button" class="dock-tool-btn" id="dock-toggle-btn" title="Alt paneli daralt / genişlet">▼</button>
             </div>

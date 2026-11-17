@@ -50,7 +50,8 @@ export function initElements() {
     'tour-next-btn', 'tour-dots', 'tour-close-btn',
     'btn-upper-ray', 'btn-lower-ray', 'popover-upper-ray', 'popover-lower-ray',
     'upper-ray-popover-body', 'lower-ray-popover-body', 'upper-ray-pill-count', 'lower-ray-pill-count',
-    'close-upper-ray', 'close-lower-ray'
+    'close-upper-ray', 'close-lower-ray',
+    'btn-canvas-sync', 'canvas-sync-dot', 'canvas-sync-text', 'dock-copy-btn'
   ];
 
   ids.forEach((id) => {
@@ -76,6 +77,7 @@ export function initElements() {
   el.dockActionCount = el['dock-action-count'];
   el.dockToggleBtn = el['dock-toggle-btn'];
   el.dockClearBtn = el['dock-clear-btn'];
+  el.dockCopyBtn = el['dock-copy-btn'];
   el.dockPaneRadar = el['dock-pane-radar'];
   el.dockPaneLogs = el['dock-pane-logs'];
   el.dockPaneActions = el['dock-pane-actions'];
@@ -85,6 +87,9 @@ export function initElements() {
   el.pruneCount = el['prune-count'];
   el.dragHint = el['drag-hint'];
   el.spineSyncBadge = el['spine-sync-badge'];
+  el.btnCanvasSync = el['btn-canvas-sync'];
+  el.canvasSyncDot = el['canvas-sync-dot'];
+  el.canvasSyncText = el['canvas-sync-text'];
   el.engineStatus = document.getElementById('engine-status') || el['engineStatus'];
   el.zoomReset = el['zoom-reset'];
   el.toggleMerged = el['toggle-merged-arches'];
