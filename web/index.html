@@ -103,15 +103,16 @@
           </div>
         </div>
 
-        <!-- PocketUI Tabbed Bottom Dock -->
-        <footer class="bottom-dock" id="bottom-dock" aria-label="PocketUI Alt Panel">
+        <!-- PocketUI 3-Kolonlu Canlı Teşhis & Kod Stüdyosu (Split Studio) -->
+        <footer class="bottom-dock split-studio" id="bottom-dock" aria-label="GitArc Canlı Teşhis ve Kod Stüdyosu">
           <div class="dock-header">
             <div class="dock-tabs" role="tablist">
+              <span class="studio-brand-badge">⚡ TEŞHİS STÜDYOSU</span>
               <button type="button" class="dock-tab active" data-tab="radar" id="dock-tab-radar" role="tab" aria-selected="true">
-                🚨 Hata &amp; Uyarı Radarı <span class="dock-badge" id="dock-radar-count">0</span>
+                🚨 Hata Radarı <span class="dock-badge" id="dock-radar-count">0</span>
               </button>
               <button type="button" class="dock-tab" data-tab="logs" id="dock-tab-logs" role="tab" aria-selected="false">
-                📜 Sistem &amp; Git Logları <span class="dock-badge" id="dock-log-count">0</span>
+                📜 Sistem Logları <span class="dock-badge" id="dock-log-count">0</span>
               </button>
               <button type="button" class="dock-tab" data-tab="actions" id="dock-tab-actions" role="tab" aria-selected="false">
                 ⚡ Son İşlemler <span class="dock-badge" id="dock-action-count">0</span>
@@ -121,18 +122,52 @@
               <span class="foot-ready" id="engine-status">● Hazır</span>
               <button type="button" class="dock-tool-btn" id="dock-copy-btn" title="Görüntülenen tüm logları panoya kopyala">📋 Kopyala</button>
               <button type="button" class="dock-tool-btn" id="dock-clear-btn" title="Logları temizle">🧹 Temizle</button>
-              <button type="button" class="dock-tool-btn" id="dock-toggle-btn" title="Alt paneli daralt / genişlet">▼</button>
+              <button type="button" class="dock-tool-btn" id="dock-toggle-btn" title="Alt stüdyoyu daralt / genişlet">▼</button>
             </div>
           </div>
-          <div class="dock-body" id="dock-body">
-            <div class="dock-pane active" id="dock-pane-radar" role="tabpanel">
-              <div class="dock-radar-list" id="radar-list"></div>
+          <div class="dock-body split-studio-body" id="dock-body">
+            <!-- Kolon 1 (%30): Seçili Dal / Commit & GitHub Actions Adımları -->
+            <div class="studio-col studio-col-left" id="studio-col-left">
+              <div class="studio-col-head">
+                <span class="studio-col-title">🎯 Dal &amp; CI/CD Adımları</span>
+                <span class="studio-branch-chip" id="studio-branch-chip">Seçim Yok</span>
+              </div>
+              <div class="studio-col-scrollable" id="studio-branch-detail">
+                <div class="studio-placeholder">Tuvalden bir dal veya commit seçin</div>
+              </div>
             </div>
-            <div class="dock-pane hidden" id="dock-pane-logs" role="tabpanel">
-              <div class="dock-logs-list" id="dock-logs-stream"></div>
+
+            <!-- Kolon 2 (%35): Akıllı Ayıklanmış Hata & Sistem Terminali -->
+            <div class="studio-col studio-col-mid" id="studio-col-mid">
+              <div class="studio-col-head">
+                <span class="studio-col-title">🚨 Hata Radarı &amp; Log Terminali</span>
+                <span class="studio-mid-status" id="studio-mid-status">Canlı Terminal</span>
+              </div>
+              <div class="studio-col-scrollable terminal-bg">
+                <div class="dock-pane active" id="dock-pane-radar" role="tabpanel">
+                  <div class="dock-radar-list" id="radar-list"></div>
+                </div>
+                <div class="dock-pane hidden" id="dock-pane-logs" role="tabpanel">
+                  <div class="dock-logs-list" id="dock-logs-stream"></div>
+                </div>
+                <div class="dock-pane hidden" id="dock-pane-actions" role="tabpanel">
+                  <div class="dock-actions-list" id="dock-actions-stream"></div>
+                </div>
+              </div>
             </div>
-            <div class="dock-pane hidden" id="dock-pane-actions" role="tabpanel">
-              <div class="dock-actions-list" id="dock-actions-stream"></div>
+
+            <!-- Kolon 3 (%35): Canlı Satır İçi Diff & Kod İnceleyici -->
+            <div class="studio-col studio-col-right" id="studio-col-right">
+              <div class="studio-col-head">
+                <span class="studio-col-title">📄 Canlı Satır İçi Kod Diff</span>
+                <div class="studio-diff-tools">
+                  <span class="studio-diff-meta" id="studio-diff-meta"></span>
+                  <button type="button" class="studio-btn-subtle" id="studio-diff-fullscreen" title="Diff'i tam ekran modalda aç">↗ Büyüt</button>
+                </div>
+              </div>
+              <div class="studio-col-scrollable diff-bg" id="studio-diff-content">
+                <div class="studio-placeholder">Diff görüntülemek için bir dal veya commit seçin</div>
+              </div>
             </div>
           </div>
         </footer>

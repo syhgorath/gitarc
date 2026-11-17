@@ -50,7 +50,10 @@ export function initElements() {
     'tour-next-btn', 'tour-dots', 'tour-close-btn',
     'btn-upper-ray', 'btn-lower-ray', 'upper-ray-pill-count', 'lower-ray-pill-count',
     'btn-canvas-sync', 'canvas-sync-dot', 'canvas-sync-text', 'dock-copy-btn',
-    'canvas-inspector', 'canvas-inspector-close', 'canvas-inspector-title'
+    'canvas-inspector', 'canvas-inspector-close', 'canvas-inspector-title',
+    'studio-branch-chip', 'studio-branch-detail', 'studio-mid-status',
+    'studio-diff-meta', 'studio-diff-fullscreen', 'studio-diff-content',
+    'studio-col-left', 'studio-col-mid', 'studio-col-right'
   ];
 
   ids.forEach((id) => {
@@ -63,6 +66,12 @@ export function initElements() {
   el.svg = el['rail-svg'];
   el.viewport = el['svg-viewport'];
   el.repoSelect = el['repo-select'];
+  el.studioBranchChip = el['studio-branch-chip'];
+  el.studioBranchDetail = el['studio-branch-detail'];
+  el.studioMidStatus = el['studio-mid-status'];
+  el.studioDiffMeta = el['studio-diff-meta'];
+  el.studioDiffFullscreen = el['studio-diff-fullscreen'];
+  el.studioDiffContent = el['studio-diff-content'];
   el.modeBadge = el['mode-badge'];
   el.kpiPills = el['kpi-pills'];
   el.radarList = el['radar-list'];
