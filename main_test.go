@@ -154,4 +154,30 @@ func TestSecurityGuardsAndAPIFlow(t *testing.T) {
 	if rec := doPost("/api/branch/prune", `{}`); rec.Code != http.StatusOK {
 		t.Fatalf("prune failed: %d %s", rec.Code, rec.Body.String())
 	}
+
+	// 7. Switch to Enterprise Simulation
+	recEnt := doPost("/api/repo/switch", `{"repoId":"sim-enterprise"}`)
+	if recEnt.Code != http.StatusOK {
+		t.Fatalf("switch to sim-enterprise failed: %d %s", recEnt.Code, recEnt.Body.String())
+	}
+	var entSnap model.CockpitSnapshot
+	if err := json.Unmarshal(recEnt.Body.Bytes(), &entSnap); err != nil {
+		t.Fatalf("failed to decode enterprise snapshot: %v", err)
+	}
+	if entSnap.Repo.ID != "sim-enterprise" {
+		t.Fatalf("expected active repo sim-enterprise, got %s", entSnap.Repo.ID)
+	}
+	if len(entSnap.Branches) < 10 {
+		t.Fatalf("expected enterprise branches >= 10, got %d", len(entSnap.Branches))
+	}
+
+	// 8. Discard working tree in simulation
+	if rec := doPost("/api/working-tree/discard", `{}`); rec.Code != http.StatusOK {
+		t.Fatalf("discard working tree failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 9. Add project validation (reject empty path)
+	if rec := doPost("/api/repo/add", `{"path":""}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty path, got %d", rec.Code)
+	}
 }

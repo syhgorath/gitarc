@@ -39,10 +39,10 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
   - Bayraklar: `-addr` (`127.0.0.1:7432`), `-repo` (`.`, demo için `"sim"`), `-open` (`true`), `-mcp` (`false`), `-team` (`false`).
   - Statik dosyaları `//go:embed web` ile gömer ve kök yanıtta sıkı CSP başlığı set eder:
     `default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
-  - **20 `/api/*` uç noktası** (`a.guard(...)` arkasında):
+  - **23 `/api/*` uç noktası** (`a.guard(...)` arkasında):
     - `GET /api/snapshot`
-    - `POST /api/repo/switch`
-    - `POST /api/branch/create`, `/api/branch/checkout`, `/api/branch/merge`, `/api/branch/promote`, `/api/working-tree/commit`
+    - `POST /api/repo/switch`, `/api/repo/add`, `/api/repo/remove`
+    - `POST /api/branch/create`, `/api/branch/checkout`, `/api/branch/merge`, `/api/branch/promote`, `/api/working-tree/commit`, `/api/working-tree/discard`, `/api/working-tree/diff-stat`
     - `POST /api/conflict/inspect`, `/api/branch/resolve`, `/api/branch/fix-ci`
     - `POST /api/branch/delete`, `/api/branch/prune`, `/api/pr/edit`, `/api/commit/amend`
     - `POST /api/spine/sync`, `/api/logs/clear`, `/api/system/update-check`, `/api/repo/protect`, `/api/simulation/reset`, `/api/test/run`
@@ -52,7 +52,10 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
   - `CollectLiveRepo`: Varsayılan dal tespiti (`main`/`master`), `main` omurga commit düğümleri, `gh` CLI önbellekli PR/CI/BranchProtection sorgusu, çalışma ağacı kirli dosya analizi (`parsePorcelainFiles` + `buildSuggestedCommitAndPR`), `collectLocalBranches`, `collectRemoteOnlyBranches`, `evalCache` (SHA değişmemiş dallarda `merge-tree`/`rev-list` tekrar koşmaz).
 - **`internal/gitengine/simulation.go`:**
   - `Manager`: Hem canlı git deposunu hem bellek-içi `simRepo` simülasyonunu yöneten tek giriş noktası.
+  - İki zengin simülasyon deposu: `sim-sandbox` ("GitArc Sandbox (Temel Demo)") ve `sim-enterprise` ("MegaCorp Platform (50 Geliştirici · Enterprise Demo)" · 4 ana track: `develop`, `staging`, `release/v3.3`, `support/lts-2.x`, 50 farklı yazılımcı ismi, CI Running, CI Failure, Cross-PR Collision, Helm conflict, local remnant ve fresh local branch).
   - In-memory simülasyon yaşam döngüsü (`simWorkspace`, `reset`, sanal adımlar) ve kalıcı `actionLogs`.
+- **`internal/gitengine/projects.go`:**
+  - Proje Yönetimi: Yerel Git depolarını kaydetme, `~/.gitarc/projects.json` kalıcı dosyasında saklama, listeden kaldırma ve çalışma ağacındaki kirli değişiklikleri güvenle geri alma (`DiscardWorkingTree` / `git restore` + `git clean`).
 - **`internal/gitengine/live_mutations.go`:**
   - Canlı Git ve GitHub mutasyonlarının tamamı (`commitWorkingTreeLive`, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive`, `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`, `createBranchLive`, `checkoutBranchLive`).
   - Her mutasyon öncesi `IsTeamMode()` ve güvenlik kontrolleri yapılır, sonuç `m.recordLog` / `m.logLiveOutcome` ile geçmişe yazılır.

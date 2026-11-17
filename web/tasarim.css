@@ -228,8 +228,10 @@ body {
 }
 
 .repo-picker {
-  min-width: 175px;
-  max-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 240px;
 }
 
 .select-control,

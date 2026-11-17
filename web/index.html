@@ -26,6 +26,8 @@
       <div class="repo-picker">
         <label class="sr-only" for="repo-select">Depo Seç</label>
         <select id="repo-select" class="select-control" aria-label="Depo seçici"></select>
+        <button type="button" class="btn ghost sm" id="btn-add-project" title="Yeni yerel Git deposu ekle">➕ Proje Ekle</button>
+        <button type="button" class="btn ghost sm" id="btn-remove-project" title="Seçili projeyi GitArc listesinden kaldır (yerel dosyalarınız silinmez)">🗑️</button>
       </div>
 
       <div class="legend-bar" aria-label="Ray renk açıklamaları">
@@ -336,6 +338,30 @@
             <button type="button" class="btn ghost sm" id="sec-close-btn">Kapat</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- MODAL: PROJE EKLE -->
+    <div class="modal-backdrop" id="add-project-modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="add-proj-modal-title">
+        <div class="modal-head">
+          <h3 id="add-proj-modal-title"><span class="modal-dot"></span>➕ Yerel Git Deposu Ekle</h3>
+          <button type="button" class="icon-close" id="add-proj-close" aria-label="Kapat">✕</button>
+        </div>
+        <form id="add-project-form" class="modal-body">
+          <div class="wt-field">
+            <label class="wt-label" for="project-path-input">Yerel Depo Dizin Yolu (.git içeren klasör)</label>
+            <input type="text" id="project-path-input" class="input-control mono" placeholder="/Users/kullanici/Projects/my-repo" required autocomplete="off">
+          </div>
+          <div class="wt-field">
+            <label class="wt-label" for="project-name-input">Görünen Proje Adı (İsteğe bağlı)</label>
+            <input type="text" id="project-name-input" class="input-control" placeholder="Örn: Müşteri Portalı (varsayılan: klasör adı)">
+          </div>
+          <div class="modal-foot">
+            <button type="submit" class="btn primary sm" id="add-proj-submit">💾 Depoyu Ekle &amp; Aç</button>
+            <button type="button" class="btn ghost sm" id="add-proj-cancel">İptal</button>
+          </div>
+        </form>
       </div>
     </div>
 

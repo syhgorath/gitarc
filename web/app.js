@@ -103,6 +103,14 @@
     secTeamChip: document.getElementById('sec-team-chip'),
     secUpdateStatus: document.getElementById('sec-update-status'),
     secUpdateCmd: document.getElementById('sec-update-cmd'),
+    btnAddProject: document.getElementById('btn-add-project'),
+    btnRemoveProject: document.getElementById('btn-remove-project'),
+    addProjectModal: document.getElementById('add-project-modal'),
+    addProjectForm: document.getElementById('add-project-form'),
+    projectPathInput: document.getElementById('project-path-input'),
+    projectNameInput: document.getElementById('project-name-input'),
+    addProjClose: document.getElementById('add-proj-close'),
+    addProjCancel: document.getElementById('add-proj-cancel'),
   };
 
   // Fallback simulation engine for standalone file:// opening without Go server (defined in fallback.js)
@@ -338,6 +346,7 @@
       el.repoSelect.appendChild(opt);
     });
 
+    el.btnRemoveProject.hidden = snap.repo.mode !== 'live';
     const cleanableCount = (snap.branches || []).filter((b) => b.originGone || b.state === 'gone' || (b.state === 'merged' && b.hasLocal)).length;
     el.pruneCount.textContent = String(cleanableCount);
     document.getElementById('btn-prune-gone').disabled = cleanableCount === 0 && snap.repo.mode !== 'live';
@@ -1848,6 +1857,7 @@
             <div class="det-actions">
               <button type="submit" class="btn emerald sm" id="act-wt-commit-only" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>💾 Sadece Dal Aç &amp; Commit At</button>
               <button type="button" class="btn primary sm" id="act-wt-commit-push" ${snap.repo.teamMode || secretFile ? 'disabled' : ''}>${b.pr && b.pr.number > 0 ? `🚀 Commit &amp; PR #${b.pr.number}'a Pushla` : '🚀 Commit + Push &amp; PR Oluştur'}</button>
+              <button type="button" class="btn warn sm" id="act-wt-discard" ${snap.repo.teamMode ? 'disabled' : ''}>🗑️ Değişiklikleri Geri Al (Discard)</button>
             </div>
           </form>
         </div>
@@ -1983,6 +1993,7 @@
       const btn = document.getElementById('act-wt-commit-push');
       handleCommitWorkingTree(bName, cMsg, pTitle, pBody, true, btn);
     });
+    document.getElementById('act-wt-discard')?.addEventListener('click', handleDiscardWorkingTree);
     document.getElementById('promote-pr-title')?.addEventListener('input', (ev) => {
       state.draftPrEdits[b.name] = {
         title: ev.target.value,
@@ -2271,6 +2282,87 @@
       showToast(err.message, 'danger');
     } finally {
       if (btnEl) btnEl.disabled = false;
+    }
+  }
+
+  async function handleDiscardWorkingTree() {
+    const dirtyCount = state.snapshot?.repo?.dirtyCount || 0;
+    const ok = window.confirm(`⚠️ DİKKAT: Kaydedilmemiş ${dirtyCount} adet değişiklik/dosya (staged ve untracked) tamamen geri alınacak ve temizlenecektir.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`);
+    if (!ok) return;
+
+    try {
+      let snap;
+      if (state.offlineMode) {
+        snap = LocalFallbackEngine.discardWorkingTree();
+      } else {
+        snap = await apiCall('/api/working-tree/discard', 'POST');
+      }
+      applySnapshot(snap);
+      showToast('✓ Kaydedilmemiş değişiklikler temizlendi', 'info');
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'danger');
+    }
+  }
+
+  function openAddProjectModal() {
+    el.addProjectModal.hidden = false;
+    el.projectPathInput.value = '';
+    el.projectNameInput.value = '';
+    el.projectPathInput.focus();
+  }
+
+  function closeAddProjectModal() {
+    el.addProjectModal.hidden = true;
+  }
+
+  async function handleAddProjectSubmit(ev) {
+    ev.preventDefault();
+    const repoPath = el.projectPathInput.value.trim();
+    const repoName = el.projectNameInput.value.trim();
+    if (!repoPath) {
+      showToast('Lütfen geçerli bir yerel depo yolu girin', 'warn');
+      return;
+    }
+    const btn = document.getElementById('add-proj-submit');
+    if (btn) btn.disabled = true;
+
+    try {
+      let snap;
+      if (state.offlineMode) {
+        snap = LocalFallbackEngine.addProject(repoPath, repoName);
+      } else {
+        snap = await apiCall('/api/repo/add', 'POST', { path: repoPath, name: repoName });
+      }
+      closeAddProjectModal();
+      applySnapshot(snap);
+      showToast(`✓ Proje başarıyla eklendi: ${snap.repo.name}`, 'ok');
+    } catch (err) {
+      showToast(`Proje eklenemedi: ${err.message}`, 'danger');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function handleRemoveCurrentProject() {
+    const currentRepo = state.snapshot?.repo;
+    if (!currentRepo || String(currentRepo.id).startsWith('sim-')) {
+      showToast('Simülasyon deposu listeden kaldırılamaz', 'warn');
+      return;
+    }
+    const ok = window.confirm(`"${currentRepo.name}" projesini GitArc listesinden kaldırmak istiyor musunuz?\n\n(Not: Disk üzerindeki yerel dosyalarınız veya git deponuz ASLA silinmez, yalnızca GitArc proje listesinden çıkarılır.)`);
+    if (!ok) return;
+
+    try {
+      let snap;
+      if (state.offlineMode) {
+        snap = LocalFallbackEngine.removeProject(currentRepo.id);
+      } else {
+        snap = await apiCall('/api/repo/remove', 'POST', { repoId: currentRepo.id });
+      }
+      applySnapshot(snap);
+      showToast(`Proje listeden kaldırıldı`, 'info');
+    } catch (err) {
+      showToast(`Hata: ${err.message}`, 'danger');
     }
   }
 
@@ -2751,6 +2843,12 @@
   document.getElementById('btn-new-branch').addEventListener('click', openNewBranchModal);
   document.getElementById('modal-close').addEventListener('click', closeNewBranchModal);
   document.getElementById('modal-cancel').addEventListener('click', closeNewBranchModal);
+
+  el.btnAddProject.addEventListener('click', openAddProjectModal);
+  el.btnRemoveProject.addEventListener('click', handleRemoveCurrentProject);
+  el.addProjClose.addEventListener('click', closeAddProjectModal);
+  el.addProjCancel.addEventListener('click', closeAddProjectModal);
+  el.addProjectForm.addEventListener('submit', handleAddProjectSubmit);
 
   el.newBranchForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
