@@ -325,3 +325,31 @@ export function prevTourStep() {
     renderTourStep(activeTourStep - 1);
   }
 }
+
+// MCP Connect Modal
+export function buildMCPConfigText() {
+  const repoPath = state.snapshot?.repo?.mode === 'live' && state.snapshot?.repo?.path
+    ? state.snapshot.repo.path
+    : '/Users/ziyayesilbahce/Developer/GitArc';
+  const binPath = `${repoPath.replace(/\/$/, '')}/gitarc`;
+  return JSON.stringify({
+    mcpServers: {
+      gitarc: {
+        command: binPath,
+        args: ['-mcp', '-repo', repoPath],
+      },
+    },
+  }, null, 2);
+}
+
+export function openMCPConnectModal() {
+  if (el.mcpConfigSnippet) {
+    el.mcpConfigSnippet.textContent = buildMCPConfigText();
+  }
+  if (el.mcpModal) el.mcpModal.hidden = false;
+}
+
+export function closeMCPConnectModal() {
+  if (el.mcpModal) el.mcpModal.hidden = true;
+}
+

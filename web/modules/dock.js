@@ -244,6 +244,23 @@ export function setupBottomDock(onApplySnapshot = null) {
     }
   });
 
+  el.dockCopyBtn?.addEventListener('click', async () => {
+    const logs = state.snapshot?.logs || [];
+    const client = state.clientLogs || [];
+    const all = [...logs, ...client];
+    if (all.length === 0) {
+      showToast('Kopyalanacak log kaydı bulunmuyor', 'info');
+      return;
+    }
+    const text = all.map((l) => `[${l.timestamp || ''}] [${(l.level || 'info').toUpperCase()}] ${l.action || ''}: ${l.message || ''}${l.detail ? ` (${l.detail})` : ''}`).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`✓ ${all.length} adet log panoya kopyalandı`, 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
+
   el.dockClearBtn?.addEventListener('click', async () => {
     state.clientLogs = [];
     if (!state.offlineMode) {

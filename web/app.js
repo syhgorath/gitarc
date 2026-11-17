@@ -9,7 +9,8 @@ import { renderInspector } from './modules/inspector.js';
 import {
   openConflictStudio, closeConflictStudio, applyConflictStudio,
   openAddProjectModal, closeAddProjectModal, handleAddProjectSubmit, handleRemoveCurrentProject,
-  startCockpitTour, closeTour, nextTourStep, prevTourStep
+  startCockpitTour, closeTour, nextTourStep, prevTourStep,
+  openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText
 } from './modules/modals.js';
 
 // Central Branch Selection
@@ -148,11 +149,13 @@ async function handleDeleteBranch(branchId, btnEl = null) {
 async function handlePruneGone() {
   await runWithBtnBusy(document.getElementById('btn-prune-gone'), '🧹 Temizleniyor...', async () => {
     try {
-      const snap = state.offlineMode
+      const res = state.offlineMode
         ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.pruneGone() : state.snapshot)
         : await apiCall('/api/branch/prune', 'POST', {});
+      const snap = res.snapshot || res;
       applySnapshot(snap);
-      showToast('Uzakta silinmiş veya birleşmiş yerel dallar temizlendi (git fetch --prune)', 'ok');
+      const count = Array.isArray(res.removed) ? res.removed.length : 0;
+      showToast(count > 0 ? `✓ ${count} artık dal temizlendi (git fetch --prune)` : 'Temizlenecek artık dal bulunamadı', 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }
@@ -329,8 +332,8 @@ async function bootstrap() {
   setupCanvasInteractions(() => renderSVG(getActionCallbacks()));
 
   // UI Event Bindings
-  document.getElementById('btn-sync-spine')?.addEventListener('click', async (ev) => {
-    await runWithBtnBusy(ev.currentTarget, '🔄 Eşitleniyor...', async () => {
+  const handleSyncSpine = async (btnEl) => {
+    await runWithBtnBusy(btnEl, '🔄 Eşitleniyor...', async () => {
       try {
         const snap = state.offlineMode
           ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.syncSpine() : state.snapshot)
@@ -341,7 +344,10 @@ async function bootstrap() {
         showToast(err.message, 'danger');
       }
     });
-  });
+  };
+
+  document.getElementById('btn-canvas-sync')?.addEventListener('click', (ev) => handleSyncSpine(ev.currentTarget));
+  document.getElementById('btn-sync-spine')?.addEventListener('click', (ev) => handleSyncSpine(ev.currentTarget));
 
   document.getElementById('btn-reset-sim')?.addEventListener('click', async () => {
     if (!window.confirm('Simülasyon deposunu başlangıç durumuna sıfırlamak istiyor musunuz?')) return;
@@ -434,6 +440,19 @@ async function bootstrap() {
     }
   });
 
+  // MCP Connect Modal Events
+  document.getElementById('btn-mcp-connect')?.addEventListener('click', openMCPConnectModal);
+  document.getElementById('mcp-close')?.addEventListener('click', closeMCPConnectModal);
+  document.getElementById('mcp-close-btn')?.addEventListener('click', closeMCPConnectModal);
+  document.getElementById('mcp-copy-json')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(buildMCPConfigText());
+      showToast('✓ MCP konfigürasyonu panoya kopyalandı', 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
+
   // Global Keyboard Shortcuts
   window.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {
@@ -441,6 +460,7 @@ async function bootstrap() {
       if (el.conflictStudioModal && !el.conflictStudioModal.hidden) closeConflictStudio();
       if (el.securityUpdateModal && !el.securityUpdateModal.hidden) el.securityUpdateModal.hidden = true;
       if (el.addProjectModal && !el.addProjectModal.hidden) closeAddProjectModal();
+      if (el.mcpModal && !el.mcpModal.hidden) closeMCPConnectModal();
       if (el.tourCard && !el.tourCard.hidden) closeTour();
     }
   });

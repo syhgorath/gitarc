@@ -158,6 +158,7 @@ func NewManager(extraRepoPath string) *Manager {
 			}
 		}
 	}
+	m.logs = loadSavedLogs()
 	return m
 }
 
@@ -278,6 +279,7 @@ func (m *Manager) recordLogLocked(level, action, branch, message, detail string)
 	if len(m.logs) > 50 {
 		m.logs = m.logs[:50]
 	}
+	_ = persistSavedLogs(m.logs)
 }
 
 func (m *Manager) recordLog(level, action, branch, message, detail string) {
@@ -311,11 +313,12 @@ func (m *Manager) recentLogs() []model.ActionLogEntry {
 	return m.recentLogsLocked()
 }
 
-// ClearLogs empties the in-memory cockpit operation/error log buffer.
+// ClearLogs empties the in-memory cockpit operation/error log buffer and clears the persistent file.
 func (m *Manager) ClearLogs() (model.CockpitSnapshot, error) {
 	m.mu.Lock()
 	m.logs = nil
 	m.mu.Unlock()
+	clearSavedLogsFile()
 	return m.Snapshot()
 }
 
