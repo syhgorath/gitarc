@@ -163,12 +163,15 @@ func (a *App) routes() http.Handler {
 	mux.Handle("/", a.root(http.FileServer(http.FS(sub))))
 	mux.HandleFunc("/api/snapshot", a.guard(a.handleSnapshot))
 	mux.HandleFunc("/api/repo/switch", a.guard(a.handleSwitchRepo))
+	mux.HandleFunc("/api/repo/add", a.guard(a.handleAddProject))
+	mux.HandleFunc("/api/repo/remove", a.guard(a.handleRemoveProject))
 	mux.HandleFunc("/api/branch/create", a.guard(a.handleCreateBranch))
 	mux.HandleFunc("/api/branch/checkout", a.guard(a.handleCheckoutBranch))
 	mux.HandleFunc("/api/branch/merge", a.guard(a.handleMergeBranch))
 	mux.HandleFunc("/api/branch/promote", a.guard(a.handlePromoteBranch))
 	mux.HandleFunc("/api/working-tree/commit", a.guard(a.handleCommitWorkingTree))
 	mux.HandleFunc("/api/working-tree/diff-stat", a.guard(a.handleDiffStat))
+	mux.HandleFunc("/api/working-tree/discard", a.guard(a.handleDiscardWorkingTree))
 	mux.HandleFunc("/api/proposal/dismiss", a.guard(a.handleDismissProposal))
 	mux.HandleFunc("/api/conflict/inspect", a.guard(a.handleInspectConflict))
 	mux.HandleFunc("/api/branch/resolve", a.guard(a.handleResolveConflict))
@@ -207,6 +210,50 @@ func (a *App) handleSwitchRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap, err := a.mgr.SwitchRepo(req.RepoID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleAddProject(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.AddProject(req.Path, req.Name)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleRemoveProject(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RepoID string `json:"repoId"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.RemoveProject(req.RepoID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleDiscardWorkingTree(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSONError(w, http.StatusMethodNotAllowed, "POST bekleniyor")
+		return
+	}
+	snap, err := a.mgr.DiscardWorkingTree()
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

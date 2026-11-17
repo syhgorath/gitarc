@@ -5,6 +5,9 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 ## [0.8.0] - 2026-11-17
 
 ### Eklenenler
+- **Kalıcı Yerel Proje Yönetimi (`➕ Proje Ekle` / `~/.gitarc/projects.json`):** Kullanıcıların yerel Git depolarını arayüzdeki modal üzerinden yol girerek ekleyebilmesi, eklenen projelerin kalıcı olarak saklanması, üst bardan seçilmesi ve `🗑️` ile listeden çıkarılabilmesi eklendi (`/api/repo/add`, `/api/repo/remove`).
+- **Büyük Proje Demosu (MegaCorp Platform · 50 Geliştirici & 4 Ana Dal):** Ekran görüntüsü ve dokümantasyon için 4 ana entegrasyon/sürüm hattı (`develop`, `staging`, `release/v3.3`, `support/lts-2.x`), 50 farklı ekip üyesi, `CI: RUNNING` nabız efekti, panik loglu `CI: FAILURE`, Cross-PR çakışması (`api/v1/auth.go`), Helm values çakışması, squash kalıntısı ve taze yerel dal içeren zengin kurumsal simülasyon deposu (`sim-enterprise`) eklendi.
+- **Çalışma Ağacını Güvenle Sıfırlama (`🗑️ Değişiklikleri Geri Al` / `/api/working-tree/discard`):** Staged veya untracked açık değişiklikleri tek tıkla ve onay penceresiyle temizleyen güvenli sıfırlama mekanizması eklendi.
 - **PocketUI Tab'lı Alt Çekmece (Bottom Dock):** Akıllı Hata Radarı sağ panelden alt çekmeceye taşındı; 3 sekmeli (`🚨 Hata & Uyarı Radarı`, `📜 Sistem & Git Logları`, `⚡ Son İşlemler`), daraltılabilir (`▼/▲`) ve log temizleme araçlı alt panel oluşturuldu.
 - **Tam Genişlikte Hata & Uyarı Radarı Kartları (`Full-Width Radar Cards`):** Hata ve uyarı kartları küçük ızgara kutularından tam satır genişliğine yayılan zengin bilgi kartlarına dönüştürüldü. Etkilenen dosyalar, CI hata logu snippet'i, tek tıkla kopyalanabilir terminal komutu ve doğrudan çakışma stüdyosuna/temizliğe götüren aksiyon butonları eklendi.
 - **🌱 Taze Yerel Dal Ayrımı (`collector.go`):** Henüz pushlanmamış `aheadMain == 0` yerel dalların yanlışlıkla `origin: gone` / silinmiş kalıntı sayılması kökten engellendi; `🌱 Yeni Yerel Dal` kimliği ve eylemleri atandı.

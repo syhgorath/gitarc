@@ -57,9 +57,9 @@
 
       sim = {
         repo: {
-          id: 'sim-keylab',
-          name: 'keylab / sshpocket',
-          path: '/Users/ziyayesilbahce/Developer/sshpocket',
+          id: 'sim-sandbox',
+          name: 'GitArc Sandbox (Temel Demo)',
+          path: '(Bellek İçi Sanal Depo)',
           defaultBranch: 'main',
           remoteName: 'origin',
           ahead: 2,
@@ -69,7 +69,8 @@
           versionTag: 'v4.0.16',
         },
         repos: [
-          { id: 'sim-keylab', name: 'keylab / sshpocket (Offline Simülasyon)', path: '/Users/ziyayesilbahce/Developer/sshpocket', mode: 'simulation' },
+          { id: 'sim-sandbox', name: 'GitArc Sandbox (Temel Demo)', path: '(Bellek İçi Sanal Depo)', mode: 'simulation' },
+          { id: 'sim-enterprise', name: 'MegaCorp Platform (50 Geliştirici · Enterprise Demo)', path: '(Enterprise Çoklu Dal Simülasyonu)', mode: 'simulation' },
         ],
         nodes: [
           { sha: '19a4c01', shortSha: '19a4c01', subject: 'chore(release): prepare v4.0.14', author: 'ziya', relativeTime: '6 gün önce', spineIndex: 0, tag: 'v4.0.14' },
@@ -619,6 +620,49 @@
         }
         sim.repo.ahead = 0;
         sim.repo.behind = 0;
+        return recompute();
+      },
+      switchRepo(repoId) {
+        const found = (sim.repos || []).find((r) => r.id === repoId);
+        if (found) {
+          sim.repo.id = found.id;
+          sim.repo.name = found.name;
+          sim.repo.path = found.path;
+          sim.repo.mode = found.mode;
+        }
+        return recompute();
+      },
+      addProject(repoPath, customName) {
+        const cleanPath = (repoPath || '').trim();
+        if (!cleanPath) throw new Error('Depo yolu boş olamaz');
+        const name = (customName || '').trim() || cleanPath.split(/[/\\]/).filter(Boolean).pop() || 'Yeni Proje';
+        const id = `live-proj-${Date.now()}`;
+        const newEntry = { id, name: `${name} (Canlı)`, path: cleanPath, mode: 'live' };
+        sim.repos = sim.repos || [];
+        sim.repos.push(newEntry);
+        sim.repo.id = newEntry.id;
+        sim.repo.name = newEntry.name;
+        sim.repo.path = newEntry.path;
+        sim.repo.mode = 'live';
+        return recompute();
+      },
+      removeProject(repoId) {
+        if (String(repoId).startsWith('sim-')) {
+          throw new Error('Simülasyon deposu silinemez');
+        }
+        sim.repos = (sim.repos || []).filter((r) => r.id !== repoId);
+        if (sim.repo.id === repoId) {
+          sim.repo.id = sim.repos[0]?.id || 'sim-sandbox';
+          sim.repo.name = sim.repos[0]?.name || 'GitArc Sandbox';
+        }
+        return recompute();
+      },
+      discardWorkingTree() {
+        sim.repo.dirtyCount = 0;
+        (sim.branches || []).forEach((b) => {
+          b.uncommittedCount = 0;
+        });
+        sim.branches = (sim.branches || []).filter((b) => !b.id.startsWith('local-wip'));
         return recompute();
       },
     };
