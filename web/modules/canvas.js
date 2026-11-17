@@ -253,7 +253,7 @@ export function capsulePositionForApex(b, apexX, apexY) {
 }
 
 export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, callbacks = {}) {
-  const { onSelectBranch, onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenConflictStudio } = callbacks;
+  const { onSelectBranch, onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenConflictStudio, onOpenDiff } = callbacks;
   const snap = state.snapshot;
   const isMerged = b.state === 'merged';
   const pos = capsulePositionForApex(b, geom.apexX, geom.apexY);
@@ -271,17 +271,26 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
     const hasLocalLeftover = Boolean(b.originGone || b.hasLocal);
     pill.className = `cap-merged-pill ${isSelected ? 'selected' : ''} ${hasLocalLeftover ? 'gone' : ''}`;
     const prTxt = b.pr ? `#${b.pr.number} ` : '';
+    const authorTxt = b.author ? `<span class="cap-merged-author" title="Geliştirici: @${esc(b.author)}">@${esc(truncate(b.author, 8))}</span>` : '';
     const localTagHtml = hasLocalLeftover
       ? `<span class="cap-merged-local-tag" title="Yerelde dal kopyası duruyor">${b.isHead ? 'HEAD·Local' : '💻 Local'}</span>`
       : '';
+    const diffBtnHtml = '<button type="button" class="cap-merged-del cap-btn-diff" data-act="diff" title="Birleşen Kod Değişikliklerini Gör (Diff)">🔍</button>';
     const delBtnHtml = hasLocalLeftover
       ? '<button type="button" class="cap-merged-del" data-act="delete" title="Kalıntı yerel dalı temizle">🧹</button>'
       : '';
     pill.innerHTML = `
-      <span class="cap-merged-txt">✓ ${esc(prTxt + truncate(b.name, hasLocalLeftover ? 11 : 19))}</span>
+      <span class="cap-merged-txt">✓ ${esc(prTxt + truncate(b.name, hasLocalLeftover ? 10 : 16))}</span>
+      ${authorTxt}
       ${localTagHtml}
+      ${diffBtnHtml}
       ${delBtnHtml}
     `;
+    pill.querySelector('button[data-act="diff"]')?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    pill.querySelector('button[data-act="diff"]')?.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (onOpenDiff) onOpenDiff(b.name || (b.pr ? `refs/pull/${b.pr.number}/head` : b.localSha), 'branch');
+    });
     pill.querySelector('button[data-act="delete"]')?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
     pill.querySelector('button[data-act="delete"]')?.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -362,26 +371,35 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
   const checkoutBtn = (!b.isHead && !isWorkingTreeWip)
     ? `<button type="button" class="cap-btn-ico" data-act="checkout" title="${checkoutTitle}">🎯</button>`
     : '';
+  const diffBtn = `<button type="button" class="cap-btn-ico cap-btn-diff" data-act="diff" title="Kod Değişikliklerini Gör (Diff)">🔍</button>`;
 
   let actionRowHtml = '';
   if (isFailed) {
     actionRowHtml = `
       <button type="button" class="cap-btn danger" data-act="inspect">🔍 Hatayı Gör</button>
+      ${diffBtn}
       ${checkoutBtn}
       <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
     `;
   } else if (hasConflict) {
     actionRowHtml = `
       <button type="button" class="cap-btn amber" data-act="resolve">⚡ Çakışma Stüdyosu</button>
+      ${diffBtn}
       ${checkoutBtn}
       <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
     `;
   } else if (isLower) {
     if (isWorkingTreeWip) {
       if (snap?.pendingProposal) {
-        actionRowHtml = `<button type="button" class="cap-btn sky running-pulse" data-act="inspect">✨ AI Önerisini İncele & Onayla</button>`;
+        actionRowHtml = `
+          <button type="button" class="cap-btn sky running-pulse" data-act="inspect">✨ AI Önerisi</button>
+          ${diffBtn}
+        `;
       } else {
-        actionRowHtml = `<button type="button" class="cap-btn sky" data-act="inspect">🚀 Commit & PR Stüdyosu</button>`;
+        actionRowHtml = `
+          <button type="button" class="cap-btn sky" data-act="inspect">🚀 Commit &amp; PR</button>
+          ${diffBtn}
+        `;
       }
     } else {
       const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
@@ -389,12 +407,14 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
       if (isSynced) {
         actionRowHtml = `
           ${b.isHead ? '<button type="button" class="cap-btn sky" data-act="checkout-main">🎯 main\'e Geç</button>' : checkoutBtn}
+          ${diffBtn}
           <button type="button" class="cap-btn-del" data-act="delete" title="Kalıntı dalı sil">🧹</button>
         `;
       } else {
         actionRowHtml = `
-          <button type="button" class="cap-btn sky" data-act="promote">🚀 Push & PR</button>
+          <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
           ${hasOpenPR ? `<button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>` : ''}
+          ${diffBtn}
           ${checkoutBtn}
           <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
         `;
@@ -403,20 +423,30 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
   } else if (isRunning) {
     actionRowHtml = `
       <button type="button" class="cap-btn amber ${isQueued ? 'running-pulse' : ''}" data-act="merge">${isQueued ? '⏳ CI Bekleniyor (İptal)' : '⏳ CI Bitince Merge Et'}</button>
+      ${diffBtn}
       ${checkoutBtn}
       <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
     `;
   } else {
     actionRowHtml = `
       <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge (Parabolü Kapat)</button>
+      ${diffBtn}
       ${checkoutBtn}
       <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
     `;
   }
 
+  const authorName = (b.author || '').trim();
+  const currentUser = (snap?.repo?.currentUser || '').trim().toLowerCase();
+  const isMe = authorName && currentUser && authorName.toLowerCase() === currentUser;
+  const authorBadgeHtml = authorName
+    ? `<span class="cap-author-badge ${isMe ? 'author-me' : 'author-peer'}" title="${isMe ? 'Bu dal sizin tarafınızdan açıldı (@me)' : `Geliştirici: @${esc(authorName)}`}">${isMe ? '👤 Ben' : `👤 @${esc(truncate(authorName, 10))}`}</span>`
+    : '';
+
   card.innerHTML = `
     <div class="cap-head">
-      <span class="cap-title" title="${esc(b.name)}">${isWorkingTreeWip ? '✏️ Çalışma Alanı' : esc(truncate(b.name, 22))}</span>
+      <span class="cap-title" title="${esc(b.name)}">${isWorkingTreeWip ? '✏️ Çalışma Alanı' : esc(truncate(b.name, 18))}</span>
+      ${authorBadgeHtml}
       <span class="cap-badge ${badgeTone} ${badgePulse ? 'running-pulse' : ''}">${badgeText}</span>
     </div>
     <div class="cap-sub" title="${esc(subText)}">${esc(truncate(subText, 32))}</div>
@@ -429,7 +459,11 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       const act = btn.getAttribute('data-act');
-      if (act === 'inspect' && onSelectBranch) onSelectBranch(b.id);
+      if (act === 'diff' && onOpenDiff) {
+        if (isWorkingTreeWip) onOpenDiff('working-tree', 'working-tree');
+        else onOpenDiff(b.name, 'branch');
+      }
+      else if (act === 'inspect' && onSelectBranch) onSelectBranch(b.id);
       else if (act === 'checkout' && onCheckoutBranch) onCheckoutBranch(b.id, btn);
       else if (act === 'checkout-main' && onCheckoutBranch) onCheckoutBranch('main', btn);
       else if (act === 'merge' && onMergeBranch) onMergeBranch(b.id, btn);
@@ -468,7 +502,7 @@ export function renderSVG(callbacks = {}) {
   const snap = state.snapshot;
   if (!snap || !el.svg) return;
 
-  const { onSelectBranch, onSelectNode, onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenConflictStudio } = callbacks;
+  const { onSelectBranch, onSelectNode, onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenConflictStudio, onOpenDiff } = callbacks;
 
   const nodes = snap.nodes || [];
   const branches = snap.branches || [];

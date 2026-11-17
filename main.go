@@ -171,6 +171,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/branch/promote", a.guard(a.handlePromoteBranch))
 	mux.HandleFunc("/api/working-tree/commit", a.guard(a.handleCommitWorkingTree))
 	mux.HandleFunc("/api/working-tree/diff-stat", a.guard(a.handleDiffStat))
+	mux.HandleFunc("/api/diff", a.guard(a.handleGetDiff))
 	mux.HandleFunc("/api/working-tree/discard", a.guard(a.handleDiscardWorkingTree))
 	mux.HandleFunc("/api/proposal/dismiss", a.guard(a.handleDismissProposal))
 	mux.HandleFunc("/api/conflict/inspect", a.guard(a.handleInspectConflict))
@@ -390,6 +391,30 @@ func (a *App) handleDiffStat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, stat)
+}
+
+func (a *App) handleGetDiff(w http.ResponseWriter, r *http.Request) {
+	var target, diffType string
+	if r.Method == http.MethodPost {
+		var req struct {
+			Target string `json:"target"`
+			Type   string `json:"type"`
+		}
+		if !decodePOST(w, r, &req) {
+			return
+		}
+		target = req.Target
+		diffType = req.Type
+	} else {
+		target = r.URL.Query().Get("target")
+		diffType = r.URL.Query().Get("type")
+	}
+	diff, err := a.mgr.GetDiff(target, diffType)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, diff)
 }
 
 func (a *App) handleDismissProposal(w http.ResponseWriter, r *http.Request) {

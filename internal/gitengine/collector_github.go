@@ -205,6 +205,7 @@ func fetchGHPRs(ctx context.Context, repoPath string) map[string]model.PRStatus 
 		failedStep := ""
 		runID := ""
 		workflow := "ci.yml"
+		var checks []model.CICheckStep
 		for _, chk := range it.StatusCheckRollup {
 			chkName := chk.Name
 			if chkName == "" {
@@ -216,17 +217,39 @@ func fetchGHPRs(ctx context.Context, repoPath string) map[string]model.PRStatus 
 			conc := strings.ToUpper(chk.Conclusion)
 			st := strings.ToUpper(chk.Status)
 			ctxSt := strings.ToUpper(chk.State)
+			if conc == "" && ctxSt != "" {
+				conc = ctxSt
+			}
+			if conc == "" && st == "COMPLETED" {
+				conc = "SUCCESS"
+			}
+			detURL := chk.DetailsURL
+			if detURL == "" {
+				detURL = chk.TargetURL
+			}
+			checks = append(checks, model.CICheckStep{
+				Name:       chkName,
+				Workflow:   chk.WorkflowName,
+				Status:     st,
+				Conclusion: conc,
+				DetailsURL: detURL,
+			})
+
 			if conc == "FAILURE" || conc == "TIMED_OUT" || conc == "CANCELLED" || ctxSt == "FAILURE" || ctxSt == "ERROR" {
 				ciState = "FAILURE"
-				failedStep = chkName
-				runID = extractRunIDFromURL(chk.DetailsURL)
-				if runID == "" {
-					runID = extractRunIDFromURL(chk.TargetURL)
+				if failedStep == "" {
+					failedStep = chkName
 				}
-				break
-			}
-			if (st != "" && st != "COMPLETED") || ctxSt == "PENDING" {
-				ciState = "RUNNING"
+				if runID == "" {
+					runID = extractRunIDFromURL(chk.DetailsURL)
+					if runID == "" {
+						runID = extractRunIDFromURL(chk.TargetURL)
+					}
+				}
+			} else if (st != "" && st != "COMPLETED") || ctxSt == "PENDING" {
+				if ciState != "FAILURE" {
+					ciState = "RUNNING"
+				}
 			}
 		}
 
@@ -259,6 +282,7 @@ func fetchGHPRs(ctx context.Context, repoPath string) map[string]model.PRStatus 
 				FailedStep: failedStep,
 				Extracts:   extracts,
 				RawLog:     rawLog,
+				Checks:     checks,
 			},
 		}
 	}
