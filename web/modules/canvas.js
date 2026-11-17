@@ -512,10 +512,36 @@ export function renderSVG(callbacks = {}) {
   const maxMergedUpperLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'upper' && b.state === 'merged').map((b) => b.lane || 1));
   const maxApexX = Math.max(0, ...Array.from(apexLayout.values()).map((v) => v.apexX));
 
-  const minY = Math.min(0, MAIN_Y - LANE_BASE_OFFSET - (maxMergedUpperLane - 1) * LANE_STEP_Y - 130);
-  const maxY = Math.max(680, MAIN_Y + LANE_BASE_OFFSET + 220);
+  // Dinamik dikey sınır hesaplama (ölü boşlukları yok eder):
+  const upperBranches = visibleBranches.filter((b) => b.hemisphere === 'upper');
+  const lowerBranches = visibleBranches.filter((b) => b.hemisphere === 'lower');
+
+  let calcMinY = MAIN_Y - 60;
+  if (upperBranches.length > 0) {
+    const highestUpperY = Math.min(...upperBranches.map((b) => {
+      const geom = computeBranchGeometry(b, null, null, apexLayout);
+      return geom.apexY;
+    }));
+    calcMinY = Math.min(calcMinY, highestUpperY - 80);
+  } else {
+    calcMinY = MAIN_Y - 90;
+  }
+
+  let calcMaxY = MAIN_Y + 60;
+  if (lowerBranches.length > 0) {
+    const lowestLowerY = Math.max(...lowerBranches.map((b) => {
+      const geom = computeBranchGeometry(b, null, null, apexLayout);
+      return geom.apexY;
+    }));
+    calcMaxY = Math.max(calcMaxY, lowestLowerY + 85);
+  } else {
+    calcMaxY = MAIN_Y + 90;
+  }
+
+  const minY = calcMinY - 20;
+  const maxY = calcMaxY + 20;
   const sceneW = Math.max(1280, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140, maxApexX + 200);
-  const sceneH = maxY - minY;
+  const sceneH = Math.max(220, maxY - minY);
 
   const viewW = sceneW / state.zoom;
   const viewH = sceneH / state.zoom;

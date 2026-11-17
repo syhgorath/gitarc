@@ -5,6 +5,227 @@ import {
 } from './utils.js';
 import { apiCall } from './api.js';
 
+export async function renderStudioInlineDiff(targetObj, onOpenDiff = null) {
+  if (!el.studioDiffContent) return;
+
+  if (!targetObj) {
+    el.studioDiffContent.innerHTML = '<div class="studio-placeholder">Diff görüntülemek için bir dal veya commit seçin</div>';
+    if (el.studioDiffMeta) el.studioDiffMeta.textContent = '';
+    return;
+  }
+
+  el.studioDiffContent.innerHTML = '<div class="studio-placeholder">Diff yükleniyor...</div>';
+  if (el.studioDiffMeta) el.studioDiffMeta.textContent = 'Yükleniyor...';
+
+  const isCommit = Boolean(targetObj.shortSha && !targetObj.name);
+  const isWorkingTree = Boolean(targetObj.isWorkingTreeWip);
+  const target = isWorkingTree ? 'working-tree' : (isCommit ? (targetObj.sha || targetObj.shortSha) : targetObj.name);
+  const diffType = isWorkingTree ? 'working-tree' : (isCommit ? 'commit' : 'branch');
+
+  if (el.studioDiffFullscreen) {
+    el.studioDiffFullscreen.onclick = () => {
+      if (onOpenDiff) onOpenDiff(target, diffType);
+    };
+  }
+
+  try {
+    let diffData = null;
+    if (!state.offlineMode) {
+      diffData = await apiCall(`/api/diff?target=${encodeURIComponent(target)}&type=${diffType}`, 'GET');
+    } else if (window.LocalFallbackEngine) {
+      diffData = window.LocalFallbackEngine.getDiff(target, diffType);
+    }
+
+    if (!diffData || !diffData.files || diffData.files.length === 0) {
+      el.studioDiffContent.innerHTML = '<div class="studio-placeholder">Bu dalda veya committe farklı dosya değişikliği yok.</div>';
+      if (el.studioDiffMeta) el.studioDiffMeta.textContent = '0 dosya';
+      return;
+    }
+
+    const firstFile = diffData.files[0];
+    if (el.studioDiffMeta) {
+      el.studioDiffMeta.textContent = `${diffData.files.length} dosya (${truncate(firstFile.path || '', 22)})`;
+    }
+
+    const rawPatch = firstFile.patch || '';
+    if (!rawPatch) {
+      el.studioDiffContent.innerHTML = `<div class="studio-placeholder">Dosya: ${esc(firstFile.path)} (İkili veya boş içerik)</div>`;
+      return;
+    }
+
+    const lines = rawPatch.split('\n').slice(0, 150);
+    const linesHtml = lines.map((l) => {
+      let cls = 'ctx';
+      if (l.startsWith('+')) cls = 'add';
+      else if (l.startsWith('-')) cls = 'del';
+      else if (l.startsWith('@@')) cls = 'hdr';
+      return `<div class="studio-diff-line ${cls}">${esc(l)}</div>`;
+    }).join('');
+
+    el.studioDiffContent.innerHTML = `
+      <div class="studio-diff-container">
+        <div class="studio-diff-file-head">📄 ${esc(firstFile.path)} (+${firstFile.additions || 0} / -${firstFile.deletions || 0})</div>
+        ${linesHtml}
+      </div>
+    `;
+  } catch (err) {
+    el.studioDiffContent.innerHTML = `<div class="studio-placeholder">Diff alınamadı: ${esc(err.message)}</div>`;
+    if (el.studioDiffMeta) el.studioDiffMeta.textContent = 'Hata';
+  }
+}
+
+export async function updateStudioPanels(b, callbacks = {}) {
+  if (!el.studioBranchDetail) return;
+
+  const { onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenDiff } = callbacks;
+
+  if (!b) {
+    if (el.studioBranchChip) el.studioBranchChip.textContent = 'Seçim Yok';
+    el.studioBranchDetail.innerHTML = '<div class="studio-placeholder">Tuvalden bir dal veya commit seçin</div>';
+    if (el.studioDiffContent) el.studioDiffContent.innerHTML = '<div class="studio-placeholder">Diff görüntülemek için bir dal veya commit seçin</div>';
+    if (el.studioDiffMeta) el.studioDiffMeta.textContent = '';
+    return;
+  }
+
+  // 1. Sol Kolon: Dal Künyesi & CI Adımları
+  const isHead = Boolean(b.isHead);
+  const isMerged = b.state === 'merged';
+  const hasPR = Boolean(b.pr && b.pr.number > 0);
+  const branchTypeLabel = b.hemisphere === 'upper' ? '☁️ Üst Ray · PR' : (b.isWorkingTreeWip ? '✏️ Alt Ray · Çalışma' : '💻 Alt Ray · Yerel');
+
+  if (el.studioBranchChip) {
+    el.studioBranchChip.textContent = b.name;
+    el.studioBranchChip.title = b.name;
+  }
+
+  let ciStepsHtml = '';
+  const checks = b.pr?.ci?.checks || [];
+  if (checks.length > 0) {
+    ciStepsHtml = `
+      <div class="studio-step-tree">
+        ${checks.map((chk) => {
+          const conc = (chk.conclusion || chk.status || '').toUpperCase();
+          let badgeClass = 'ok';
+          let statusText = 'Başarılı';
+          if (conc === 'FAILURE' || conc === 'TIMED_OUT' || conc === 'CANCELLED') {
+            badgeClass = 'fail';
+            statusText = 'Hatalı';
+          } else if (conc === 'IN_PROGRESS' || conc === 'QUEUED') {
+            badgeClass = 'running';
+            statusText = 'Çalışıyor';
+          } else if (conc === 'SKIPPED') {
+            badgeClass = 'skip';
+            statusText = 'Atlandı';
+          }
+          return `
+            <div class="studio-step-item">
+              <span class="studio-step-name">${esc(chk.name || 'Adım')}</span>
+              <span class="studio-step-badge ${badgeClass}">${statusText}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  } else if (b.pr?.ci) {
+    const ci = b.pr.ci;
+    const isFail = ci.state === 'FAILURE';
+    ciStepsHtml = `
+      <div class="studio-step-tree">
+        <div class="studio-step-item">
+          <span class="studio-step-name">lint</span>
+          <span class="studio-step-badge ok">Başarılı</span>
+          <span class="studio-step-time">14s</span>
+        </div>
+        <div class="studio-step-item">
+          <span class="studio-step-name">test</span>
+          <span class="studio-step-badge ${isFail ? 'fail' : 'ok'}">${isFail ? 'Hatalı' : 'Başarılı'}</span>
+          <span class="studio-step-time">${isFail ? '38s' : '45s'}</span>
+        </div>
+        <div class="studio-step-item">
+          <span class="studio-step-name">build</span>
+          <span class="studio-step-badge ${isFail ? 'skip' : 'ok'}">${isFail ? 'Atlandı' : 'Başarılı'}</span>
+          <span class="studio-step-time">${isFail ? '—' : '52s'}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // Sol Kolon Aksiyon Butonları
+  let actionButtonsHtml = '';
+  if (isMerged) {
+    actionButtonsHtml = `
+      <div class="studio-actions-grid">
+        <button type="button" class="btn ghost sm" id="studio-act-diff">🔍 Diff Gör</button>
+        ${b.hasLocal ? '<button type="button" class="btn danger sm" id="studio-act-del">🧹 Kalıntıyı Sil</button>' : ''}
+      </div>
+    `;
+  } else if (b.isWorkingTreeWip) {
+    actionButtonsHtml = `
+      <div class="studio-actions-grid">
+        <button type="button" class="btn primary sm" id="studio-act-commit">🚀 Dala Aktar / Commit</button>
+        <button type="button" class="btn ghost sm" id="studio-act-diff">🔍 Değişiklikler</button>
+      </div>
+    `;
+  } else {
+    actionButtonsHtml = `
+      <div class="studio-actions-grid">
+        ${!isHead ? '<button type="button" class="btn primary sm" id="studio-act-checkout">🎯 Dala Geç</button>' : '<button type="button" class="btn ok sm" id="studio-act-checkout-main">🌿 main\'e Geç</button>'}
+        ${hasPR ? '<button type="button" class="btn ok sm" id="studio-act-merge">⚡ Merge Et</button>' : '<button type="button" class="btn primary sm" id="studio-act-promote">🚀 Push &amp; PR</button>'}
+        <button type="button" class="btn ghost sm" id="studio-act-diff">🔍 Diff İncele</button>
+        <button type="button" class="btn danger sm" id="studio-act-del">🗑️ Dalı Sil</button>
+      </div>
+    `;
+  }
+
+  el.studioBranchDetail.innerHTML = `
+    <div class="studio-detail-card">
+      <div class="studio-card-row">
+        <span class="studio-branch-name">${esc(truncate(b.name, 24))}</span>
+        <span class="chip sm accent">${esc(branchTypeLabel)}</span>
+      </div>
+      <div class="studio-card-row">
+        <span class="studio-author-pill">👤 ${esc(b.author || 'Geliştirici')}</span>
+        <span class="studio-sha-badge">${esc(b.localSha ? b.localSha.slice(0, 7) : (b.baseSha ? b.baseSha.slice(0, 7) : 'HEAD'))}</span>
+      </div>
+      ${ciStepsHtml}
+      ${actionButtonsHtml}
+    </div>
+  `;
+
+  // Sol Kolon Aksiyon Listener'ları
+  document.getElementById('studio-act-checkout')?.addEventListener('click', (ev) => {
+    if (onCheckoutBranch) onCheckoutBranch(b.id, ev.currentTarget);
+  });
+  document.getElementById('studio-act-checkout-main')?.addEventListener('click', (ev) => {
+    if (onCheckoutBranch) onCheckoutBranch('main', ev.currentTarget);
+  });
+  document.getElementById('studio-act-merge')?.addEventListener('click', (ev) => {
+    if (onMergeBranch) onMergeBranch(b.id, ev.currentTarget);
+  });
+  document.getElementById('studio-act-promote')?.addEventListener('click', (ev) => {
+    if (onPromoteBranch) onPromoteBranch(b.id, undefined, undefined, ev.currentTarget);
+  });
+  document.getElementById('studio-act-del')?.addEventListener('click', (ev) => {
+    if (onDeleteBranch) onDeleteBranch(b.id, ev.currentTarget);
+  });
+  document.getElementById('studio-act-diff')?.addEventListener('click', () => {
+    if (onOpenDiff) {
+      if (b.isWorkingTreeWip) onOpenDiff('working-tree', 'working-tree');
+      else onOpenDiff(b.name, 'branch');
+    }
+  });
+
+  // 2. Orta Kolon Durum & Hata Vurgusu
+  if (b.pr?.ci?.state === 'FAILURE' && el.studioMidStatus) {
+    el.studioMidStatus.textContent = '❌ CI Hatası Bulundu';
+  } else if (el.studioMidStatus) {
+    el.studioMidStatus.textContent = 'Canlı Terminal';
+  }
+
+  // 3. Sağ Kolon: Satır İçi Canlı Diff Yükle
+  await renderStudioInlineDiff(b, onOpenDiff);
+}
+
 export function wireProposalActions(onApplySnapshot = null) {
   const prop = state.snapshot?.pendingProposal;
   if (!prop) return;
@@ -134,6 +355,31 @@ export function renderInspector(callbacks = {}) {
       document.getElementById('act-node-diff')?.addEventListener('click', () => {
         if (onOpenDiff) onOpenDiff(node.sha || node.shortSha, 'commit');
       });
+
+      // Studio Panellerini güncelle (Commit modu)
+      if (el.studioBranchChip) el.studioBranchChip.textContent = `Commit ${node.shortSha}`;
+      if (el.studioBranchDetail) {
+        el.studioBranchDetail.innerHTML = `
+          <div class="studio-detail-card">
+            <div class="studio-card-row">
+              <span class="studio-branch-name">Commit ${esc(node.shortSha)}</span>
+              ${node.tag ? `<span class="chip sm accent">${esc(node.tag)}</span>` : '<span class="chip sm">Spine</span>'}
+            </div>
+            <div class="studio-card-row">
+              <span class="studio-author-pill">👤 ${esc(node.author)}</span>
+              <span class="studio-sha-badge">${esc(node.relativeTime)}</span>
+            </div>
+            <div class="layer-line">${esc(node.subject)}</div>
+            <div class="studio-actions-grid">
+              <button type="button" class="btn primary sm" id="studio-act-node-diff">🔍 Diff Gör</button>
+            </div>
+          </div>
+        `;
+        document.getElementById('studio-act-node-diff')?.addEventListener('click', () => {
+          if (onOpenDiff) onOpenDiff(node.sha || node.shortSha, 'commit');
+        });
+      }
+      renderStudioInlineDiff(node, onOpenDiff);
       return;
     }
   }
@@ -230,8 +476,18 @@ export function renderInspector(callbacks = {}) {
     }
     if (el.canvasInspector) el.canvasInspector.hidden = true;
     el.detail.innerHTML = '';
+
+    const defaultBranch = (snap.branches || []).find((br) => br.isHead) || (snap.branches || [])[0];
+    if (defaultBranch) {
+      updateStudioPanels(defaultBranch, callbacks);
+    } else {
+      updateStudioPanels(null, callbacks);
+    }
     return;
   }
+
+  // Alt Teşhis Stüdyosu Panellerini güncelle (Dal modu)
+  updateStudioPanels(b, callbacks);
 
   const isOpen = b.state === 'open';
   const isVirtualWip = b.id === 'local-wip-working-tree';

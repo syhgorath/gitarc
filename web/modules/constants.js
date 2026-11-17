@@ -3,11 +3,11 @@
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 export const XHTML_NS = 'http://www.w3.org/1999/xhtml';
 
-export const MAIN_Y = 300;
+export const MAIN_Y = 240;
 export const SPINE_START_X = 140;
 export const SPINE_STEP_X = 156;
-export const LANE_BASE_OFFSET = 100;
-export const LANE_STEP_Y = 98;
+export const LANE_BASE_OFFSET = 85;
+export const LANE_STEP_Y = 75;
 export const FO_W = 222;
 export const FO_H = 114;
 export const MERGED_FO_W = 188;
