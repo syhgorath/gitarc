@@ -65,6 +65,11 @@ func TestMCPServeStdioTools(t *testing.T) {
 		t.Fatalf("expected 9 MCP tools, got %d", len(r2.Result.Tools))
 	}
 
+	// Verify gitarc_status includes activeContext and openPRs for AI assistance
+	if !strings.Contains(lines[2], "activeContext") || !strings.Contains(lines[2], "openPRs") {
+		t.Fatalf("expected gitarc_status to contain activeContext and openPRs, got: %s", lines[2])
+	}
+
 	// Verify gitarc_check_conflicts mentions CHANGELOG.md and conflictHunks
 	if !strings.Contains(lines[3], "CHANGELOG.md") || !strings.Contains(lines[3], "conflictHunks") {
 		t.Fatalf("expected gitarc_check_conflicts output to mention CHANGELOG.md and conflictHunks, got: %s", lines[3])
