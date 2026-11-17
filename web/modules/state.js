@@ -1,0 +1,144 @@
+// web/modules/state.js - Reactive state store and cached DOM element registry
+
+export const state = {
+  snapshot: null,
+  selectedBranchId: null,
+  selectedNodeSha: null,
+  filter: 'all', // 'all' | 'mine' | 'issues' | 'ci_fail' | 'lower' | 'gone'
+  pathLens: '',
+  showMergedArches: true,
+  mergeStrategy: 'merge',
+  offlineMode: false,
+  lastSig: '',
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  panning: null,
+  drag: null,
+  localRunOutput: {},
+  pendingAutoMerge: {},
+  autoMergingInFlight: {},
+  draftPrEdits: {},
+  studio: null,
+  clientLogs: [],
+};
+
+// Cached DOM element lookup helper
+export const el = {};
+
+export function initElements() {
+  const ids = [
+    'rail-svg', 'svg-viewport', 'repo-select', 'mode-badge', 'kpi-pills',
+    'radar-list', 'radar-count', 'bottom-dock', 'dock-tab-radar', 'dock-tab-logs',
+    'dock-tab-actions', 'dock-radar-count', 'dock-log-count', 'dock-action-count',
+    'dock-toggle-btn', 'dock-clear-btn', 'dock-pane-radar', 'dock-pane-logs',
+    'dock-pane-actions', 'dock-logs-stream', 'dock-actions-stream', 'inspector-detail',
+    'prune-count', 'drag-hint', 'spine-sync-badge', 'engineStatus', 'zoom-reset',
+    'toggle-merged-arches', 'create-branch-modal', 'new-branch-form', 'new-branch-name',
+    'new-branch-base', 'toast-stack', 'conflict-studio-modal', 'studio-branch-badge',
+    'studio-file-tabs', 'studio-guide-box', 'studio-guide-text', 'studio-strategy-bar',
+    'studio-line-badge', 'studio-mode-badge', 'studio-left-conflict', 'studio-right-preview',
+    'studio-error-banner', 'studio-error-text', 'studio-run-vet', 'studio-apply',
+    'mcp-connect-modal', 'mcp-config-snippet', 'btn-logs-modal', 'log-count',
+    'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-update-check',
+    'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
+    'sec-prot-summary', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
+    'sec-update-cmd', 'btn-add-project', 'btn-remove-project', 'add-project-modal',
+    'add-project-form', 'project-path-input', 'project-name-input', 'add-proj-close',
+    'add-proj-cancel', 'btn-start-tour', 'tour-backdrop', 'tour-card',
+    'tour-step-badge', 'tour-step-title', 'tour-step-body', 'tour-prev-btn',
+    'tour-next-btn', 'tour-dots', 'tour-close-btn'
+  ];
+
+  ids.forEach((id) => {
+    // Convert kebab-case to camelCase for el map (e.g. 'rail-svg' -> 'svg', 'inspector-detail' -> 'detail')
+    const dom = document.getElementById(id);
+    el[id] = dom;
+  });
+
+  // Semantic alias mappings to match existing codebase conventions
+  el.svg = el['rail-svg'];
+  el.viewport = el['svg-viewport'];
+  el.repoSelect = el['repo-select'];
+  el.modeBadge = el['mode-badge'];
+  el.kpiPills = el['kpi-pills'];
+  el.radarList = el['radar-list'];
+  el.radarCount = el['radar-count'];
+  el.dock = el['bottom-dock'];
+  el.dockTabRadar = el['dock-tab-radar'];
+  el.dockTabLogs = el['dock-tab-logs'];
+  el.dockTabActions = el['dock-tab-actions'];
+  el.dockRadarCount = el['dock-radar-count'];
+  el.dockLogCount = el['dock-log-count'];
+  el.dockActionCount = el['dock-action-count'];
+  el.dockToggleBtn = el['dock-toggle-btn'];
+  el.dockClearBtn = el['dock-clear-btn'];
+  el.dockPaneRadar = el['dock-pane-radar'];
+  el.dockPaneLogs = el['dock-pane-logs'];
+  el.dockPaneActions = el['dock-pane-actions'];
+  el.dockLogsStream = el['dock-logs-stream'];
+  el.dockActionsStream = el['dock-actions-stream'];
+  el.detail = el['inspector-detail'];
+  el.pruneCount = el['prune-count'];
+  el.dragHint = el['drag-hint'];
+  el.spineSyncBadge = el['spine-sync-badge'];
+  el.engineStatus = document.getElementById('engine-status') || el['engineStatus'];
+  el.zoomReset = el['zoom-reset'];
+  el.toggleMerged = el['toggle-merged-arches'];
+  el.modal = el['create-branch-modal'];
+  el.newBranchForm = el['new-branch-form'];
+  el.newBranchName = el['new-branch-name'];
+  el.newBranchBase = el['new-branch-base'];
+  el.toastStack = el['toast-stack'];
+  el.conflictStudioModal = el['conflict-studio-modal'];
+  el.studioBranchBadge = el['studio-branch-badge'];
+  el.studioFileTabs = el['studio-file-tabs'];
+  el.studioGuideBox = el['studio-guide-box'];
+  el.studioGuideText = el['studio-guide-text'];
+  el.studioStrategyBar = el['studio-strategy-bar'];
+  el.studioLineBadge = el['studio-line-badge'];
+  el.studioModeBadge = el['studio-mode-badge'];
+  el.studioLeftConflict = el['studio-left-conflict'];
+  el.studioRightPreview = el['studio-right-preview'];
+  el.studioErrorBanner = el['studio-error-banner'];
+  el.studioErrorText = el['studio-error-text'];
+  el.studioRunVet = el['studio-run-vet'];
+  el.studioApplyBtn = el['studio-apply'];
+  el.mcpModal = el['mcp-connect-modal'];
+  el.mcpConfigSnippet = el['mcp-config-snippet'];
+  el.btnLogsModal = el['btn-logs-modal'];
+  el.logCount = el['log-count'];
+  el.logsModal = el['logs-modal'];
+  el.logsList = el['logs-list'];
+  el.btnProtectBranch = el['btn-protect-branch'];
+  el.btnUpdateCheck = el['btn-update-check'];
+  el.lensPathInput = el['lens-path-input'];
+  el.perfCacheBadge = el['perf-cache-badge'];
+  el.securityUpdateModal = el['security-update-modal'];
+  el.secProtBadge = el['sec-prot-badge'];
+  el.secProtSummary = el['sec-prot-summary'];
+  el.btnEnableProtection = el['btn-enable-protection'];
+  el.secTeamChip = el['sec-team-chip'];
+  el.secUpdateStatus = el['sec-update-status'];
+  el.secUpdateCmd = el['sec-update-cmd'];
+  el.btnAddProject = el['btn-add-project'];
+  el.btnRemoveProject = el['btn-remove-project'];
+  el.addProjectModal = el['add-project-modal'];
+  el.addProjectForm = el['add-project-form'];
+  el.projectPathInput = el['project-path-input'];
+  el.projectNameInput = el['project-name-input'];
+  el.addProjClose = el['add-proj-close'];
+  el.addProjCancel = el['add-proj-cancel'];
+  el.btnStartTour = el['btn-start-tour'];
+  el.tourBackdrop = el['tour-backdrop'];
+  el.tourCard = el['tour-card'];
+  el.tourStepBadge = el['tour-step-badge'];
+  el.tourStepTitle = el['tour-step-title'];
+  el.tourStepBody = el['tour-step-body'];
+  el.tourPrevBtn = el['tour-prev-btn'];
+  el.tourNextBtn = el['tour-next-btn'];
+  el.tourDots = el['tour-dots'];
+  el.tourCloseBtn = el['tour-close-btn'];
+
+  return el;
+}
