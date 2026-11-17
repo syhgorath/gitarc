@@ -95,7 +95,7 @@ export function renderInspector(callbacks = {}) {
   const {
     onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch,
     onOpenConflictStudio, onFixCI, onLocalTestRun, onEditPR, onAmendCommit,
-    onCommitWorkingTree, onDiscardWorkingTree, onApplySnapshot
+    onCommitWorkingTree, onDiscardWorkingTree, onApplySnapshot, onOpenDiff
   } = callbacks;
 
   if (state.selectedNodeSha) {
@@ -108,9 +108,12 @@ export function renderInspector(callbacks = {}) {
             ${node.tag ? `<span class="chip accent">${esc(node.tag)}</span>` : ''}
           </div>
           <div class="det-badges">
-            <span class="chip">${esc(node.author)}</span>
+            <span class="chip">👤 ${esc(node.author)}</span>
             <span class="chip">${esc(node.relativeTime)}</span>
             ${node.isMerge ? '<span class="chip ok">Merge Node</span>' : ''}
+          </div>
+          <div class="det-actions">
+            <button type="button" class="btn primary sm" id="act-node-diff">🔍 Commit Değişikliklerini Gör (Diff)</button>
           </div>
         </div>
         <div class="diag-card">
@@ -119,6 +122,9 @@ export function renderInspector(callbacks = {}) {
         </div>
         <div class="lock-note">🔒 <strong>main</strong> omurgasındaki commit mesajları tarihçe güvenliği için kilitlidir.</div>
       `;
+      document.getElementById('act-node-diff')?.addEventListener('click', () => {
+        if (onOpenDiff) onOpenDiff(node.sha || node.shortSha, 'commit');
+      });
       return;
     }
   }
@@ -230,6 +236,10 @@ export function renderInspector(callbacks = {}) {
   const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
   const canMerge = isOpen && hasOpenPR && !hasConflict && !isVirtualWip && ciState !== 'FAILURE';
 
+  const authorName = (b.author || '').trim();
+  const currentUser = (snap.repo?.currentUser || '').trim().toLowerCase();
+  const isMe = authorName && currentUser && authorName.toLowerCase() === currentUser;
+
   let html = `
     ${proposalHtml}
     <div class="det-header">
@@ -241,11 +251,12 @@ export function renderInspector(callbacks = {}) {
       </div>
       <div class="det-badges">
         ${b.isHead ? '<span class="chip ok">HEAD (Aktif Dal)</span>' : ''}
-        ${b.author ? `<span class="chip">${esc(b.author)}</span>` : ''}
+        ${authorName ? `<span class="chip ${isMe ? 'accent' : 'purple'}" title="Dal/PR Sahibi">👤 @${esc(authorName)} ${isMe ? '(Ben)' : ''}</span>` : ''}
         ${b.pr?.ci ? `<span class="chip ${b.pr.ci.state === 'SUCCESS' ? 'ok' : (b.pr.ci.state === 'FAILURE' ? 'danger' : 'warn')}">CI: ${esc(b.pr.ci.state)}</span>` : ''}
         ${b.originGone ? '<span class="chip warn">origin: gone</span>' : ''}
       </div>
       <div class="det-actions">
+        <button type="button" class="btn sm" id="act-branch-diff" title="Kod değişikliklerini (diff) görüntüle">🔍 Diff Gör</button>
         ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout" ${snap.repo.teamMode ? 'disabled title="Team Server modunda paylaşılan HEAD kilitlidir"' : ''}>${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
         ${b.isHead && isAlreadySynced && !isVirtualWip ? `<button type="button" class="btn primary sm" id="act-checkout-main">🎯 main Omurgasına Geç</button>` : ''}
         ${canPromote && !hasOpenPR ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
@@ -261,6 +272,11 @@ export function renderInspector(callbacks = {}) {
               ? `<button type="button" class="btn warn sm ${isQueued ? 'running-pulse' : ''}" id="act-merge">${isQueued ? '⏳ CI Bekleniyor (İptal Et)' : '⏳ CI Bitince Otomatik Merge Et'}</button>`
               : `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>`}
           </div>
+          ${b.pr?.ci ? `
+            <div class="ci-merge-gate ${isRunning ? 'running' : (b.pr.ci.state === 'FAILURE' ? 'fail' : 'ok')}">
+              ${b.pr.ci.state === 'FAILURE' ? '❌ CI kontrolleri başarısız; merge kilidi aktif' : (isRunning ? '⏳ CI kontrolleri sürüyor; otomatik merge kuyrukta' : '✓ Tüm CI kontrolleri başarılı; güvenle birleştirilebilir')}
+            </div>
+          ` : ''}
         ` : ''}
         ${hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">⚡ Çakışma Stüdyosunu Aç</button>` : ''}
         ${!isVirtualWip && (b.state !== 'merged' || b.hasLocal || b.originGone || b.hasRemote) ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
@@ -346,33 +362,94 @@ export function renderInspector(callbacks = {}) {
     `;
   }
 
-  if (b.pr?.ci?.state === 'FAILURE') {
-    const extracts = b.pr.ci.extracts || [];
+  if (b.pr?.ci) {
+    const ci = b.pr.ci;
+    const ciState = ci.state || 'SUCCESS';
+    const isFailed = ciState === 'FAILURE';
+    const isRunningCI = ciState === 'RUNNING';
+    const checks = ci.checks || [];
+    const extracts = ci.extracts || [];
     const localRunOut = state.localRunOutput[b.id] || '';
+
+    let cardModifier = 'ci-ok';
+    let statusText = '✓ Tüm Kontroller Başarılı';
+    let chipTone = 'ok';
+    if (isFailed) {
+      cardModifier = '';
+      statusText = '❌ Başarısız Kontrol';
+      chipTone = 'danger';
+    } else if (isRunningCI) {
+      cardModifier = 'ci-running';
+      statusText = '⏳ Kontroller Devam Ediyor...';
+      chipTone = 'warn';
+    }
+
     html += `
-      <div class="diag-card ci">
+      <div class="diag-card ci ${cardModifier}">
         <h4>
-          <span>Gürültüsüz CI Hata Ayıklayıcı</span>
-          <span class="chip danger">${extracts.length} kritik bulgu</span>
+          <span>⚙️ GitHub Actions CI Adımları ${checks.length > 0 ? `(${checks.length} Kontrol)` : ''}</span>
+          <span class="chip ${chipTone}">${statusText}</span>
         </h4>
-        <div class="extract-list">
-          ${extracts.map((ex) => `
-            <div class="extract-item">
-              <div class="extract-head">
-                <span>${esc(ex.kind.toUpperCase())} · ${esc(ex.symbol)}</span>
-                <span>${esc(ex.fileLine || '')}</span>
-              </div>
-              <div class="extract-msg">${esc(ex.message)}</div>
-              ${ex.reproCmd ? `<div class="extract-cmd">$ ${esc(ex.reproCmd)}</div>` : ''}
+        <div class="wt-note">
+          <strong>İş Akışı:</strong> ${esc(ci.workflow || 'ci.yml')} ${ci.duration ? `· Süre: ${esc(ci.duration)}` : ''}
+          ${ci.failedStep ? `<br><span class="ci-failed-tag">Patlayan Adım: ${esc(ci.failedStep)}</span>` : ''}
+        </div>
+
+        ${checks.length > 0 ? `
+          <div class="ci-checks-list">
+            ${checks.map((chk) => {
+              const conc = (chk.conclusion || chk.status || '').toUpperCase();
+              let icon = '✅';
+              let chipClass = 'ok';
+              if (conc === 'FAILURE' || conc === 'TIMED_OUT' || conc === 'CANCELLED') {
+                icon = '❌';
+                chipClass = 'danger';
+              } else if (conc === 'IN_PROGRESS' || conc === 'QUEUED' || conc === 'PENDING') {
+                icon = '🟡';
+                chipClass = 'warn';
+              } else if (conc === 'SKIPPED') {
+                icon = '⚪';
+                chipClass = 'ghost';
+              }
+              return `
+                <div class="ci-check-row">
+                  <div class="ci-check-info">
+                    <span class="ci-check-icon">${icon}</span>
+                    <span class="ci-check-name">${esc(chk.name || 'check')}</span>
+                  </div>
+                  <div class="ci-check-status">
+                    <span class="chip ${chipClass} sm mono">${esc(conc || 'COMPLETED')}</span>
+                    ${chk.detailsUrl ? `<a href="${esc(chk.detailsUrl)}" target="_blank" rel="noopener" class="btn ghost sm ci-link-btn" title="GitHub Actions üzerinde incele">🔗 Detay</a>` : ''}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        ${isFailed ? `
+          <div class="ci-fail-section">
+            <div class="layer-line"><strong>Gürültüsüz CI Hata Ayıklayıcı (${extracts.length} kritik bulgu):</strong></div>
+            <div class="extract-list">
+              ${extracts.map((ex) => `
+                <div class="extract-item">
+                  <div class="extract-head">
+                    <span>${esc(ex.kind.toUpperCase())} · ${esc(ex.symbol)}</span>
+                    <span>${esc(ex.fileLine || '')}</span>
+                  </div>
+                  <div class="extract-msg">${esc(ex.message)}</div>
+                  ${ex.reproCmd ? `<div class="extract-cmd">$ ${esc(ex.reproCmd)}</div>` : ''}
+                </div>
+              `).join('')}
             </div>
-          `).join('')}
-        </div>
-        <div class="det-actions">
-          ${!isLive ? '<button type="button" class="btn emerald sm" id="act-fix-ci">🛠️ Hatayı Düzelt &amp; CI Yeniden Çalıştır</button>' : ''}
-          <button type="button" class="btn sm" id="act-copy-log">Logu Kopyala</button>
-          <button type="button" class="btn primary sm" id="act-run-local">▶ Yerelde Testi Çalıştır</button>
-        </div>
-        <pre class="terminal-box" id="ci-raw-log">${esc(localRunOut || b.pr.ci.rawLog || 'Ham log bulunamadı.')}</pre>
+            <div class="det-actions">
+              ${!isLive ? '<button type="button" class="btn emerald sm" id="act-fix-ci">🛠️ Hatayı Düzelt &amp; CI Yeniden Çalıştır</button>' : ''}
+              <button type="button" class="btn sm" id="act-copy-log">Logu Kopyala</button>
+              <button type="button" class="btn primary sm" id="act-run-local">▶ Yerelde Testi Çalıştır</button>
+            </div>
+            <pre class="terminal-box" id="ci-raw-log">${esc(localRunOut || ci.rawLog || 'Ham log bulunamadı.')}</pre>
+          </div>
+        ` : ''}
       </div>
     `;
   }
@@ -570,6 +647,9 @@ export function renderInspector(callbacks = {}) {
         </h4>
         <div class="layer-line"><strong>Başlık:</strong> ${esc(b.pr.title)}</div>
         ${b.pr.author ? `<div class="layer-line"><strong>Yazar:</strong> @${esc(b.pr.author)}</div>` : ''}
+        ${b.pr.ci ? `
+          <div class="layer-line"><strong>CI Durumu:</strong> <span class="chip ${b.pr.ci.state === 'SUCCESS' ? 'ok' : 'danger'} sm mono">CI: ${esc(b.pr.ci.state)}</span> (${esc(b.pr.ci.workflow || 'ci.yml')})</div>
+        ` : ''}
         ${b.pr.body ? `
           <div class="wt-label">PR Açıklaması</div>
           <pre class="pr-body-box">${esc(b.pr.body)}</pre>
@@ -676,6 +756,20 @@ export function renderInspector(callbacks = {}) {
   });
   document.getElementById('act-merge')?.addEventListener('click', (ev) => {
     if (onMergeBranch) onMergeBranch(b.id, ev.currentTarget);
+  });
+  document.getElementById('act-branch-diff')?.addEventListener('click', () => {
+    if (onOpenDiff) {
+      if (isVirtualWip) onOpenDiff('working-tree', 'working-tree');
+      else onOpenDiff(b.name, 'branch');
+    }
+  });
+  el.detail.querySelectorAll('.file-tag').forEach((tag) => {
+    tag.addEventListener('click', () => {
+      if (onOpenDiff) {
+        if (isVirtualWip) onOpenDiff('working-tree', 'working-tree');
+        else onOpenDiff(b.name, 'branch');
+      }
+    });
   });
   document.getElementById('act-resolve')?.addEventListener('click', () => {
     if (onOpenConflictStudio) onOpenConflictStudio(b.id);

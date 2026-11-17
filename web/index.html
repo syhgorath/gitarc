@@ -277,6 +277,44 @@
       </div>
     </div>
 
+    <!-- MODAL: KOD DEĞİŞİKLİKLERİ & DİFF MODALI -->
+    <div class="modal-backdrop" id="diff-viewer-modal" hidden>
+      <div class="modal-card modal-xl" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title">
+        <div class="modal-head">
+          <div class="studio-head-meta">
+            <h3 id="diff-modal-title"><span class="modal-dot sky"></span>🔍 Kod Değişiklikleri (Diff)</h3>
+            <span class="chip accent mono" id="diff-stats-badge">0 dosya</span>
+          </div>
+          <button type="button" class="icon-close" id="diff-modal-close" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal-body diff-modal-layout">
+          <div class="diff-sidebar">
+            <div class="diff-sidebar-head">
+              <span class="diff-files-count" id="diff-files-count">0 Dosya Değişti</span>
+            </div>
+            <div class="diff-files-list" id="diff-files-list"></div>
+          </div>
+          <div class="diff-content-pane">
+            <div class="diff-content-toolbar">
+              <span class="diff-target-label mono" id="diff-target-label">Yükleniyor...</span>
+              <button type="button" class="btn ghost sm" id="btn-copy-diff">📋 Diff'i Kopyala</button>
+            </div>
+            <div class="diff-viewer-container" id="diff-viewer-container">
+              <div class="diff-loading-msg">Değişiklikler yükleniyor...</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot studio-foot">
+          <div class="foot-left">
+            <span class="key-hint">İpucu: Sol listeden dosya seçerek ilgili kod bloğuna hızlıca atlayabilirsiniz.</span>
+          </div>
+          <div class="studio-foot-right">
+            <button type="button" class="btn primary sm" id="diff-modal-foot-close">Kapat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- MODAL: MCP & AI BAĞLANTI MERKEZİ -->
     <div class="modal-backdrop" id="mcp-connect-modal" hidden>
       <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">

@@ -109,7 +109,18 @@
             id: 'br-open-421', name: 'feat/terminal-audit-export', hemisphere: 'upper', state: 'open',
             startSpineIndex: 7, endSpineIndex: 8, baseSha: '8e35d02',
             hasRemote: true, remoteRef: 'origin/feat/terminal-audit-export',
-            pr: { number: 421, title: 'feat(audit): CSV & JSON streaming export', author: 'ziya', reviewState: 'REVIEW_REQUIRED', ci: { state: 'SUCCESS', workflow: 'ci.yml', duration: '1m 45s' } },
+            pr: {
+              number: 421, title: 'feat(audit): CSV & JSON streaming export', author: 'ziya', reviewState: 'REVIEW_REQUIRED',
+              ci: {
+                state: 'SUCCESS', workflow: 'ci.yml', duration: '1m 45s',
+                checks: [
+                  { name: 'Build & Binary Compile', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://github.com' },
+                  { name: 'Unit Tests (go test ./...)', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://github.com' },
+                  { name: 'Static Analysis (go vet & staticcheck)', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://github.com' },
+                  { name: 'Security & Secret Scan', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://github.com' }
+                ]
+              }
+            },
             hasLocal: true, localSha: '9a81b33', aheadMain: 2, behindMain: 1, uncommittedCount: 0, lastCommitMsg: 'feat(audit): buffer flush on exit',
             changedFiles: ['CHANGELOG.md', 'go/internal/audit/export.go'],
             conflict: {
@@ -131,6 +142,12 @@
               number: 422, title: 'fix(runner): close leak in job loop', author: 'ziya', reviewState: 'CHANGES_REQUESTED',
               ci: {
                 state: 'FAILURE', workflow: 'CI / Test & Vet (linux)', duration: '0m 42s', failedStep: 'go test ./...',
+                checks: [
+                  { name: 'Build & Binary Compile', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://github.com' },
+                  { name: 'Unit Tests (go test ./...)', status: 'COMPLETED', conclusion: 'FAILURE', detailsUrl: 'https://github.com' },
+                  { name: 'Race Detector (-race)', status: 'COMPLETED', conclusion: 'FAILURE', detailsUrl: 'https://github.com' },
+                  { name: 'Lint & Vet', status: 'COMPLETED', conclusion: 'SKIPPED', detailsUrl: 'https://github.com' }
+                ],
                 extracts: extractCI(ciLog),
                 rawLog: ciLog,
               },
@@ -145,7 +162,16 @@
             id: 'br-open-424', name: 'chore/bump-hardening', hemisphere: 'upper', state: 'open',
             startSpineIndex: 8, endSpineIndex: 9, baseSha: '9f10b77',
             hasRemote: true, remoteRef: 'origin/chore/bump-hardening',
-            pr: { number: 424, title: 'chore(lock): upgrade linux-hardening 0.14.0', author: 'ziya', reviewState: 'REVIEW_REQUIRED', ci: { state: 'RUNNING', workflow: 'Verify Signatures', duration: '0m 27s' } },
+            pr: {
+              number: 424, title: 'chore(lock): upgrade linux-hardening 0.14.0', author: 'ziya', reviewState: 'REVIEW_REQUIRED',
+              ci: {
+                state: 'RUNNING', workflow: 'Verify Signatures', duration: '0m 27s',
+                checks: [
+                  { name: 'Verify Signatures', status: 'IN_PROGRESS', conclusion: 'IN_PROGRESS', detailsUrl: 'https://github.com' },
+                  { name: 'Dependency Vulnerability Audit', status: 'QUEUED', conclusion: 'QUEUED', detailsUrl: 'https://github.com' }
+                ]
+              }
+            },
             hasLocal: true, localSha: '7c63d55', aheadMain: 1, behindMain: 0, uncommittedCount: 0, lastCommitMsg: 'chore(deps): linux-hardening 0.14.0',
             changedFiles: ['components.lock'],
           },
@@ -664,6 +690,29 @@
         });
         sim.branches = (sim.branches || []).filter((b) => !b.id.startsWith('local-wip'));
         return recompute();
+      },
+      getDiff(target, type) {
+        const rawDiff = `diff --git a/internal/gitengine/engine.go b/internal/gitengine/engine.go
+index 1a2b3c4..5d6e7f8 100644
+--- a/internal/gitengine/engine.go
++++ b/internal/gitengine/engine.go
+@@ -42,6 +42,8 @@ func Example() {
++	// Gitarc Tri-Mode Diff Engine
++	log.Println("Diff ready")
+ }
+`;
+        return {
+          target: target || 'working-tree',
+          type: type || 'working-tree',
+          title: target ? `Diff: ${target}` : 'Çalışma Alanı (Taslak)',
+          rawDiff,
+          files: [
+            { path: 'internal/gitengine/engine.go', oldPath: 'internal/gitengine/engine.go', status: 'M', additions: 2, deletions: 0 },
+          ],
+          filesChanged: 1,
+          totalAdds: 2,
+          totalDels: 0,
+        };
       },
     };
   })();

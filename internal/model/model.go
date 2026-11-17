@@ -81,6 +81,27 @@ type DiffStat struct {
 	IsLargeDiff  bool   `json:"isLargeDiff"`
 }
 
+// DiffFileSummary represents changes for a single file within a diff.
+type DiffFileSummary struct {
+	Path      string `json:"path"`
+	OldPath   string `json:"oldPath,omitempty"`
+	Status    string `json:"status"` // "M", "A", "D", "R"
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+}
+
+// DiffResult represents a full diff inspection result for a commit, branch, or working tree.
+type DiffResult struct {
+	Target       string            `json:"target"`
+	Type         string            `json:"type"` // "branch", "commit", "working-tree", "pr"
+	Title        string            `json:"title"`
+	RawDiff      string            `json:"rawDiff"`
+	Files        []DiffFileSummary `json:"files"`
+	FilesChanged int               `json:"filesChanged"`
+	TotalAdds    int               `json:"totalAdds"`
+	TotalDels    int               `json:"totalDels"`
+}
+
 // CommitNode represents a commit along the central main/develop spine.
 type CommitNode struct {
 	SHA          string `json:"sha"`
@@ -156,6 +177,16 @@ type CIStatus struct {
 	FailedStep string          `json:"failedStep,omitempty"`
 	Extracts   []CIFailExtract `json:"extracts,omitempty"`
 	RawLog     string          `json:"rawLog,omitempty"`
+	Checks     []CICheckStep   `json:"checks,omitempty"`
+}
+
+// CICheckStep models an individual GitHub Actions status check or job.
+type CICheckStep struct {
+	Name       string `json:"name"`
+	Workflow   string `json:"workflow,omitempty"`
+	Status     string `json:"status"`     // "COMPLETED" | "IN_PROGRESS" | "QUEUED"
+	Conclusion string `json:"conclusion"` // "SUCCESS" | "FAILURE" | "SKIPPED" | "CANCELLED"
+	DetailsURL string `json:"detailsUrl,omitempty"`
 }
 
 // CIFailExtract is a noise-free parsed line from raw CI logs.

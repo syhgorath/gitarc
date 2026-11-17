@@ -114,6 +114,15 @@ export function initElements() {
   el.studioApplyBtn = el['studio-apply'];
   el.mcpModal = el['mcp-connect-modal'];
   el.mcpConfigSnippet = el['mcp-config-snippet'];
+  el.diffModal = el['diff-viewer-modal'];
+  el.diffModalClose = el['diff-modal-close'];
+  el.diffModalFootClose = el['diff-modal-foot-close'];
+  el.diffStatsBadge = el['diff-stats-badge'];
+  el.diffFilesCount = el['diff-files-count'];
+  el.diffFilesList = el['diff-files-list'];
+  el.diffTargetLabel = el['diff-target-label'];
+  el.diffViewerContainer = el['diff-viewer-container'];
+  el.btnCopyDiff = el['btn-copy-diff'];
   el.btnLogsModal = el['btn-logs-modal'];
   el.logCount = el['log-count'];
   el.logsModal = el['logs-modal'];

@@ -10,7 +10,8 @@ import {
   openConflictStudio, closeConflictStudio, applyConflictStudio,
   openAddProjectModal, closeAddProjectModal, handleAddProjectSubmit, handleRemoveCurrentProject,
   startCockpitTour, closeTour, nextTourStep, prevTourStep,
-  openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText
+  openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText,
+  openDiffViewer, closeDiffViewer, initDiffViewerListeners
 } from './modules/modals.js';
 
 // Central Branch Selection
@@ -38,6 +39,7 @@ export function getActionCallbacks() {
     onDeleteBranch: handleDeleteBranch,
     onPruneGone: handlePruneGone,
     onOpenConflictStudio: openConflictStudio,
+    onOpenDiff: (target, type) => openDiffViewer(target, type),
     onFixCI: handleFixCI,
     onLocalTestRun: handleLocalTestRun,
     onEditPR: handleEditPR,
@@ -328,6 +330,7 @@ function renderSecurityUpdateModal() {
 // Bootstrap Application
 async function bootstrap() {
   initElements();
+  initDiffViewerListeners();
   setupBottomDock(applySnapshot);
   setupCanvasInteractions(() => renderSVG(getActionCallbacks()));
 
