@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.8.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **86 üst düzey Go testi + 19 JS testi geçti** (`gitarc`: 10 (JS sarmalayıcı dahil), `internal/gitengine`: 73 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **95 üst düzey Go testi + 27 JS testi geçti** (`gitarc`: 19 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 73 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -77,7 +77,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 - **`web/tasarim.css`:** Tüm tema renkleri (`--sky`, `--purple`, `--emerald`, `--danger`, `--warn`, `--warn-orange`), SVG yay animasyonları (`ciStrokePulse`, `ciRunningPulse`), kart nabız halkaları (`pulseRedRing`, `pulseRunningRing`, `dotBlink`), **PocketUI Bottom Dock** (`.bottom-dock`, `.dock-collapsed`), **Tam Genişlik Hata Radarı Kartları** (`.radar-card`, `.rc-header`, `.rc-badge`, `.rc-files-row`, `.rc-ci-snippet`, `.rc-cmd-row`), ve modal/form düzenleri.
 - **`web/fallback.js`:**
   - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti bağımsız çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur, simüle CI extraction, çakışma ve pipeline yönetimini barındırır). `app.js`'den önce yüklenir (`window.LocalFallbackEngine`).
-- **`web/modules/*.js` (ES modülleri, `app.js` bunları içe aktarır):** `state.js` (reaktif durum + DOM kayıt defteri), `constants.js` (`MAIN_Y`, `SPINE_STEP_X`, `LANE_*` geometri sabitleri), `utils.js` (`esc`, `svgEl`, durum yardımcıları), `api.js`, `canvas.js` (SVG parabol geometrisi ve kapsüller), `inspector.js`, `dock.js`, `modals.js`.
+- **`web/modules/*.js` (ES modülleri, `app.js` bunları içe aktarır):** `state.js` (reaktif durum + DOM kayıt defteri), `constants.js` (`MAIN_Y`, `SPINE_STEP_X`, `LANE_*` geometri sabitleri), `utils.js` (`esc`, `svgEl`, durum yardımcıları), `api.js`, `theme.js` (koyu/açık tema: `<html data-theme>` + `localStorage` anahtarı `gitarc_theme`; renkler `tasarim.css` içindeki `:root` / `:root[data-theme="light"]` değişken bloklarındadır), `canvas.js` (SVG parabol geometrisi ve kapsüller), `inspector.js`, `dock.js`, `modals.js`.
   - **`canvas.js` yerleşim mantığı:** `layoutSpinePositions` (omurga düğümleri dal kalabalığına göre açılır, hep artan sıra), `layoutBranchCrowd` (birleşmiş dallar için `{crowd, rank}`), `yOfLane` (şerit sınırı yok), `computeBranchGeometry` (birleşmiş yaylarda dış şeritler daha yüksek ve geniş olur, sol marj `SPINE_START_X - 50`), `layoutOpenApexPositions` (açık kapsüller arası en az `OPEN_CAPSULE_MIN_GAP_X`). Tüm birleşmiş dallar gösterilir (eski "son 8 yay" katlaması kaldırıldı); sahne yüksekliği/genişliği sabit üst sınıra takılmaz.
 - **`web/app.js`:**
   - Ana kokpit orkestratörü, yaşam döngüsü ve olay dinleyicileri.
@@ -159,7 +159,7 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
 
 1. Kullanıcının sonradan ileteceği ek **UI geliştirme fikirleri** (kullanıcı tarif ettiğinde ele alınacak).
 2. Ekran görüntüleri (`docs/` altında) eklenerek zenginleştirilmiş **`README.md` güzelleştirmesi**.
-3. **Testsiz kalan yollar:** `handleChooseFolder` ve `openBrowser` (işletim sistemi diyaloğu/süreç başlatma), `main()`, `gh` kurulu olmayan ortam dalları (`PATH`'ten `gh` çıkarılarak denenmeli).
+3. **Testsiz kalan yollar:** `gh` kurulu olmayan ortam dalları (`PATH`'ten `gh` çıkarılarak denenmeli) ve Windows/Linux dışı işletim sistemi dalları (`handleChooseFolder` yalnızca çalışılan OS dalı için kapsanır).
 4. **`CHANGELOG.md`:** şerit sınırının kaldırılması, dinamik omurga yerleşimi ve test altyapısı (`0.8.0` altında veya yeni sürümde) henüz kayda geçmedi.
 
 ---
@@ -170,9 +170,9 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
 | :--- | :--- | :--- |
 | Go birim/entegrasyon | `internal/gitengine/*_test.go` | Gerçek geçici git depolarıyla mutasyonlar (`newTempRepo`), `lanes_test.go` (şerit paketleme), `gaps_test.go` (proje yönetimi, sync, merge, sürüm kontrolü), `helpers_test.go` (saf yardımcılar + canlı create/checkout/amend) |
 | Sahte `gh` stub'ı | `internal/gitengine/ghstub_test.go`, `gh_stub_test.go` | PATH başına geçici bir `gh` kabuk betiği konur; çıktı/çıkış kodu `stub.set("pr_list_open", json, 0)` ile ayarlanır, çağrılar `stub.called(...)` ile doğrulanır. GitHub uzak deposu, yolunda `github.com` geçen **yerel bare depodur** (`newGitHubLikeRepo`), yani hiçbir push/fetch diskin dışına çıkmaz. Windows'ta atlanır |
-| HTTP/güvenlik | `main_test.go`, `main_guard_test.go`, `main_handlers_test.go` | Host/Origin/CSRF/çerez, `decodePOST` (405/400/1 MB), simülasyon ve canlı depoda uçtan uca handler akışı, statik dosya başlıkları, CSP |
+| HTTP/güvenlik/süreç | `main_test.go`, `main_guard_test.go`, `main_handlers_test.go`, `main_os_test.go` | Host/Origin/CSRF/çerez, `decodePOST` (405/400/1 MB), simülasyon ve canlı depoda uçtan uca handler akışı, statik dosya başlıkları, CSP, `main()` uçtan uca (test ikilisi `GITARC_TEST_RUN_MAIN=1` ile kendini yeniden çalıştırır: port yedeği, `-team`, `-demo`, `-mcp`, SIGTERM), `openBrowser` ve `handleChooseFolder` (sahte `open`/`zenity`/`osascript`) |
 | MCP | `internal/mcp/server_test.go` | JSON-RPC araçları |
-| Canvas (JS) | `tests/js/canvas.test.mjs` (+ `canvas_js_test.go` sarmalayıcısı) | `canvas.js` geometri/yerleşim değişmezleri (Node yerleşik `node:test`, npm bağımlılığı yok) |
+| Frontend (JS) | `tests/js/canvas.test.mjs`, `tests/js/theme.test.mjs` (+ `canvas_js_test.go` sarmalayıcısı) | `canvas.js` geometri/yerleşim değişmezleri, `theme.js` tema mantığı (Node yerleşik `node:test`, npm bağımlılığı yok) |
 | İzolasyon | her pakette `main_test.go` / `main_home_test.go` | `TestMain` → `HOME` geçici dizin |
 
 **Yeni `gh` davranışı test ederken:** `newGHStub(t)` çağır, anahtarlar: `pr_list_open`, `pr_list_merged`, `pr_list_merged_head`, `pr_create`, `pr_merge`, `pr_edit`, `pr_close`, `run_view`, `api_protection_get`, `api_protection_put`, `api_rulesets`. Her mutasyon testinde `InvalidateGHCache(dir)` çağırmayı unutma (10 sn önbellek).

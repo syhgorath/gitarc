@@ -3,6 +3,7 @@ import { REPO_STORAGE_KEY } from './modules/constants.js';
 import { state, el, initElements } from './modules/state.js';
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
+import { initTheme } from './modules/theme.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG, renderKPIs, renderTopbar, renderRayPopovers, setupCanvasInteractions } from './modules/canvas.js';
 import { renderInspector } from './modules/inspector.js';
@@ -334,6 +335,7 @@ async function bootstrap() {
   initDiffViewerListeners();
   setupBottomDock(applySnapshot);
   setupCanvasInteractions(() => renderSVG(getActionCallbacks()));
+  initTheme(document.getElementById('btn-theme'));
 
   // UI Event Bindings
   const handleSyncSpine = async (btnEl) => {
