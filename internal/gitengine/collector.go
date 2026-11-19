@@ -551,6 +551,27 @@ func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 	return fmt.Sprintf("git switch %s", b.Name)
 }
 
+type evalJob struct{ ref, sha string }
+
+// warmEvalCache: dal değerlendirmelerini paralel (en fazla 6) çalıştırıp önbelleği doldurur; sonuçlar sıralı döngüde okunur.
+func warmEvalCache(ctx context.Context, repoPath, baseRef, baseTipSHA string, jobs []evalJob, nodes []model.CommitNode, shaToIdx map[string]int, lastSpine int) {
+	if len(jobs) < 2 || baseTipSHA == "" {
+		return
+	}
+	sem := make(chan struct{}, 6)
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(j evalJob) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			evaluateBranchVsBase(ctx, repoPath, baseRef, baseTipSHA, j.ref, j.sha, nodes, shaToIdx, lastSpine)
+		}(j)
+	}
+	wg.Wait()
+}
+
 // resolveStartOutsideSpine: merge-base omurga penceresindeki düğümlerden biri değilse, ana hatta girdiği en eski
 // düğümü bulur (`merge-base --is-ancestor`, ikili arama: ~4 git çağrısı). idx==0 ise baz pencerenin başında ya da
 // ondan eskidir: outside=true (dal "daha eski" bir noktadan ayrılmıştır). ok=false: konum belirlenemedi (varsayılan).
@@ -562,10 +583,8 @@ func resolveStartOutsideSpine(ctx context.Context, repoPath, mb string, nodes []
 		_, _, err := runCmd(ctx, repoPath, "git", "merge-base", "--is-ancestor", mb, nodes[i].SHA)
 		return err == nil
 	}
+	// `--first-parent --ancestry-path` yan geçmişteki merge-base'leri kaçırır; bu yüzden düğüm düğüm (ikili arama).
 	last := len(nodes) - 1
-	if !isAnc(last) {
-		return 0, false, false
-	}
 	lo, hi := 0, last
 	for lo < hi {
 		mid := (lo + hi) / 2
@@ -574,6 +593,9 @@ func resolveStartOutsideSpine(ctx context.Context, repoPath, mb string, nodes []
 		} else {
 			lo = mid + 1
 		}
+	}
+	if !isAnc(lo) {
+		return 0, false, false // mb omurga ucunun atası değil: konum belirlenemedi
 	}
 	return lo, lo == 0, true
 }
@@ -803,30 +825,86 @@ const ghMergedNegTTL = 2 * time.Minute
 
 type ghMergedEntry struct {
 	merged bool
+	failed bool // sorgu başarısız oldu: kısa süre yeniden denenmez (bilinmiyor ≠ yok)
 	at     time.Time
 }
 
+const ghMergedFailTTL = 30 * time.Second
+
 var (
-	ghMergedMu    sync.Mutex
-	ghMergedCache = map[string]ghMergedEntry{}
+	ghMergedMu       sync.Mutex
+	ghMergedCache    = map[string]ghMergedEntry{}
+	ghMergedInflight = map[string]bool{}
+	ghMergedSlots    = make(chan struct{}, 3) // aynı anda en fazla 3 arka plan sorgusu
 )
+
+// ghHasMergedPRNoWait: anlık görüntünün ön plan yolu. Ağ çağrısı YAPMAZ, yalnızca önbelleğe bakar; önbellekte yoksa
+// sorguyu arka plana bırakır ve "bilinmiyor" (false) döner. Büyük depolarda (Prometheus: yüzlerce uzak dal) eskiden
+// her uzak dal için sıralı bir `gh` sorgusu ön planda çalışıyordu ve ilk anlık görüntü 20 sn'lik üst sınıra dayanıyordu.
+// Birleşmiş çıkan bir dal arka planda bulununca arka plan sürümü artar ve arayüz kendiliğinden yenilenir.
+func ghHasMergedPRNoWait(repoPath, branchName string) bool {
+	key := filepath.Clean(repoPath) + "|" + branchName
+	ghMergedMu.Lock()
+	e, ok := ghMergedCache[key]
+	if ok {
+		switch {
+		case e.merged:
+			ghMergedMu.Unlock()
+			return true
+		case e.failed && time.Since(e.at) < ghMergedFailTTL, !e.failed && time.Since(e.at) < ghMergedNegTTL:
+			ghMergedMu.Unlock()
+			return false
+		}
+	}
+	if ghMergedInflight[key] {
+		ghMergedMu.Unlock()
+		return false
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		ghMergedMu.Unlock()
+		return false
+	}
+	ghMergedInflight[key] = true
+	ghMergedMu.Unlock()
+
+	go func() {
+		ghMergedSlots <- struct{}{}
+		defer func() { <-ghMergedSlots }()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		merged := ghHasMergedPR(ctx, repoPath, branchName)
+		ghMergedMu.Lock()
+		delete(ghMergedInflight, key)
+		ghMergedMu.Unlock()
+		if merged {
+			bumpBGVersion(repoPath)
+		}
+	}()
+	return false
+}
 
 func ghHasMergedPR(ctx context.Context, repoPath, branchName string) bool {
 	key := filepath.Clean(repoPath) + "|" + branchName
 	ghMergedMu.Lock()
 	e, ok := ghMergedCache[key]
 	ghMergedMu.Unlock()
-	if ok && (e.merged || time.Since(e.at) < ghMergedNegTTL) {
+	if ok && !e.failed && (e.merged || time.Since(e.at) < ghMergedNegTTL) {
 		return e.merged
 	}
 	if _, err := exec.LookPath("gh"); err != nil {
 		return false
 	}
-	qCtx, qCancel := context.WithTimeout(ctx, 2*time.Second)
+	qCtx, qCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer qCancel()
 	ghOut, _, err := runCmd(qCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--head", branchName, "--limit", "1", "--json", "number")
 	if err != nil {
-		return false // zaman aşımı/hata sonucu önbelleğe yazma: "bilinmiyor" ile "yok" aynı şey değildir
+		// "Bilinmiyor" ile "yok" aynı şey değildir: hata, "birleşmemiş" diye saklanmaz; yalnızca kısa süre yeniden denenmez.
+		ghMergedMu.Lock()
+		if prev, ok := ghMergedCache[key]; !ok || !prev.merged {
+			ghMergedCache[key] = ghMergedEntry{failed: true, at: time.Now()}
+		}
+		ghMergedMu.Unlock()
+		return false
 	}
 	trimmed := strings.TrimSpace(ghOut)
 	merged := trimmed != "" && trimmed != "[]"
@@ -854,7 +932,7 @@ func isSquashMerged(ctx context.Context, repoPath, branchName, defaultBranch, ba
 	}
 
 	// 2. gh pr list --state merged --head <branchName> (dal başına bir ağ çağrısı: sonuç önbelleğe alınır)
-	if ghHasMergedPR(ctx, repoPath, branchName) {
+	if ghHasMergedPRNoWait(repoPath, branchName) {
 		return true
 	}
 
@@ -1163,6 +1241,27 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 	seenRemote := map[string]bool{}
 	prefix := remoteName + "/"
 
+	// Dal başına değerlendirme (merge-base, rev-list, diff, merge-tree...) birbirinden bağımsız git çağrılarıdır; sıralı
+	// çalıştırmak büyük depoda (Prometheus: ~40 uzak dal) ilk anlık görüntüyü ~4 sn uzatıyordu. Önce paralel (en fazla 6)
+	// ısıtılır; aşağıdaki sıralı döngüdeki aynı çağrılar değerlendirme önbelleğinden gelir.
+	warmed := map[string]bool{}
+	if err == nil {
+		var jobs []evalJob
+		for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
+			parts := strings.Split(line, "\x1f")
+			if len(parts) < 4 || !strings.HasPrefix(parts[0], prefix) {
+				continue
+			}
+			name := strings.TrimPrefix(parts[0], prefix)
+			if name == "" || name == "HEAD" || name == defaultBranch || localByName[name] {
+				continue
+			}
+			jobs = append(jobs, evalJob{ref: parts[0], sha: parts[1]})
+			warmed[parts[0]] = true
+		}
+		warmEvalCache(ctx, repoPath, baseRef, baseTipSHA, jobs, nodes, shaToIdx, lastSpine)
+	}
+
 	if err == nil {
 		for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
 			if strings.TrimSpace(line) == "" {
@@ -1198,7 +1297,7 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 			startIdx, baseSHA, aheadMain, behindMain, changed, conflict, baseOutside, hit := evaluateBranchVsBase(
 				ctx, repoPath, baseRef, baseTipSHA, remoteRef, remoteSHA, nodes, shaToIdx, lastSpine,
 			)
-			if hit {
+			if hit && !warmed[remoteRef] { // ısıtma turunun önbelleği "isabet" sayılmaz
 				cacheHits++
 			}
 

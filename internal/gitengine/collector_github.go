@@ -60,6 +60,7 @@ type repoBG struct {
 	// forceFresh: bir mutasyon (merge, push, PR...) önbelleği geçersiz kıldı; sonraki anlık görüntü yeni sonucu tam
 	// süreyle bekler, böylece işlemin sonucu ekranda eski PR/CI durumuyla görünmez. Yenileme bitince temizlenir.
 	forceFresh bool
+	ghTTL      time.Duration // son yenilemenin süresine göre uyarlanan önbellek ömrü (en az ghCacheTTL)
 
 	fetchAt   time.Time
 	fetchBusy bool
@@ -105,6 +106,14 @@ func InvalidateGHCache(repoPath string) {
 		}
 	}
 	ghMergedMu.Unlock()
+}
+
+// bumpBGVersion: arka planda (ör. dal başına birleşmiş-PR sorgusunda) yeni bilgi bulununca imzayı değiştirir.
+func bumpBGVersion(repoPath string) {
+	st := bgFor(repoPath)
+	st.mu.Lock()
+	st.version++
+	st.mu.Unlock()
 }
 
 // bgVersion, arka plan sonuçlarının sürümüdür; değişince arayüz yeni snapshot ister.
@@ -250,7 +259,11 @@ func fetchGHMetadataCached(ctx context.Context, repoPath, remoteName, defaultBra
 	spineKey := spineKeyOf(nodes)
 
 	st.mu.Lock()
-	fresh := st.haveData && time.Since(st.ghAt) < ghCacheTTL
+	ttl := ghCacheTTL
+	if st.ghTTL > ttl {
+		ttl = st.ghTTL
+	}
+	fresh := st.haveData && time.Since(st.ghAt) < ttl
 	if !fresh && !st.ghBusy {
 		st.ghBusy = true
 		st.ghDone = make(chan struct{})
@@ -312,6 +325,7 @@ func (st *repoBG) markGHPending() {
 func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.CommitNode, shaToIdx map[string]int, existing []model.BranchArc, spineKey string) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghRefreshLimit)
 	defer cancel()
+	refreshStart := time.Now()
 
 	var (
 		wg                sync.WaitGroup
@@ -401,6 +415,15 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 	})
 
 	st.ghAt = now
+	// Yenileme yavaşsa (büyük depoda ~20 sn) sürekli yeniden başlamasın: ömür, süresinin 3 katına çıkar (üst sınır 2 dk).
+	if took := time.Since(refreshStart); took*3 > ghCacheTTL {
+		st.ghTTL = took * 3
+		if st.ghTTL > 2*time.Minute {
+			st.ghTTL = 2 * time.Minute
+		}
+	} else {
+		st.ghTTL = 0
+	}
 	st.ghBusy = false
 	st.forceFresh = false
 	st.version++
