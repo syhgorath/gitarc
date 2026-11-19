@@ -310,7 +310,18 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	}, nil
 }
 
+// detectDefaultBranch omurga (varsayılan) dalını bulur. Öncelik: (1) uzak deponun bildirdiği varsayılan dal
+// (`refs/remotes/origin/HEAD`; git-flow'da `main` ile `develop` birlikte varken gerçek olan budur), (2) yerelde
+// bulunan main/master/develop, (3) geçerli dal. Eskiden yalnızca (2) vardı: `develop` varsayılanlı ama yerelde
+// `main` da bulunan bir depoda yanlış dal omurga seçiliyordu.
 func detectDefaultBranch(ctx context.Context, repoPath string) string {
+	if out, _, err := runCmd(ctx, repoPath, "git", "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"); err == nil {
+		if name := strings.TrimPrefix(strings.TrimSpace(out), "origin/"); name != "" && name != "HEAD" {
+			if _, _, err := runCmd(ctx, repoPath, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+name); err == nil {
+				return name
+			}
+		}
+	}
 	for _, cand := range []string{"main", "master", "develop"} {
 		if _, _, err := runCmd(ctx, repoPath, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+cand); err == nil {
 			return cand
