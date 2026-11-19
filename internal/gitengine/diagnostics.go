@@ -377,7 +377,7 @@ func BuildDiagnostics(branches []model.BranchArc) []model.DiagnosticItem {
 			})
 		}
 
-		if b.OriginGone || b.State == "gone" {
+		if (b.OriginGone || b.State == "gone") && !b.LongLived {
 			items = append(items, model.DiagnosticItem{
 				ID:         "gone-" + b.ID,
 				Severity:   "info",

@@ -689,6 +689,10 @@ body {
   background: var(--muted);
 }
 
+.lane-dot.longlived {
+  background: var(--accent);
+}
+
 .history-popover {
   position: absolute;
   bottom: 0;

@@ -922,6 +922,10 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 	var kept []model.BranchArc
 	removed := 0
 	for _, b := range m.simRepo.branches {
+		if IsLongLivedBranch(b.Name, m.simRepo.repo.DefaultBranch) {
+			kept = append(kept, b)
+			continue
+		}
 		if b.State == "merged" {
 			if b.HasLocal || b.OriginGone {
 				b.HasLocal = false
@@ -960,6 +964,11 @@ func (m *Manager) DeleteBranch(branchID string) (model.CockpitSnapshot, error) {
 		if b.ID == branchID {
 			found = true
 			deletedName = b.Name
+			if IsLongLivedBranch(b.Name, m.simRepo.repo.DefaultBranch) {
+				err := fmt.Errorf("%s uzun ömürlü bir dal (develop/release); GitArc bunu silmez", b.Name)
+				m.recordLogLocked("error", "Dal Silme", branchID, err.Error(), "")
+				return model.CockpitSnapshot{}, err
+			}
 			if b.State == "merged" && (b.HasLocal || b.OriginGone) {
 				b.HasLocal = false
 				b.OriginGone = false
@@ -1039,6 +1048,7 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 		branches[i].SuggestedCmd = BuildSuggestedCommand(branches[i], m.simRepo.repo.DefaultBranch)
 	}
 
+	markLongLived(branches, m.simRepo.repo.DefaultBranch)
 	ComputeCrossPRCollisions(branches)
 	AssignLanes(branches)
 	diags := BuildDiagnostics(branches)

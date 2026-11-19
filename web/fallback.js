@@ -7,6 +7,16 @@
     let nextPr = 425;
     let sim = null;
 
+    // Uzun ömürlü dal kuralı: internal/gitengine/longlived.go ile BİREBİR aynı (Go tarafı tek gerçek kaynak).
+    const LONG_LIVED_EXACT = ['develop', 'development', 'dev', 'staging', 'stage', 'production', 'prod', 'stable', 'trunk', 'next', 'release', 'releases', 'main', 'master'];
+    const LONG_LIVED_PREFIXES = ['release/', 'release-', 'releases/', 'support/', 'maint/', 'maintenance/', 'stable/', 'stable-'];
+    function isLongLivedBranch(name, defaultBranch) {
+      const n = String(name || '').trim().toLowerCase();
+      if (!n || name === defaultBranch) return false;
+      if (LONG_LIVED_EXACT.includes(n) || /^v?\d+(\.(\d+|x))*$/.test(n)) return true;
+      return LONG_LIVED_PREFIXES.some((p) => n.startsWith(p));
+    }
+
     function extractCI(rawLog) {
       if (!rawLog) return [];
       const lines = rawLog.split('\n');
@@ -249,6 +259,7 @@
 
       const diags = [];
       branches.forEach((b) => {
+        b.longLived = isLongLivedBranch(b.name, sim.repo.defaultBranch || 'main');
         b.canAmendCommit = Boolean(b.isHead && b.state === 'open' && (b.aheadMain || 0) > 0);
         if (b.state === 'merged' || b.originGone || b.state === 'gone') {
           b.suggestedCmd = `git branch -D ${b.name} && git fetch --prune origin`;
@@ -270,7 +281,7 @@
         if (b.crossPr?.length) {
           diags.push({ id: 'cross-' + b.id, severity: 'warning', kind: 'cross_pr', branchId: b.id, branchName: b.name, title: `Cross-PR Çarpışma (${b.crossPr.map((c) => '#' + c.otherPrNumber).join(', ')})`, detail: b.crossPr.map((c) => c.sharedFiles.join(', ')).join(' · ') });
         }
-        if (b.originGone || b.state === 'gone') {
+        if ((b.originGone || b.state === 'gone') && !b.longLived) {
           diags.push({ id: 'gone-' + b.id, severity: 'info', kind: 'prune_candidate', branchId: b.id, branchName: b.name, title: 'Uzakta Silinmiş Dal (origin: gone)', detail: `${b.name} temizlenebilir` });
         }
       });
@@ -626,6 +637,9 @@
         const next = [];
         sim.branches.forEach((b) => {
           if (b.id === branchId) {
+            if (isLongLivedBranch(b.name, sim.repo.defaultBranch || 'main')) {
+              throw new Error(`${b.name} uzun ömürlü bir dal (develop/release); GitArc bunu silmez`);
+            }
             if (b.state === 'merged' && (b.hasLocal || b.originGone)) {
               next.push({ ...b, hasLocal: false, originGone: false, isHead: false });
             }
@@ -640,6 +654,10 @@
         let removed = 0;
         const next = [];
         sim.branches.forEach((b) => {
+          if (isLongLivedBranch(b.name, sim.repo.defaultBranch || 'main')) {
+            next.push(b);
+            return;
+          }
           if (b.state === 'merged') {
             if (b.hasLocal || b.originGone) {
               next.push({ ...b, hasLocal: false, originGone: false, isHead: false });

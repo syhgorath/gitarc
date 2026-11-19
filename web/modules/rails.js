@@ -55,6 +55,7 @@ export function renderRayPopovers(callbacks = {}) {
 
   renderSpineCard(snap);
   renderHistoryCard(callbacks);
+  renderLongLivedCard(callbacks);
 }
 
 // Geçmiş listesindeki bir satırın başlığı ve alt metni (DOM yok).
@@ -102,6 +103,77 @@ export function renderHistoryCard(callbacks = {}) {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); choose(); }
     });
     list.appendChild(item);
+  });
+}
+
+// Uzun ömürlü dallar (develop, release/*, 1.x): sunucunun `longLived` işaretini listeler. Birleşmiş görünse de
+// (develop ana dala birleşir) yerelde veya uzakta gerçekten duruyorsa listelenir; yalnızca kalıntısı kalmamış
+// ("gone", yerel ve uzak kopyası yok) dallar düşer.
+export function longLivedList(branches) {
+  return (branches || []).filter((b) => b.longLived && b.state !== 'gone' && (b.hasLocal || b.hasRemote));
+}
+
+export function longLivedItemModel(b) {
+  const ahead = b.aheadMain || 0;
+  const behind = b.behindMain || 0;
+  const where = b.hasLocal && b.hasRemote ? 'yerel + uzak' : (b.hasRemote ? 'uzak' : 'yerel');
+  return { title: truncate(b.name, 34), sub: `↑${ahead} ↓${behind} · ${where}` };
+}
+
+export function renderLongLivedCard(callbacks = {}) {
+  const wrap = document.getElementById('longlived-lane-wrap');
+  const list = document.getElementById('longlived-list');
+  const pop = document.getElementById('longlived-popover');
+  const btn = document.getElementById('btn-longlived-lane');
+  if (!wrap || !list || !pop || !btn) return;
+
+  const items = longLivedList(state.snapshot?.branches);
+  wrap.hidden = items.length === 0;
+  const countEl = document.getElementById('longlived-count');
+  if (countEl) countEl.textContent = items.length > 0 ? String(items.length) : '';
+  if (items.length === 0) state.longLivedOpen = false;
+  pop.hidden = !state.longLivedOpen;
+  btn.setAttribute('aria-expanded', String(Boolean(state.longLivedOpen)));
+
+  list.innerHTML = '';
+  items.forEach((b) => {
+    const item = document.createElement('div');
+    item.className = 'ray-item history-item';
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    item.dataset.branchId = b.id;
+    const m = longLivedItemModel(b);
+    item.innerHTML = `<div><div class="ray-item-title">${esc(m.title)}</div><div class="ray-item-sub">${esc(m.sub)}</div></div>`;
+    const choose = () => {
+      state.longLivedOpen = false;
+      pop.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      if (callbacks.onSelectBranch) callbacks.onSelectBranch(b.id);
+    };
+    item.addEventListener('click', choose);
+    item.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); choose(); }
+    });
+    list.appendChild(item);
+  });
+}
+
+// "Uzun Ömürlü" çipi: aç/kapat, dışarı tıklayınca veya Esc ile kapat.
+export function setupLongLivedChip() {
+  const btn = document.getElementById('btn-longlived-lane');
+  const pop = document.getElementById('longlived-popover');
+  const setOpen = (open) => {
+    state.longLivedOpen = Boolean(open);
+    if (pop) pop.hidden = !state.longLivedOpen;
+    btn?.setAttribute('aria-expanded', String(state.longLivedOpen));
+  };
+  btn?.addEventListener('click', (ev) => { ev.stopPropagation(); setOpen(!state.longLivedOpen); });
+  document.getElementById('longlived-close')?.addEventListener('click', () => setOpen(false));
+  document.addEventListener('click', (ev) => {
+    if (state.longLivedOpen && !ev.target.closest?.('#longlived-lane-wrap')) setOpen(false);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && state.longLivedOpen) setOpen(false);
   });
 }
 
