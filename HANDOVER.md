@@ -1,8 +1,8 @@
 # GitArc Teknik Devir Teslim ve Mühendislik Rehberi (`HANDOVER.md`)
 
-> **Mevcut Sürüm:** `0.9.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
+> **Mevcut Sürüm:** `0.10.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **152 üst düzey Go testi + 199 JS testi geçti** (`gitarc`: 21 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 106 · kapsam **%84**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **152 üst düzey Go testi + 200 JS testi geçti** (`gitarc`: 21 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 106 · kapsam **%84**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -18,7 +18,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 
 ---
 
-## 2. Sürüm Kronolojisi (`v0.1.0` → `v0.9.0`)
+## 2. Sürüm Kronolojisi (`v0.1.0` → `v0.10.0`)
 
 | Sürüm | Öne Çıkan Özellikler |
 | :--- | :--- |
@@ -30,6 +30,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 | **v0.7.0** | **Mega-Repo (10K Geliştirici) Ölçekleme:** SHA-bazlı `evalCache` (`CacheHits`), `--sort=-committerdate --count=40` dal penceresi, $O(N \cdot F)$ ters indeks Cross-PR motoru, `👤 Benim Dallarım (@me)` ve `📂 Klasör/Dosya Merceği`, `-team` ekip sunucusu modu, Windows `rundll32` tarayıcı açılışı, Branch Protection (`/api/repo/protect`) ve Update Checker (`/api/system/update-check`). |
 | **v0.8.0** | **PocketUI Alt Çekmece (Bottom Dock)** (Radar/Loglar/İşlemler), **Tam Genişlik Hata & Uyarı Kartları** (dosya etiketleri, CI hata logu snippet'i, kopyalanabilir komut satırı), **Taze Dal Ayrımı** (`🌱 Yeni Yerel Dal` · `aheadMain == 0` dalların yanlışlıkla `origin: gone` sayılmasını engelleme), **Mükerrer Dal Açma Kalkanı**, **Konsolsuz Commit & PR Stüdyosu** (`/api/working-tree/commit`, yerel `git checkout -b` akışı), **Push Öncesi PR Başlık & Açıklama** (`PromoteBranchWithMeta`), **`CI: RUNNING` Nabız Efekti** (`.running-pulse`), polling tabanlı **Otomatik Merge Kuyruğu**, **Alt Ray Yerel Kalıntı Kuyruğu** + `💻 Local` rozeti, otomatik `HEAD → main` geçişli `DeleteBranch`/`PruneGone`. |
 | **v0.9.0** | **Koyu/Açık Tema Düğmesi** (`theme.js`), **okunabilir ölçek + sağ uca yaslanma** (`computeView`, enterprise demosu okunur), omurga genişliğinde yalnızca birleşmiş yayların sayılması, sınırsız şerit ve dinamik omurga yerleşimi, `main()`/`openBrowser`/klasör seçici dahil geniş test altyapısı (sahte `gh` stub'ı, JS testleri, `HOME` izolasyonu, `version_test.go`), diff görüntüleyici, AI teklif kartı, `.gitarc` güvenlik yapılandırması, README ekran görüntüleri. |
+| **v0.10.0** | **Dürüst kokpit:** uydurma CI verileri kalktı, merge sonrası `main` CI rozeti ve radar uyarısı (`fetchMainCI`); **hız:** dal başına `gh` sorguları önbellekte (anlık görüntü ~13 sn → ~3 sn), Temizle tek `git push --delete` ile hepsini siler (`IsPrunable` tek kural); **birleşmiş PR detayı** (gerçek başlık/açıklama) ve dosya dosya diff'i (`merge` diff türü); **sol şerit kalktı**, köşe etiketleri/çipler, **Yerel/Uzak** adları; **omurga dalı seçici** (`SetBaseBranch`) ve `origin/HEAD` tespiti; **uzun ömürlü dallar** (`IsLongLivedBranch`); "uzağa gidiyor" izi; modüler arayüz (`canvas.js`/`inspector.js`/`modals.js` bölündü), açık tema düzeltmeleri |
 
 ---
 

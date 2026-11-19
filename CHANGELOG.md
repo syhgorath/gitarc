@@ -4,6 +4,14 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ## [Yayımlanmamış]
 
+## [0.10.0] - 2026-11-19
+
+Bu sürümün ana temaları: **kokpitin dürüstlüğü** (uydurma CI verileri kalktı, merge sonrası `main` testleri görünür), **büyük depolarda hız ve doğruluk** (anlık görüntü ~13 sn → ~3 sn, Temizle yavaş bağlantıda artık hepsini siler), **birleşmiş PR'ın tam detayı ve dosya dosya diff'i**, **sol şeridin kalkması ve Yerel/Uzak adları**, **omurga dalı seçici ve uzun ömürlü dallar**, açık tema düzeltmeleri.
+
+### Dokümantasyon
+- **README yenilendi:** Tüm ekran görüntüleri yeni arayüzle yeniden alındı (kokpit, hata radarı, çakışma stüdyosu, tur); köşe etiketleri/çipler, birleşmiş PR detayı ve açık tema için üç yeni görüntü eklendi. Metin Yerel/Uzak adlarına, omurga seçiciye, uzun ömürlü dallara, `main` CI rozeti ve dosya dosya diff'e göre güncellendi.
+- **Düzeltme (ekran görüntüsünden çıktı):** Dal penceresi başlığındaki rozet hâlâ `Üst Ray · PR` yazıyordu; `Uzak · PR` oldu (regresyon testi eklendi).
+
 ### Eklenenler
 - **AI Commit/PR Önerisini Onaylama (`POST /api/proposal/approve`):** MCP (`gitarc_propose_commit`) ile hazırlanan öneri kartındaki "✓ Onayla: Commit At & PR Aç" düğmesi artık gerçekten çalışır: `Manager.ApproveProposal` yeni dalı açar, **yalnızca önerideki dosyaları** stage eder, commit atar, pushlar ve PR açar. Kullanıcı yalnızca dal adı, commit mesajı, PR başlığı ve açıklamasını düzenleyebilir; dosya listesi her zaman önerinin kendisinden gelir (istemci `files` alanı yok sayılır). Öneri kimliği eşleşmezse, bekleyen öneri yoksa (çift tıklama dahil), Team modunda, gizli dosya veya birleşmiş dal adı varsa reddedilir; hata olursa öneri bekleyen durumda kalır ve yeniden denenebilir. Canlı motor, simülasyon ve çevrimdışı `LocalFallbackEngine` (`approveProposal`) aynı kuralları uygular.
 - **Veri Toplama Adımları (`SyncSteps`) ve 2 Satırlı Senkron Rozeti:** Sağ üstteki `main ↔ origin/main (Synced)` rozetinin altına `git fetch ✓ · PR listesi ✓ 20 · Birleşmiş PR ✓ · Koruma ?` satırı eklendi. Her adım için durum (`ok`, `pending ⏳`, `stale ↻`, `failed ✗`, `unknown ?`, `skipped –`), süre, sayı ve "ne kadar önce" bilgisi tooltip'te görünür. "Synced" yalnızca yerel `origin/main` referansına bakar; bu satır hangi verinin eski veya eksik olduğunu gösterir. Simülasyon ve çevrimdışı motor aynı şekli üretir.

@@ -44,11 +44,11 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 
 **Terim notu:** Arayüzde kullanıcıya "Üst Ray/Alt Ray" değil **"Uzak" (GitHub/PR) ve "Yerel" (local)** denir. Kod içi adlar (`upper`/`lower`, `btn-upper-ray`) tarihsel olarak aynı kalır; yeni kullanıcı metinleri Yerel/Uzak yazılmalıdır.
 
-## 3. Mimari ve Dosya Haritası (`v0.9.0`)
+## 3. Mimari ve Dosya Haritası (`v0.10.0`)
 
 - `main.go` / `main_test.go`: HTTP sunucusu, güvenlik middleware (`root`, `guard`), 34 `/api/*` rota kaydı (takma adlar dahil), `-addr`, `-repo`, `-open`, `-mcp`, `-team` bayrakları. Testler: `main_test.go` (CSP & güvenlik akışı), `main_guard_test.go` (oturum, `decodePOST`, Origin), `main_handlers_test.go` (canlı/sim handler akışı, statik başlıklar), `canvas_js_test.go` (JS testlerini `go test` içinden çalıştırır).
 - `internal/model/model.go`: `CockpitSnapshot`, `RepoMeta`, `CommitNode`, `BranchArc`, `PRStatus`, `CIStatus`, `ConflictDetail`, `ConflictStudioPayload`, `ActionLogEntry`.
-- `internal/gitengine/collector.go`: `AppVersion` (`0.9.0`), `CollectLiveRepo`, SHA-bazlı `evalCache`, 40-dal sıralı penceresi, `collectLocalBranches` (taze yerel dal ayrımı), `collectRemoteOnlyBranches`, `ParseMergeTreeOutput`, `BuildSuggestedCommand`.
+- `internal/gitengine/collector.go`: `AppVersion` (`0.10.0`), `CollectLiveRepo`, SHA-bazlı `evalCache`, 40-dal sıralı penceresi, `collectLocalBranches` (taze yerel dal ayrımı), `collectRemoteOnlyBranches`, `ParseMergeTreeOutput`, `BuildSuggestedCommand`.
 - `internal/gitengine/simulation.go`: `Manager`, in-memory `simRepo` sanal durum yönetimi, `SyncSpine`, `ProtectDefaultBranch`, `CheckForUpdates`, kalıcı `actionLogs`.
 - `internal/gitengine/live_mutations.go`: Canlı Git/GitHub mutasyonları (`commitWorkingTreeLive` yerel `checkout -b` akışı, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive` & `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`).
 - `internal/gitengine/collector_github.go`: `gh` ile açık/birleşmiş PR, CI ve Branch Protection/Ruleset sorgusu (10 sn `ghCache`; her mutasyondan sonra `InvalidateGHCache`).

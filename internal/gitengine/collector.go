@@ -18,7 +18,7 @@ import (
 
 const (
 	// AppVersion identifies the current GitArc release embedded at build time.
-	AppVersion        = "0.9.0"
+	AppVersion        = "0.10.0"
 	maxActiveBranches = 40
 )
 

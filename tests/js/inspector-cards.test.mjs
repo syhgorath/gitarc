@@ -294,3 +294,11 @@ test('layersHtml: a PR without CI data shows no CI line (merged PRs no longer ca
   const withCi = layersHtml(branchViewModel(open('o', { pr: { number: 1, title: 't', reviewState: 'OPEN', ci: { state: 'SUCCESS', workflow: 'CI', duration: '1m' } } }), snapOf()));
   assert.match(withCi, /CI: CI \(1m\)/);
 });
+
+test('no user-facing "Üst Ray / Alt Ray" wording is left in the inspector (it is Uzak / Yerel now)', () => {
+  const upper = branchHeaderHtml({ ...branchViewModel(open('u', { hemisphere: 'upper', pr: pr(7) }), snapOf()), proposalHtml: '', mergeStrategy: 'merge' });
+  const lower = branchHeaderHtml({ ...branchViewModel(open('l', { hemisphere: 'lower' }), snapOf()), proposalHtml: '', mergeStrategy: 'merge' });
+  assert.match(upper, /Uzak · PR/);
+  assert.doesNotMatch(upper + lower, /Üst Ray|Alt Ray/);
+  assert.match(lower, /Yerel · Local/);
+});
