@@ -133,7 +133,7 @@ test('KPI chip values always equal the number of branches the same filter shows 
     const value = Number(c._h.match(/<strong>(\d+)<\/strong>/)[1]);
     return [label, value];
   }));
-  const byFilter = { 'Benim Dallarım': 'mine', 'Alt Ray (Local)': 'lower', 'Çakışma / Cross-PR': 'issues', 'CI Hatası': 'ci_fail', 'Birleşmiş / Gone': 'gone', 'Üst Ray (PR)': 'upper' };
+  const byFilter = { 'Benim Dallarım': 'mine', 'Yerel (Local)': 'lower', 'Çakışma / Cross-PR': 'issues', 'CI Hatası': 'ci_fail', 'Birleşmiş / Gone': 'gone', 'Uzak (PR)': 'upper' };
   for (const [labelPart, key] of Object.entries(byFilter)) {
     const label = [...chips.keys()].find((l) => l.includes(labelPart));
     assert.ok(label, `chip "${labelPart}" must exist`);

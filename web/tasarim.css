@@ -615,7 +615,7 @@ body {
   overflow: hidden;
 }
 
-/* Tuval üstü etiketler ve çipler (sol üst / sol alt). Üst Ray / Alt Ray etiketleri süzgeç düğmesidir. */
+/* Tuval üstü etiketler ve çipler (sol üst / sol alt). Uzak / Yerel etiketleri süzgeç düğmesidir (iç adlar upper/lower aynı kaldı). */
 .history-lane-wrap {
   position: relative;
   pointer-events: auto;

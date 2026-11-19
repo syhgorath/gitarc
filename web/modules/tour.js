@@ -17,7 +17,7 @@ export const TOUR_STEPS = [
     posClass: 'tour-pos-center',
     badge: 'Adım 2 / 5',
     title: '🚀 Parabolik Ray Tuvali',
-    body: '<p>Git yaşam döngünüz burada <strong>parabolik raylar</strong> olarak görselleştirilir:</p><p>• <strong>Merkez Ray:</strong> <code>main</code> omurgası, commitler ve sürüm tag\'leri.<br>• <strong>Üst Ray:</strong> GitHub Remote ve Pull Request durumları.<br>• <strong>Alt Ray:</strong> Henüz pushlanmamış yerel dallarınız ve kaydedilmemiş çalışma dizininiz.</p>',
+    body: '<p>Git yaşam döngünüz burada <strong>parabolik raylar</strong> olarak görselleştirilir:</p><p>• <strong>Merkez Ray:</strong> <code>main</code> omurgası, commitler ve sürüm tag\'leri.<br>• <strong>Uzak (üst ray):</strong> GitHub Remote ve Pull Request durumları.<br>• <strong>Yerel (alt ray):</strong> Henüz pushlanmamış yerel dallarınız ve kaydedilmemiş çalışma dizininiz.</p>',
   },
   {
     targetId: 'bottom-dock',

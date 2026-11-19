@@ -133,7 +133,7 @@ export function branchHeaderHtml(v) {
       <div class="det-title-row">
         <h3 class="det-branch-name">${isVirtualWip ? '✏️ Çalışma Alanı (Kaydedilmemiş Değişiklikler)' : esc(b.name)}</h3>
         <span class="chip ${b.state === 'merged' ? 'ok' : (isVirtualWip ? 'purple' : (b.hemisphere === 'lower' ? 'purple' : 'accent'))}">
-          ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : (isAlreadySynced ? '✓ main ile Eşit (Kalıntı Dal)' : (b.hemisphere === 'lower' && b.aheadMain === 0 ? '🌱 Yeni Yerel Dal' : b.hemisphere === 'lower' ? 'Alt Ray · Local' : 'Üst Ray · PR')))}
+          ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : (isAlreadySynced ? '✓ main ile Eşit (Kalıntı Dal)' : (b.hemisphere === 'lower' && b.aheadMain === 0 ? '🌱 Yeni Yerel Dal' : b.hemisphere === 'lower' ? 'Yerel · Local' : 'Üst Ray · PR')))}
         </span>
       </div>
       <div class="det-badges">
@@ -178,7 +178,7 @@ export function layersHtml(v) {
     <div class="layer-accordion-container">
       <details class="layer-accordion">
         <summary class="layer-summary">
-          <span class="layer-summary-title">☁️ Üst Ray · Remote / PR</span>
+          <span class="layer-summary-title">☁️ Uzak · Remote / PR</span>
           <span class="layer-summary-badge">${esc(upperSummary)}</span>
         </summary>
         <div class="layer-scroll-body">
@@ -188,14 +188,14 @@ export function layersHtml(v) {
             ${b.pr.ci ? `<div class="layer-line">CI: ${esc(b.pr.ci.workflow || 'CI')} (${esc(b.pr.ci.duration || '—')})</div>` : ''}
           ` : `
             <div class="layer-line">${isRemoteOnly ? `Remote aktif: origin/${esc(b.name)}` : (b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok')}</div>
-            <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Alt rayda yerel çalışma'}</div>
+            <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Yerel çalışma (henüz uzakta yok)'}</div>
           `}
         </div>
       </details>
 
       <details class="layer-accordion">
         <summary class="layer-summary">
-          <span class="layer-summary-title">💻 Alt Ray · Local</span>
+          <span class="layer-summary-title">💻 Yerel · Local</span>
           <span class="layer-summary-badge">${esc(lowerSummary)}</span>
         </summary>
         <div class="layer-scroll-body">

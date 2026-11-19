@@ -141,7 +141,7 @@ async function handlePromoteBranch(branchId, title = undefined, body = undefined
         });
       if (b?.name) delete state.draftPrEdits[b.name];
       applySnapshot(snap);
-      showToast('Dal origin’e pushlandı ve PR açılarak üst raya taşındı!', 'ok');
+      showToast('Dal origin’e pushlandı ve PR açılarak uzağa (GitHub) taşındı!', 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }
