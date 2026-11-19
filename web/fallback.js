@@ -275,7 +275,10 @@
         b.prunable = isPrunable(b);
         b.canAmendCommit = Boolean(b.isHead && b.state === 'open' && (b.aheadMain || 0) > 0);
         if (b.state === 'merged' || b.originGone || b.state === 'gone') {
-          b.suggestedCmd = `git branch -D ${b.name} && git fetch --prune origin`;
+          // Sunucudaki BuildSuggestedCommand ile aynı kural: temizlenecek kopya yoksa komut önerme.
+          if (!b.hasLocal && !b.hasRemote) b.suggestedCmd = '';
+          else if (!b.hasLocal && b.hasRemote) b.suggestedCmd = `git push origin --delete ${b.name} && git fetch --prune origin`;
+          else b.suggestedCmd = `git branch -D ${b.name} && git fetch --prune origin`;
         } else if (b.conflict?.hasConflict && !b.conflict.resolved) {
           b.suggestedCmd = `git switch ${b.name} && git merge origin/main`;
         } else if (b.pr?.ci?.state === 'FAILURE') {

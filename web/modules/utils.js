@@ -223,6 +223,22 @@ export function snapshotSignature(snap) {
   return `${r.id}:${r.ahead}:${r.behind}:${r.dirtyCount}:${snap.nodes?.length || 0}:${lastNode}:${bSig}:${logSig}:${r.protectionState || ''}:${syncSig}:${r.mainCI?.state || ''}:${r.mainCI?.sha || ''}`;
 }
 
+// Birleşmiş dalın birleşme (merge) commit'i: omurgada EndSpineIndex konumundaki düğüm.
+export function mergeCommitOf(b, snap) {
+  if (!b || b.state !== 'merged') return null;
+  const nodes = snap?.nodes || [];
+  return nodes.find((n) => n.spineIndex === b.endSpineIndex) || null;
+}
+
+// "Diff Gör" düğmelerinin tek kuralı: [hedef, tür]. Birleşmiş dalın diff'i dal adından (çoğu zaman uzakta/yerelde
+// silinmiştir) değil, birleşme commit'inin getirdiği değişikliklerden alınır; çalışma alanı kendi türünü kullanır.
+export function diffArgsFor(b, snap = null) {
+  if (isWorkingTreeBranch(b)) return ['working-tree', 'working-tree'];
+  const mc = mergeCommitOf(b, snap);
+  if (mc && (mc.sha || mc.shortSha)) return [mc.sha || mc.shortSha, 'merge'];
+  return [b?.name, 'branch'];
+}
+
 // Sanal "çalışma alanı" dalı mı? (kaydedilmemiş değişiklikleri temsil eden `local-wip-working-tree` ve ona benzer
 // `local-wip-*` taslak dalları). Kapsül, stüdyo ve diff bu tek tanımı kullanır. Not: eskiden stüdyo, hiçbir yerde
 // üretilmeyen `b.isWorkingTreeWip` alanına bakıyordu; bu yüzden çalışma alanı seçiliyken stüdyoda "Dala Aktar /

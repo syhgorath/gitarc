@@ -3,7 +3,7 @@
 // HTML üretimi saf fonksiyonlardadır (Node'da test edilir); `updateStudioPanels` ve `renderStudioInlineDiff`
 // bunları DOM'a yazıp olayları bağlar.
 import { state, el } from './state.js';
-import { esc, truncate, isWorkingTreeBranch } from './utils.js';
+import { esc, truncate, isWorkingTreeBranch, diffArgsFor } from './utils.js';
 import { apiCall } from './api.js';
 import { CHECK_STUDIO_VIEW, classifyCheck } from './inspector-model.js';
 
@@ -150,8 +150,9 @@ export async function renderStudioInlineDiff(targetObj, onOpenDiff = null) {
 
   const isCommit = Boolean(targetObj.shortSha && !targetObj.name);
   const isWorkingTree = isWorkingTreeBranch(targetObj);
-  const target = isWorkingTree ? 'working-tree' : (isCommit ? (targetObj.sha || targetObj.shortSha) : targetObj.name);
-  const diffType = isWorkingTree ? 'working-tree' : (isCommit ? 'commit' : 'branch');
+  const [branchTarget, branchType] = isCommit ? [targetObj.sha || targetObj.shortSha, 'commit'] : diffArgsFor(targetObj, state.snapshot);
+  const target = isWorkingTree ? 'working-tree' : branchTarget;
+  const diffType = isWorkingTree ? 'working-tree' : branchType;
 
   if (el.studioDiffFullscreen) {
     el.studioDiffFullscreen.onclick = () => {
@@ -218,8 +219,7 @@ export function dispatchStudioAction(actId, b, callbacks, btn) {
       break;
     case 'studio-act-diff':
       if (onOpenDiff) {
-        if (isWorkingTreeBranch(b)) onOpenDiff('working-tree', 'working-tree');
-        else onOpenDiff(b.name, 'branch');
+        onOpenDiff(...diffArgsFor(b, state.snapshot));
       }
       break;
     case 'studio-act-commit':

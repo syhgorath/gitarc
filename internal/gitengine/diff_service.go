@@ -113,6 +113,10 @@ func (m *Manager) getDiffLive(live *repoEntry, target, diffType string) (model.D
 		return res, nil
 	}
 
+	if diffType == "merge" {
+		return m.getMergeDiffLive(ctx, live.path, target)
+	}
+
 	isCommit := diffType == "commit" || (len(target) >= 7 && len(target) <= 40 && isHex(target))
 	if isCommit {
 		title := "Commit " + target
@@ -161,4 +165,32 @@ index 0000000..1234567
 		title = "Çalışma Alanı (Simülasyon)"
 	}
 	return ParseDiffOutput(mockDiff, target, diffType, title), nil
+}
+
+// getMergeDiffLive: bir birleşmiş PR'ın merge commit'inin getirdiği değişiklikler. `git show` birleştirme commit'inde
+// "kombine diff" verir ve temiz bir merge için boştur; bu yüzden iki ebeveynli commit'te ilk ebeveynle (ana hat)
+// karşılaştırılır. Tek ebeveynli (squash/rebase) commit'te sade `git show` yeterlidir.
+func (m *Manager) getMergeDiffLive(ctx context.Context, repoPath, sha string) (model.DiffResult, error) {
+	if !isHex(sha) || len(sha) < 7 || len(sha) > 40 {
+		return model.DiffResult{}, fmt.Errorf("geçersiz merge commit: %q", sha)
+	}
+	title := "Birleşme " + sha
+	if subj, _, err := runCmd(ctx, repoPath, "git", "log", "-1", "--format=%s", sha); err == nil && strings.TrimSpace(subj) != "" {
+		title = strings.TrimSpace(subj)
+	}
+	parents := 0
+	if out, _, err := runCmd(ctx, repoPath, "git", "rev-list", "--parents", "-n", "1", sha); err == nil {
+		parents = len(strings.Fields(out)) - 1
+	}
+	var out string
+	var err error
+	if parents >= 2 {
+		out, _, err = runCmd(ctx, repoPath, "git", "diff", "-M", "--color=never", sha+"^1", sha)
+	} else {
+		out, _, err = runCmd(ctx, repoPath, "git", "show", "--color=never", "-M", "--format=", sha)
+	}
+	if err != nil {
+		return model.DiffResult{}, fmt.Errorf("merge diff alınamadı (%s): %w", sha, err)
+	}
+	return ParseDiffOutput(out, sha, "merge", title), nil
 }
