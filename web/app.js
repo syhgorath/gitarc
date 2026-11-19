@@ -176,8 +176,8 @@ async function handlePruneGone() {
         : await apiCall('/api/branch/prune', 'POST', {});
       const snap = res.snapshot || res;
       applySnapshot(snap);
-      const count = Array.isArray(res.removed) ? res.removed.length : 0;
-      showToast(count > 0 ? `✓ ${count} artık dal temizlendi (git fetch --prune)` : 'Temizlenecek artık dal bulunamadı', 'ok');
+      const count = typeof res.removed === 'number' ? res.removed : (Array.isArray(res.removed) ? res.removed.length : 0);
+      showToast(count > 0 ? `✓ ${count} artık dal temizlendi` : 'Temizlenecek artık dal bulunamadı', 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }

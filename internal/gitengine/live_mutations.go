@@ -415,7 +415,7 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 		}
 	}
 
-	removed := 0
+	removedNames := map[string]bool{}
 	for _, b := range snapBefore.Branches {
 		if !b.HasLocal || b.Name == currentBranch || b.Name == defBranch || b.LongLived {
 			continue
@@ -431,10 +431,10 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 			continue
 		}
 		if _, _, err := runCmd(ctx, live.path, "git", "branch", "-d", b.Name); err == nil {
-			removed++
+			removedNames[b.Name] = true
 		} else if isMergedPR || b.OriginGone || b.State == "merged" {
 			if _, _, err := runCmd(ctx, live.path, "git", "branch", "-D", b.Name); err == nil {
-				removed++
+				removedNames[b.Name] = true
 			}
 		}
 	}
@@ -444,10 +444,11 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 		remoteName = "origin"
 	}
 	for _, b := range snapBefore.Branches {
-		if b.HasLocal || !b.HasRemote || b.Name == currentBranch || b.Name == defBranch || b.LongLived {
+		if !b.HasRemote || b.Name == currentBranch || b.Name == defBranch || b.LongLived {
 			continue
 		}
-		if (b.State != "merged" && !b.OriginGone) || b.AheadMain != 0 {
+		mergedPR := b.PR != nil && b.PR.ReviewState == "MERGED" && b.RemoteAhead == 0
+		if (b.State != "merged" && !mergedPR) || b.AheadMain != 0 {
 			continue
 		}
 		if err := validateBranchName(b.Name); err != nil {
@@ -455,14 +456,14 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 		}
 		if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/remotes/"+remoteName+"/"+b.Name); err == nil {
 			if _, _, err := runCmd(ctx, live.path, "git", "push", remoteName, "--delete", b.Name); err == nil {
-				removed++
+				removedNames[b.Name] = true
 			}
 		}
 	}
 
 	InvalidateGHCache(live.path)
 	snap, err := m.Snapshot()
-	return snap, removed, err
+	return snap, len(removedNames), err
 }
 
 func syncDefaultBranchNonDestructive(ctx context.Context, repoPath, defBranch string) error {

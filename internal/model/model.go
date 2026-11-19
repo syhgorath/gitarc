@@ -141,6 +141,8 @@ type BranchArc struct {
 	HistoryOnly bool `json:"historyOnly,omitempty"`
 	// LongLived: develop/release/* gibi uzun ömürlü dal; kalıntı temizliğinden ve silmeden korunur.
 	LongLived bool `json:"longLived,omitempty"`
+	// Prunable: "🧹 Temizle" bu dal için gerçekten bir şey yapabilir (sayaç ve temizlik aynı kuralı kullanır).
+	Prunable bool `json:"prunable,omitempty"`
 	ColorToken      string `json:"colorToken,omitempty"`
 
 	// Upper layer of Branch Pair Capsule (GitHub Remote / PR / Review / CI)

@@ -68,7 +68,7 @@ test('long-lived branches never offer a delete/clean button and are not counted 
   const merged = { name: 'develop', state: 'merged', hasLocal: true, originGone: true };
   assert.match(mergedPillModel(merged, false).html, /data-act="delete"/);
   assert.ok(!/data-act="delete"/.test(mergedPillModel({ ...merged, longLived: true }, false).html));
-  assert.equal(cleanableCount([merged, { ...merged, longLived: true }]), 1);
+  assert.equal(cleanableCount([{ ...merged, prunable: true }, { ...merged, longLived: true }]), 1);
 });
 
 import { basePickerModel } from '../../web/modules/rails.js';

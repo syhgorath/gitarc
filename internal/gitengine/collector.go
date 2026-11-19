@@ -266,6 +266,7 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	}
 
 	markLongLived(branches, defaultBranch)
+	markPrunable(branches)
 	ComputeCrossPRCollisions(branches)
 	AssignLanes(branches)
 	diags := BuildDiagnostics(branches)

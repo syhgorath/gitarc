@@ -67,11 +67,11 @@ test('versionView: team and update tags, fallback version', () => {
   assert.match(versionView({}).text, /^v\d+\.\d+\.\d+$/);
 });
 
-test('cleanableCount: gone, origin-gone and merged-with-local-copy branches', () => {
+test('cleanableCount counts exactly the branches the server marks prunable (same rule as the cleanup)', () => {
   assert.equal(cleanableCount([
-    { state: 'gone' }, { originGone: true, state: 'open' }, { state: 'merged', hasLocal: true },
-    { state: 'merged', hasLocal: false }, { state: 'open' },
-  ]), 3);
+    { prunable: true }, { prunable: true, state: 'merged' }, { state: 'merged', hasLocal: false },
+    { state: 'open' }, { originGone: true },
+  ]), 2);
   assert.equal(cleanableCount(null), 0);
 });
 

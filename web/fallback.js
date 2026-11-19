@@ -17,6 +17,18 @@
       return LONG_LIVED_PREFIXES.some((p) => n.startsWith(p));
     }
 
+    // "🧹 Temizle" bu dal için bir şey yapar mı: internal/gitengine/prunable.go ile birebir aynı kural.
+    function isPrunable(b) {
+      if (b.longLived || b.id === 'local-wip-working-tree' || String(b.id).startsWith('local-wip-')) return false;
+      if (b.isHead && (b.uncommittedCount || 0) > 0) return false;
+      const mergedPR = Boolean(b.pr && b.pr.reviewState === 'MERGED' && !(b.remoteAhead > 0));
+      const gone = Boolean(b.originGone || b.state === 'gone');
+      const merged = b.state === 'merged' || mergedPR;
+      if (b.state === 'gone') return true;
+      if (b.hasLocal && (gone || merged)) return true;
+      return Boolean(b.hasRemote && merged && !(b.aheadMain > 0));
+    }
+
     function extractCI(rawLog) {
       if (!rawLog) return [];
       const lines = rawLog.split('\n');
@@ -260,6 +272,7 @@
       const diags = [];
       branches.forEach((b) => {
         b.longLived = isLongLivedBranch(b.name, sim.repo.defaultBranch || 'main');
+        b.prunable = isPrunable(b);
         b.canAmendCommit = Boolean(b.isHead && b.state === 'open' && (b.aheadMain || 0) > 0);
         if (b.state === 'merged' || b.originGone || b.state === 'gone') {
           b.suggestedCmd = `git branch -D ${b.name} && git fetch --prune origin`;
@@ -659,9 +672,10 @@
             return;
           }
           if (b.state === 'merged') {
-            if (b.hasLocal || b.originGone) {
-              next.push({ ...b, hasLocal: false, originGone: false, isHead: false });
-              removed++;
+            if (b.hasLocal || b.originGone || (b.hasRemote && !(b.aheadMain > 0))) {
+              if (isPrunable(b)) removed++;
+              // Canlı motor gibi: birleşmiş dalın uzak kopyası da tek tıkta silinir.
+              next.push({ ...b, hasLocal: false, originGone: false, isHead: false, hasRemote: (b.aheadMain > 0) ? b.hasRemote : false });
             } else {
               next.push(b);
             }
