@@ -2,6 +2,29 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
+## [Yayımlanmamış]
+
+> `0.8.0` sürümünden sonra `main`'e giren değişiklikler. Sürüm kesildiğinde bu başlık yeni sürüm numarası ve tarihle değiştirilmeli; `VERSION` ve `internal/gitengine/collector.go` (`AppVersion`) ile birlikte güncellenmelidir.
+
+### Eklenenler
+- **Sınırsız Şerit & Dinamik Omurga Yerleşimi (`lanes.go`, `canvas.js`, `fallback.js`):** Çok sayıda çakışan dal artık üst üste yığılmak yerine her biri kendi şeridine yerleşir (eski `MaxHemisphereLanes = 4` sınırı üç motorda da kaldırıldı). Omurga düğümleri dal kalabalığına göre açılır (`layoutSpinePositions`), birleşmiş yayların iki merge noktası kalabalığa ve şeride göre uzaklaşır (`layoutBranchCrowd`), dış yaylar iç yayları kapsayacak biçimde daha yüksek ve geniş çizilir. Tüm birleşmiş dallar gösterilir (eski "son 8 yay" katlaması kaldırıldı); sahne boyutu sabit üst sınıra takılmaz.
+- **Diff Görüntüleyici (`/api/diff`, `diff_service.go`):** Commit, dal veya çalışma ağacı için birleşik diff üretimi ve `diff-stat` özeti.
+- **AI Commit/PR Teklif Kartı (`proposals.go`, `/api/proposal/dismiss`):** `.git/gitarc_proposal.json` IPC dosyası üzerinden gelen bekleyen teklif kokpitte gösterilir; reddedilince bellekten ve diskten silinir.
+- **Güvenlik Kalkanı Yapılandırması (`guard_config.go`):** Secret dosya/içerik desenleri ve `git add -A` yasağı (`StageSafeFiles`) varsayılan olarak devrededir; depo kökündeki `.gitarc` veya `.gitarc.json` dosyasıyla ek desenler tanımlanabilir (`LoadGuardConfig`). Kalıcı loglar `~/.gitarc/logs.json` içinde tutulur.
+- **Yeni API uçları:** `GET /api/system/git-status-ping` (ağır git komutu çalıştırmadan değişiklik algılama imzası), `POST /api/system/choose-folder`, ve eski istemciler için `/api/sync-spine`, `/api/reset`, `/api/run-local`, `/api/branch/prune-gone` takma adları.
+- **Test Altyapısı:**
+  - `canvas.js` yerleşim ve geometri değişmezleri için sıfır bağımlılıklı Node testleri (`tests/js/canvas.test.mjs`, 19 test); `go test` içinden de çalışır (`canvas_js_test.go`).
+  - Sahte `gh` stub'ı (`ghstub_test.go`): gerçek `gh`, ağ veya GitHub hesabı olmadan `fetchGHPRs`, `fetchGHMergedPRs`, Branch Protection/Ruleset, `promoteBranchLive`, `mergeBranchLive`, `updatePRMetaLive`, `deleteBranchLive` ve `ProtectDefaultBranch` testleri.
+  - Şerit paketleme, proje yönetimi, `SyncSpine`, yerel merge/squash, sürüm kontrolü, oturum/CSRF/`decodePOST` ve canlı depoda uçtan uca HTTP handler testleri. `gitengine` kapsamı %62 → %82.
+
+### Değişenler
+- **Frontend modülerleşti:** `web/app.js` (3.470 → ~550 satır) `web/modules/` altındaki ES modüllerine bölündü (`state`, `constants`, `utils`, `api`, `canvas`, `inspector`, `dock`, `modals`); `LocalFallbackEngine` `web/fallback.js` dosyasına taşındı. Go tarafında `simulation.go` büyük dosyası `collector_github.go`, `live_mutations.go`, `projects.go`, `simulation_enterprise_mock.go` ve diğerlerine ayrıldı. Ayrıntı: `REFACTOR_INDEX.md`.
+- **Önbellek:** Tüm statik dosyalar `Cache-Control: no-cache, no-store, must-revalidate` (+ `Pragma`, `Expires`) ile sunulur; `index.html` içindeki elle yazılı `?v=` sürüm sorgusu gereksiz olduğu için kaldırıldı.
+- **Belgeler:** `HANDOVER.md` ve `AGENTS.md` güncel mimari, test altyapısı ve yeni kurallarla yenilendi.
+
+### Düzeltilenler
+- **Testler gerçek `~/.gitarc` dizinine yazıyordu:** `gitarc`, `internal/gitengine` ve `internal/mcp` test paketlerine `HOME`/`USERPROFILE`'ı geçici dizine alan `TestMain` eklendi; testler artık geliştiricinin gerçek `logs.json` ve `projects.json` dosyalarını değiştirmez.
+
 ## [0.8.0] - 2026-11-17
 
 ### Eklenenler
