@@ -927,11 +927,16 @@ func (m *Manager) PruneGone() (model.CockpitSnapshot, int, error) {
 			continue
 		}
 		if b.State == "merged" {
-			if b.HasLocal || b.OriginGone {
+			if b.HasLocal || b.OriginGone || (b.HasRemote && b.AheadMain == 0) {
+				if IsPrunable(b) {
+					removed++
+				}
 				b.HasLocal = false
 				b.OriginGone = false
 				b.IsHEAD = false
-				removed++
+				if b.AheadMain == 0 {
+					b.HasRemote = false // canlı motor gibi: birleşmiş dalın uzak kopyası da tek tıkta silinir
+				}
 			}
 			kept = append(kept, b)
 			continue
@@ -1049,6 +1054,7 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 	}
 
 	markLongLived(branches, m.simRepo.repo.DefaultBranch)
+	markPrunable(branches)
 	ComputeCrossPRCollisions(branches)
 	AssignLanes(branches)
 	diags := BuildDiagnostics(branches)

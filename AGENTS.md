@@ -50,6 +50,7 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 - `internal/gitengine/simulation.go`: `Manager`, in-memory `simRepo` sanal durum yönetimi, `SyncSpine`, `ProtectDefaultBranch`, `CheckForUpdates`, kalıcı `actionLogs`.
 - `internal/gitengine/live_mutations.go`: Canlı Git/GitHub mutasyonları (`commitWorkingTreeLive` yerel `checkout -b` akışı, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive` & `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`).
 - `internal/gitengine/collector_github.go`: `gh` ile açık/birleşmiş PR, CI ve Branch Protection/Ruleset sorgusu (10 sn `ghCache`; her mutasyondan sonra `InvalidateGHCache`).
+- `internal/gitengine/prunable.go`: `IsPrunable` — 🧹 Temizle sayacı ve temizliği için tek kural (`BranchArc.prunable`; sayaç `b.prunable` sayar, kendi koşulunu yazma; `fallback.js` aynı kuralı taşır).
 - `internal/gitengine/basebranch.go`: `SetBaseBranch` — omurga dalının kalıcı elle seçimi (`/api/repo/base-branch`); `detectDefaultBranch` önce seçimi, sonra `origin/HEAD`'i kullanır. Simülasyon/fallback reddeder.
 - `internal/gitengine/longlived.go`: `IsLongLivedBranch` — develop/release/* gibi dallar `PruneGone`/`DeleteBranch`/kalıntı tanılamasından korunur (`fallback.js` ile aynı kural, üç motorda eşlik).
 - `internal/gitengine/conflict_studio.go`, `diagnostics.go`, `lanes.go`: İzole 3-yollu `git merge-file` stüdyosu ve akıllı öneri, ters indeks Cross-PR çarpışma ve CI log ayıklama, deterministik interval packing şerit yerleşimi (sınırsız şerit).

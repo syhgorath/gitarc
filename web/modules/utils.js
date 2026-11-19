@@ -51,7 +51,9 @@ export function showToast(msg, tone = 'ok') {
 
 export async function runWithBtnBusy(btnEl, busyText, fn) {
   if (!btnEl) return await fn();
-  const origText = btnEl.innerHTML;
+  // Düğmenin çocuk DÜĞÜMLERİNİ sakla (innerHTML değil): yazıyı geri yüklerken aynı düğümler dönmeli, yoksa
+  // el kaydındaki rozet/sayaç elemanları (ör. #prune-count) DOM'dan kopar ve bir daha güncellenmez.
+  const origNodes = Array.from(btnEl.childNodes);
   btnEl.disabled = true;
   btnEl.classList.add('btn-busy');
   btnEl.textContent = busyText || '⏳ İşleniyor...';
@@ -68,7 +70,7 @@ export async function runWithBtnBusy(btnEl, busyText, fn) {
   } finally {
     btnEl.disabled = false;
     btnEl.classList.remove('btn-busy');
-    btnEl.innerHTML = origText;
+    btnEl.replaceChildren(...origNodes);
     if (statusEl) {
       statusEl.textContent = origStatus || '● Hazır';
       statusEl.classList.remove('running-pulse');
