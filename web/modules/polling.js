@@ -12,9 +12,12 @@ export function hasPendingCI(snap) {
   return (snap?.branches || []).some((b) => b.state === 'open' && b.pr?.ci?.state === 'RUNNING');
 }
 
-// ctx: { pingChanged, snap, now, lastFullAt, selectionActive }
+// ctx: { pingChanged, bgChanged, snap, now, lastFullAt, selectionActive }
+// bgChanged: arka planda yeni GitHub/fetch verisi geldi (disk değişmeden). Sunucu eldeki bayat veriyi hemen gösterip
+// yenisini arka planda topladığı için bunu yakalayıp yenilemek şart; yoksa seçili bir öğe varken ekran bayat kalırdı.
 export function pollDecision(ctx) {
-  const { pingChanged = false, snap = null, now = 0, lastFullAt = 0, selectionActive = false } = ctx || {};
+  const { pingChanged = false, bgChanged = false, snap = null, now = 0, lastFullAt = 0, selectionActive = false } = ctx || {};
+  if (bgChanged) return 'fetch';
   if (hasPendingCI(snap) && now - lastFullAt >= CI_REFRESH_MS) return 'fetch';
   if (pingChanged && !selectionActive) return 'fetch'; // seçili öğeyi git değişikliğiyle zıplatma
   return 'skip';

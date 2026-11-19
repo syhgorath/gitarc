@@ -4,6 +4,9 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ## [Yayımlanmamış]
 
+### Değişenler
+- **Bayat veri hemen gösterilir: süre dolumunda anlık görüntü ~2,9 sn → ~1,1 sn (`ghWaitPassive`, `fetchWaitPassive`, `forceFresh`, `BackgroundVersion`):** GitHub verisi 10 sn'de bir "süresi doluyor" ve eskiden bir sonraki anlık görüntü, hiçbir şey değişmemiş olsa bile yenisini boşuna `ghWait` (2 sn) + `fetchWait` (1 sn) bekliyordu. Şimdi eldeki veri yalnızca süre dolduğu için bayatsa çok kısa beklenir (300 + 200 ms), bayat veri hemen gösterilir, yenisi arka planda gelince arka plan sürümü artar. Bir mutasyon (merge, push, PR...) önbelleği geçersiz kıldığında (`InvalidateGHCache` → `forceFresh`) ya da ilk veri yokken eskisi gibi tam süre beklenir; işlemin sonucu eski PR/CI durumuyla görünmez. Yoklama (`/api/system/git-status-ping`) arka plan sürümünü (`bg`) ayrıca bildirir; arayüz (`pollDecision`: `bgChanged`) bir dal seçiliyken bile yeni GitHub verisini kendiliğinden çeker (aksi halde bayat veri ekranda kalırdı). GitArc deposunda ölçüm: süre dolumunda 2,95 sn → 1,08 sn, taze önbellekte 0,5 sn. Testler: `TestExpiredCacheShowsStaleDataFastButMutationsWaitForFresh`, `polling.test.mjs`.
+
 ### Eklenenler
 - **Kapsülde "Uzak / Yerel" satırı (`capsule.js`: `whereModel`, `whereHtmlOf`):** Her açık dal kapsülünün başlığının altına iki küçük çip eklendi: solda dalın GitHub'daki durumu (`☁ PR #83` / `☁ Uzak: var` / `☁ Uzakta yok` / `☁ Uzakta silinmiş`), sağda kendi bilgisayarındaki durumu (`💻 Yerelde yok` / `💻 eşit` / `💻 ↑3 · 2 dirty` / `· HEAD`). Çipler tek bakışta "uzakta mı, yerelde mi" sorusunu yanıtlar; ayrıntı dal penceresindedir. Kapsül yüksekliği 114 → 130 px, sahne dikey sınırları buna göre ayarlandı. Yalnızca arayüz (üç motor aynı anlık görüntüyü kullanır). Testler: `capsule.test.mjs`. README görüntüleri yeni kapsüllerle yeniden alındı.
 
