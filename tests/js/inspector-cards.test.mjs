@@ -206,15 +206,22 @@ test('diffPanelHtml: file head with additions/deletions and escaped path', () =>
   assert.match(diffPanelHtml({ path: 'a.go' }, ''), /\(\+0 \/ -0\)/);
 });
 
-test('studioCiStepsHtml: real checks use the shared classifier; summary-only CI shows demo steps; no CI shows nothing', () => {
+test('studioCiStepsHtml: real checks use the shared classifier; summary-only CI shows ONLY the known summary (no invented steps); no CI shows nothing', () => {
   const checks = studioCiStepsHtml(open('a', { pr: pr(1, { state: 'FAILURE', checks: [
     { name: 'build', status: 'IN_PROGRESS' }, { name: 'lint', status: 'PENDING' }, { name: 'e2e', status: 'QUEUED' }, { name: 'z', conclusion: 'failure' }, { name: 'd', conclusion: 'skipped' }, { name: 'ok', conclusion: 'success' }] }) }));
   assert.equal((checks.match(/studio-step-badge running">Çalışıyor/g) || []).length, 3, 'IN_PROGRESS, PENDING and QUEUED all run');
   assert.match(checks, /badge fail">Hatalı/);
   assert.match(checks, /badge skip">Atlandı/);
   assert.match(checks, /badge ok">Başarılı/);
-  assert.match(studioCiStepsHtml(open('a', { pr: pr(1, { state: 'FAILURE' }) })), /studio-step-time">38s/);
-  assert.match(studioCiStepsHtml(open('a', { pr: pr(1, { state: 'SUCCESS' }) })), /studio-step-time">52s/);
+  const failSummary = studioCiStepsHtml(open('a', { pr: pr(1, { state: 'FAILURE', workflow: 'CI' }) }));
+  assert.match(failSummary, /studio-step-name">CI</);
+  assert.match(failSummary, /badge fail">Hatalı/);
+  assert.match(studioCiStepsHtml(open('a', { pr: pr(1, { state: 'RUNNING' }) })), /badge running">Çalışıyor/);
+  assert.match(studioCiStepsHtml(open('a', { pr: pr(1, { state: 'SUCCESS' }) })), /badge ok">Başarılı/);
+  for (const st of ['FAILURE', 'SUCCESS', 'RUNNING']) {
+    const html = studioCiStepsHtml(open('a', { pr: pr(1, { state: st }) }));
+    assert.doesNotMatch(html, /lint|build|\d+s</, `no fabricated steps or durations (${st})`);
+  }
   assert.equal(studioCiStepsHtml(open('a')), '');
 });
 

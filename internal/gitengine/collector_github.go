@@ -541,7 +541,7 @@ func fetchGHPRs(ctx context.Context, repoPath string) (map[string]model.PRStatus
 		}
 		failedStep := ""
 		runID := ""
-		workflow := "ci.yml"
+		workflow := "" // bilinmiyorsa uydurma: gerçek iş akışı adı kontrol listesinden gelir
 		var checks []model.CICheckStep
 		for _, chk := range it.StatusCheckRollup {
 			chkName := chk.Name

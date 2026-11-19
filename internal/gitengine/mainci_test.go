@@ -153,3 +153,33 @@ func TestSimulationMergeStartsMainTests(t *testing.T) {
 		t.Fatal("simMainCI must not mutate the stored state")
 	}
 }
+
+// Merge commit'inden türetilen birleşmiş dallar (gh olmadan) da sahte CI taşımamalı.
+func TestMergeCommitDerivedBranchesHaveNoInventedCI(t *testing.T) {
+	dir, run := newGitHubLikeRepo(t)
+	addFeatureBranch(t, dir, run, "feat/derived")
+	run("push", "-u", "origin", "feat/derived")
+	run("merge", "--no-ff", "feat/derived", "-m", "Merge pull request #5 from acme/feat/derived")
+	run("push", "origin", "main")
+
+	mgr := NewManager(dir)
+	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, b := range snap.Branches {
+		if b.State == "merged" && b.PR != nil {
+			seen++
+			if b.PR.CI != nil {
+				t.Errorf("%s: merged PR must not carry an invented CI: %+v", b.Name, b.PR.CI)
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("expected a merged branch derived from the merge commit")
+	}
+}
