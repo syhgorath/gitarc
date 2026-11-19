@@ -177,6 +177,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/diff", a.guard(a.handleGetDiff))
 	mux.HandleFunc("/api/working-tree/discard", a.guard(a.handleDiscardWorkingTree))
 	mux.HandleFunc("/api/proposal/dismiss", a.guard(a.handleDismissProposal))
+	mux.HandleFunc("/api/proposal/approve", a.guard(a.handleApproveProposal))
 	mux.HandleFunc("/api/conflict/inspect", a.guard(a.handleInspectConflict))
 	mux.HandleFunc("/api/branch/resolve", a.guard(a.handleResolveConflict))
 	mux.HandleFunc("/api/branch/fix-ci", a.guard(a.handleFixCI))
@@ -488,6 +489,25 @@ func (a *App) handleDismissProposal(w http.ResponseWriter, r *http.Request) {
 	snap, err := a.mgr.DismissProposal()
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleApproveProposal(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ProposalID string `json:"proposalId"`
+		BranchName string `json:"branchName"`
+		Message    string `json:"message"`
+		PRTitle    string `json:"prTitle"`
+		PRBody     string `json:"prBody"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.ApproveProposal(req.ProposalID, req.BranchName, req.Message, req.PRTitle, req.PRBody)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)

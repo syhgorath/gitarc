@@ -51,6 +51,7 @@ type Manager struct {
 	latestVer       string
 	updateAvail     bool
 	pendingProposal *model.CommitProposal
+	proposalBusy    bool // ApproveProposal çalışırken ikinci bir onayı (çift tıklama) reddeder
 }
 
 type repoEntry struct {
@@ -730,7 +731,7 @@ func (m *Manager) CommitWorkingTree(branchName, commitMsg, prTitle, prBody strin
 		IsHEAD:          true,
 		AheadMain:       1,
 		LastCommitMsg:   commitMsg,
-		ChangedFiles:    []string{"CHANGELOG.md"},
+		ChangedFiles:    changedFilesOrDefault(files),
 	})
 	m.recordLogLocked("ok", "Konsolsuz Commit & PR", branchName, commitMsg, "")
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
@@ -1491,4 +1492,13 @@ func simSyncSteps(branches []model.BranchArc) []model.SyncStep {
 		{ID: "merged", Label: "Birleşmiş PR", State: "ok", At: now, DurationMs: 800, Count: mergedPRs},
 		{ID: "protection", Label: "Koruma", State: "ok", At: now, DurationMs: 300},
 	}
+}
+
+// changedFilesOrDefault, simülasyonda yeni dalın değişen dosyaları: commit'e verilen dosyalar (örn. AI önerisinin
+// dosyaları), yoksa demo varsayılanı.
+func changedFilesOrDefault(files []string) []string {
+	if len(files) == 0 {
+		return []string{"CHANGELOG.md"}
+	}
+	return append([]string(nil), files...)
 }
