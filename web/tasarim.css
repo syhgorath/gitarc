@@ -1134,6 +1134,37 @@ body {
 .svg-apex-dot.conflict { stroke: var(--warn-orange); }
 .svg-apex-dot.gone { stroke: var(--warn); }
 
+/* "Uzağa gidiyor" izi: push + PR sonrası yerel konumdan üst ray konumuna giden kesik çizgi ve nokta */
+.svg-push-trace {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 2.5;
+  stroke-dasharray: 6 6;
+  stroke-linecap: round;
+  pointer-events: none;
+  animation: push-trace-fade 1.6s ease-out forwards;
+}
+
+.svg-push-dot {
+  fill: var(--warn);
+  pointer-events: none;
+  animation: push-trace-fade 1.6s ease-out forwards;
+}
+
+@keyframes push-trace-fade {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .svg-push-trace,
+  .svg-push-dot {
+    animation: none;
+  }
+}
+
 .svg-drag-preview {
   fill: none;
   stroke: var(--emerald);
