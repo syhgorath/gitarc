@@ -30,10 +30,13 @@ export function layoutSpinePositions(nodes, branches) {
   const positions = new Array(maxSpineIdx + 1);
   positions[0] = SPINE_START_X;
 
-  // Kaç birleşen dal varsa (örneğin 10 adet), önceki ve sonraki nokta arası ona göre genişlesin:
+  // Kaç birleşen dal varsa (örneğin 10 adet), önceki ve sonraki nokta arası ona göre genişlesin.
+  // Yalnızca birleşmiş yaylar omurgada yer ister (iki merge noktası birbirinden uzaklaşır);
+  // açık dalların kapsülleri layoutOpenApexPositions ile ayrı yerleşir, bu yüzden sayılmaz.
   for (let i = 0; i < maxSpineIdx; i++) {
     let crowd = 0;
     (branches || []).forEach((b) => {
+      if (b.state !== 'merged') return;
       const s = b.startSpineIndex || 0;
       const e = Math.max(s + 1, b.endSpineIndex || 0);
       if (s <= i && e >= i + 1) {
@@ -70,6 +73,31 @@ export function layoutBranchCrowd(branches) {
   });
 
   return map;
+}
+
+// Okunabilirlik tabanı: 1 sahne birimi en az bu kadar piksel olmalı. Sahne bundan daha
+// genişse tamamı ekrana sığdırılmaz (metinler okunmaz hale gelir); bunun yerine bu
+// ölçekte çizilir ve en güncel bölge (sağ uç) gösterilir, geri kalanı kaydırılarak gezilir.
+export const MIN_READABLE_SCALE = 0.5;
+
+// Saf fonksiyon: görünür SVG penceresini (viewBox) hesaplar.
+//  - zoom/pan kullanıcı durumudur; zoom=1 "okunabilir taban" demektir.
+//  - panX = Infinity en sağ (güncel) bölgeye yaslar.
+//  - pan sahnenin dışına taşamaz.
+export function computeView({ sceneW, sceneH, minY, zoom = 1, panX = 0, panY = 0, containerW = 0, minScale = MIN_READABLE_SCALE }) {
+  const cw = containerW > 0 ? containerW : sceneW; // genişlik bilinmiyorsa eski davranış
+  const fitScale = cw / sceneW;
+  const baseZoom = fitScale < minScale ? minScale / fitScale : 1;
+  const effZoom = Math.max(0.01, zoom) * baseZoom;
+  const viewW = sceneW / effZoom;
+  const viewH = sceneH / effZoom;
+  const maxPanX = Math.max(0, sceneW - viewW);
+  const x = Math.min(maxPanX, Math.max(0, panX));
+  return {
+    x, y: minY + panY, viewW, viewH,
+    baseZoom, truncated: viewW < sceneW - 1,
+    unitsPerPx: viewW / cw,
+  };
 }
 
 export function yOfLane(hemisphere, lane, isMerged = false) {
@@ -637,10 +665,29 @@ export function renderSVG(callbacks = {}) {
   const sceneW = Math.max(1280, lastSpineX + 240, maxApexX + 200);
   const sceneH = Math.max(340, maxY - minY);
 
-  const viewW = sceneW / state.zoom;
-  const viewH = sceneH / state.zoom;
-  el.svg.setAttribute('viewBox', `${state.panX} ${minY + state.panY} ${viewW} ${viewH}`);
-  if (el.zoomReset) el.zoomReset.textContent = `${Math.round(state.zoom * 100)}%`;
+  // Depo değişince (veya yakınlaştırma sıfırlanınca) en güncel bölgeye (sağ uç) yaslan.
+  const repoId = snap.repo?.id || '';
+  if (state.anchoredRepoId !== repoId) {
+    state.anchoredRepoId = repoId;
+    state.anchorEnd = true;
+  }
+  const view = computeView({
+    sceneW, sceneH, minY,
+    zoom: state.zoom,
+    panX: state.anchorEnd ? Infinity : state.panX,
+    panY: state.panY,
+    containerW: el.svg.getBoundingClientRect?.().width || 0,
+  });
+  state.anchorEnd = false;
+  state.panX = view.x;          // kullanıcı kaydırması bu noktadan devam eder
+  state.unitsPerPx = view.unitsPerPx;
+  el.svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.viewW} ${view.viewH}`);
+  if (el.zoomReset) {
+    el.zoomReset.textContent = `${Math.round(state.zoom * 100)}%`;
+    el.zoomReset.title = view.truncated
+      ? 'Tuval ekrandan geniş: okunabilir ölçekte gösteriliyor, kaydırarak gezin. Tıklayınca en güncel bölgeye döner.'
+      : 'Yakınlaştırmayı sıfırla';
+  }
 
   el.svg.innerHTML = '';
 
@@ -861,8 +908,9 @@ export function setupCanvasInteractions(onRenderSVG = null) {
 
   window.addEventListener('pointermove', (ev) => {
     if (state.panning) {
-      const dx = (ev.clientX - state.panning.startX) / state.zoom;
-      const dy = (ev.clientY - state.panning.startY) / state.zoom;
+      const upp = state.unitsPerPx || 1 / Math.max(0.01, state.zoom);
+      const dx = (ev.clientX - state.panning.startX) * upp;
+      const dy = (ev.clientY - state.panning.startY) * upp;
       state.panX = state.panning.initialPanX - dx;
       state.panY = state.panning.initialPanY - dy;
       if (onRenderSVG) onRenderSVG();
@@ -893,7 +941,7 @@ export function setupCanvasInteractions(onRenderSVG = null) {
   if (el.zoomReset) {
     el.zoomReset.addEventListener('click', () => {
       state.zoom = 1;
-      state.panX = 0;
+      state.anchorEnd = true;
       state.panY = 0;
       if (onRenderSVG) onRenderSVG();
     });

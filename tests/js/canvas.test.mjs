@@ -10,7 +10,7 @@ import {
 import {
   xOfSpine, layoutSpinePositions, layoutBranchCrowd, yOfLane,
   layoutOpenApexPositions, computeBranchGeometry, branchToneClass,
-  branchStrokeColor, matchesFilter,
+  branchStrokeColor, matchesFilter, computeView, MIN_READABLE_SCALE,
 } from '../../web/modules/canvas.js';
 
 const merged = (id, s, e, lane = 1, hemisphere = 'upper') =>
@@ -216,4 +216,84 @@ test('end-to-end scene: no two overlapping merged arches in one hemisphere share
     return g.endX - g.startX;
   });
   for (let i = 1; i < widths.length; i++) assert.ok(widths[i] >= widths[i - 1], 'outer arches must enclose inner ones');
+});
+
+test('layoutSpinePositions: open branches never widen the spine (enterprise regression)', () => {
+  // 10 open PRs piled on the last segments used to inflate those gaps to ~1000px each.
+  const opens = [];
+  for (let i = 0; i < 10; i++) opens.push(open(`o${i}`, 5, 8));
+  const pos = layoutSpinePositions(new Array(9).fill({}), opens);
+  for (let i = 1; i < pos.length; i++) assert.equal(pos[i] - pos[i - 1], SPINE_STEP_X, `gap ${i} widened by open branches`);
+});
+
+test('layoutSpinePositions: only merged arches count toward crowding', () => {
+  const mixed = [merged('m1', 2, 3), merged('m2', 2, 3, 2), ...Array.from({ length: 8 }, (_, i) => open(`o${i}`, 2, 3))];
+  const onlyMerged = [merged('m1', 2, 3), merged('m2', 2, 3, 2)];
+  assert.deepEqual(layoutSpinePositions(new Array(8).fill({}), mixed), layoutSpinePositions(new Array(8).fill({}), onlyMerged));
+});
+
+test('computeView: scene that fits keeps the classic full-scene view', () => {
+  const v = computeView({ sceneW: 1280, sceneH: 400, minY: 20, containerW: 1600 });
+  assert.equal(v.viewW, 1280);
+  assert.equal(v.x, 0);
+  assert.equal(v.baseZoom, 1);
+  assert.equal(v.truncated, false);
+  assert.equal(v.y, 20);
+});
+
+test('computeView: very wide scene is drawn at the readable scale and anchored to the latest region', () => {
+  const sceneW = 8000, containerW = 1600;
+  const v = computeView({ sceneW, sceneH: 400, minY: 0, containerW, panX: Infinity });
+  assert.ok(v.truncated);
+  const scale = containerW / v.viewW;
+  assert.ok(scale >= MIN_READABLE_SCALE - 1e-9, `scale ${scale} below readable floor`);
+  assert.ok(Math.abs(v.x + v.viewW - sceneW) < 1e-6, 'must end exactly at the right edge of the scene');
+  assert.ok(v.x > 0);
+});
+
+test('computeView: panning is clamped to the scene bounds', () => {
+  const base = { sceneW: 8000, sceneH: 400, minY: 0, containerW: 1600 };
+  assert.equal(computeView({ ...base, panX: -500 }).x, 0);
+  const right = computeView({ ...base, panX: 1e9 });
+  assert.ok(Math.abs(right.x + right.viewW - 8000) < 1e-6);
+  const mid = computeView({ ...base, panX: 1000 });
+  assert.equal(mid.x, 1000);
+});
+
+test('computeView: zoom in shrinks the window, zoom out never goes past the scene', () => {
+  const base = { sceneW: 8000, sceneH: 400, minY: 0, containerW: 1600, panX: 0 };
+  const normal = computeView(base);
+  const zin = computeView({ ...base, zoom: 2 });
+  const zout = computeView({ ...base, zoom: 0.4 });
+  assert.ok(zin.viewW < normal.viewW);
+  assert.ok(zout.viewW > normal.viewW);
+  assert.equal(zout.x, 0);
+  assert.ok(zout.viewW >= 0);
+});
+
+test('computeView: unknown container width falls back to the old behaviour; bad zoom is safe', () => {
+  const v = computeView({ sceneW: 3000, sceneH: 300, minY: 0, containerW: 0 });
+  assert.equal(v.viewW, 3000);
+  assert.ok(!v.truncated);
+  const z = computeView({ sceneW: 3000, sceneH: 300, minY: 0, containerW: 1000, zoom: 0 });
+  assert.ok(Number.isFinite(z.viewW) && Number.isFinite(z.x));
+});
+
+test('computeView: unitsPerPx converts pointer pixels into scene units', () => {
+  const v = computeView({ sceneW: 8000, sceneH: 400, minY: 0, containerW: 1600 });
+  // the whole container width spans exactly viewW scene units
+  assert.ok(Math.abs(v.unitsPerPx * 1600 - v.viewW) < 1e-6);
+  // at the readable floor, one pixel covers 1 / MIN_READABLE_SCALE units
+  assert.ok(Math.abs(v.unitsPerPx - 1 / MIN_READABLE_SCALE) < 1e-9);
+});
+
+test('computeView: a realistic enterprise scene becomes readable after fix A + C', () => {
+  // 16 nodes, 10 piled open PRs, 3 merged arches: spine now stays compact and the view is readable.
+  const branches = [merged('a', 1, 3), merged('b', 3, 6, 2), merged('c', 6, 9),
+    ...Array.from({ length: 10 }, (_, i) => open(`o${i}`, 10, 13))];
+  const pos = layoutSpinePositions(new Array(16).fill({}), branches);
+  const lastSpine = pos[pos.length - 1];
+  assert.ok(lastSpine < 3600, `enterprise spine should stay compact, got ${lastSpine}`);
+  const v = computeView({ sceneW: lastSpine + 240 + 2400, sceneH: 400, minY: 0, containerW: 1739 });
+  assert.ok(1739 / v.viewW >= MIN_READABLE_SCALE - 1e-9);
 });
