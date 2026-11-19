@@ -53,6 +53,10 @@ type RepoMeta struct {
 	Name              string `json:"name"`
 	Path              string `json:"path"`
 	DefaultBranch     string `json:"defaultBranch"`
+	// BaseBranchPinned: omurga dalı kullanıcı tarafından elle seçildi (false = otomatik tespit).
+	BaseBranchPinned bool `json:"baseBranchPinned,omitempty"`
+	// BaseCandidates: omurga olarak seçilebilecek yerel dallar (yalnızca canlı depoda dolu).
+	BaseCandidates []string `json:"baseCandidates,omitempty"`
 	RemoteName        string `json:"remoteName"`
 	Ahead             int    `json:"ahead"`
 	Behind            int    `json:"behind"`

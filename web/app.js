@@ -54,10 +54,23 @@ export function getActionCallbacks() {
     onCommitWorkingTree: handleCommitWorkingTree,
     onDiscardWorkingTree: handleDiscardWorkingTree,
     onApplySnapshot: applySnapshot,
+    onSetBaseBranch: handleSetBaseBranch,
   };
 }
 
 // Mutation Action Handlers
+async function handleSetBaseBranch(branch) {
+  try {
+    const snap = state.offlineMode
+      ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.setBaseBranch(branch) : state.snapshot)
+      : await apiCall('/api/repo/base-branch', 'POST', { branch });
+    applySnapshot(snap);
+    showToast(branch ? `✓ Omurga dalı '${branch}' olarak sabitlendi` : '✓ Omurga dalı otomatik tespite döndü', 'ok');
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+}
+
 async function handleCheckoutBranch(branchId, btnEl = null) {
   await runWithBtnBusy(btnEl, '⏳ Dala Geçiliyor...', async () => {
     try {

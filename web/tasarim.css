@@ -689,6 +689,33 @@ body {
   background: var(--muted);
 }
 
+.base-picker-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.base-picker-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.history-popover.base-popover {
+  top: 0;
+  bottom: auto;
+}
+
+.ray-item.current .ray-item-title::after {
+  content: ' ✓';
+  color: var(--emerald);
+}
+
 .lane-dot.longlived {
   background: var(--accent);
 }

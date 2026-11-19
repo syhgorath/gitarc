@@ -224,3 +224,34 @@ func TestSimulationHandlers(t *testing.T) {
 		t.Fatalf("diff-stat: %d", rec.Code)
 	}
 }
+
+func TestBaseBranchEndpoint(t *testing.T) {
+	// Simülasyonda gerçek dal seçeneği yok: 400.
+	sim := newAPIClient(t, gitengine.NewManager(""))
+	if rec := sim.do(http.MethodPost, "/api/repo/base-branch", `{"branch":"develop"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("simulation must be refused with 400, got %d", rec.Code)
+	}
+
+	dir := tempRepo(t)
+	if out, err := exec.Command("git", "-C", dir, "branch", "develop").CombinedOutput(); err != nil {
+		t.Fatalf("git branch: %v %s", err, out)
+	}
+	c := newAPIClient(t, gitengine.NewManager(dir))
+	if rec := c.do(http.MethodPost, "/api/repo/switch", `{"repoId":"live-custom"}`); rec.Code != http.StatusOK {
+		t.Fatalf("switch: %d", rec.Code)
+	}
+	rec := c.do(http.MethodPost, "/api/repo/base-branch", `{"branch":"develop"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"defaultBranch":"develop"`) || !strings.Contains(rec.Body.String(), `"baseBranchPinned":true`) {
+		t.Fatalf("pin: %d %s", rec.Code, rec.Body)
+	}
+	if rec := c.do(http.MethodPost, "/api/repo/base-branch", `{"branch":"yok"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown branch must be 400, got %d", rec.Code)
+	}
+	if rec := c.do(http.MethodGet, "/api/repo/base-branch", ``); rec.Code == http.StatusOK {
+		t.Fatal("GET must not be accepted")
+	}
+	rec = c.do(http.MethodPost, "/api/repo/base-branch", `{"branch":""}`)
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"baseBranchPinned":true`) {
+		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
+	}
+}

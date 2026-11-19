@@ -13,6 +13,7 @@ export const state = {
   zoom: 1,
   panX: 0,
   panY: 0,
+  baseOpen: false,      // sol raydaki omurga dalı seçici açık mı
   longLivedOpen: false, // sol raydaki "Uzun Ömürlü" çipi açık mı
   historyOpen: false,    // sol raydaki "Geçmiş" çipi açık mı
   anchorEnd: true,      // ilk çizimde en güncel (sağ) bölgeye yaslan

@@ -724,6 +724,10 @@
         sim.repo.mode = 'live';
         return recompute();
       },
+      setBaseBranch() {
+        // Demo deposunda gerçek dal seçeneği yok; sunucudaki SetBaseBranch ile aynı ret.
+        throw new Error('Simülasyon deposunda omurga dalı değiştirilemez');
+      },
       removeProject(repoId) {
         if (String(repoId).startsWith('sim-')) {
           throw new Error('Simülasyon deposu silinemez');

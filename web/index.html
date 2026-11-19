@@ -80,12 +80,23 @@
 
               <!-- Kulvar 2: main Omurgası -->
               <div class="lane-spine-group">
+                <div class="history-lane-wrap" id="base-picker-wrap">
                 <div class="lane-label-card spine" id="btn-main-lane">
                   <div class="lane-label-head">
                     <span class="lane-dot spine"></span>
                     <span class="lane-name" id="spine-lane-name">main</span>
+                    <button type="button" class="base-picker-btn" id="btn-base-picker" hidden aria-expanded="false" aria-controls="base-popover" title="Omurga dalını değiştir">⚙</button>
                   </div>
                   <div class="lane-sub" id="spine-lane-sub">Omurga</div>
+                </div>
+                <div class="history-popover base-popover" id="base-popover" role="dialog" aria-label="Omurga dalı seç" hidden>
+                  <div class="ray-popover-head">
+                    <span class="ray-popover-title">⚙ Omurga dalı</span>
+                    <button type="button" class="ray-popover-close" id="base-close" aria-label="Kapat">✕</button>
+                  </div>
+                  <div class="history-hint">GitArc'ın "ana hat" saydığı dal. Yanlış tespit edildiyse buradan seçin; seçim bu proje için saklanır.</div>
+                  <div class="ray-popover-body" id="base-list"></div>
+                </div>
                 </div>
 
                 <!-- Geçmiş: merge noktası omurgada bulunamayan birleşmiş dallar (parabol çizilmez) -->
