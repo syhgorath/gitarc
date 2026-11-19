@@ -34,7 +34,14 @@ export function diffPanelHtml(firstFile, linesHtml) {
     `;
 }
 
-// Sol kolon: CI adımları. Gerçek kontrol listesi varsa onu, yoksa özet CI durumundan demo adımları gösterir.
+// Özet CI durumunun (SUCCESS/FAILURE/RUNNING) kontrol görünümü sınıfı.
+export function summaryCheckClass(state) {
+  if (state === 'FAILURE') return 'fail';
+  if (state === 'RUNNING') return 'running';
+  return 'ok';
+}
+
+// Sol kolon: CI adımları. Gerçek kontrol listesi varsa onu, yoksa yalnızca özet durumu gösterir (adım UYDURULMAZ).
 export function studioCiStepsHtml(b) {
   let ciStepsHtml = '';
   const checks = b.pr?.ci?.checks || [];
@@ -55,25 +62,16 @@ export function studioCiStepsHtml(b) {
       </div>
     `;
   } else if (b.pr?.ci) {
-    const ci = b.pr.ci;
-    const isFail = ci.state === 'FAILURE';
+    // Adım ayrıntısı yok: eskiden burada sabit "lint 14s / test 45s / build 52s" adımları UYDURULUYORDU. Artık yalnızca
+    // bilinen özet gösterilir (adı ve süresi uydurulmaz).
+    const view = CHECK_STUDIO_VIEW[summaryCheckClass(b.pr.ci.state)];
     ciStepsHtml = `
       <div class="studio-step-tree">
         <div class="studio-step-item">
-          <span class="studio-step-name">lint</span>
-          <span class="studio-step-badge ok">Başarılı</span>
-          <span class="studio-step-time">14s</span>
+          <span class="studio-step-name">${esc(b.pr.ci.workflow || 'CI kontrolleri')}</span>
+          <span class="studio-step-badge ${view.cls}">${view.text}</span>
         </div>
-        <div class="studio-step-item">
-          <span class="studio-step-name">test</span>
-          <span class="studio-step-badge ${isFail ? 'fail' : 'ok'}">${isFail ? 'Hatalı' : 'Başarılı'}</span>
-          <span class="studio-step-time">${isFail ? '38s' : '45s'}</span>
-        </div>
-        <div class="studio-step-item">
-          <span class="studio-step-name">build</span>
-          <span class="studio-step-badge ${isFail ? 'skip' : 'ok'}">${isFail ? 'Atlandı' : 'Başarılı'}</span>
-          <span class="studio-step-time">${isFail ? '—' : '52s'}</span>
-        </div>
+        <div class="studio-step-item"><span class="studio-step-name muted">adım ayrıntısı bildirilmedi</span></div>
       </div>
     `;
   }

@@ -436,11 +436,7 @@ func extractMergedArchesFromSpine(ctx context.Context, repoPath, defaultBranch s
 				Title:       node.Subject,
 				Author:      node.Author,
 				ReviewState: "MERGED",
-				CI: &model.CIStatus{
-					State:    "SUCCESS",
-					Workflow: "ci.yml",
-					Duration: "1m 42s",
-				},
+				// CI bilerek boş: eskiden her merge commit'inden türetilen PR'a sabit "SUCCESS / 1m 42s" yazılıyordu.
 			}
 		}
 

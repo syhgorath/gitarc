@@ -185,7 +185,7 @@ export function layersHtml(v) {
           ${b.pr ? `
             <div class="layer-line">PR #${b.pr.number} · ${esc(b.pr.reviewState)}</div>
             <div class="layer-line">${esc(truncate(b.pr.title, 56))}</div>
-            <div class="layer-line">CI: ${esc(b.pr.ci?.workflow || 'ci.yml')} (${esc(b.pr.ci?.duration || '—')})</div>
+            <div class="layer-line">CI: ${esc(b.pr.ci?.workflow || 'CI')} (${esc(b.pr.ci?.duration || '—')})</div>
           ` : `
             <div class="layer-line">${isRemoteOnly ? `Remote aktif: origin/${esc(b.name)}` : (b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok')}</div>
             <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Alt rayda yerel çalışma'}</div>
@@ -276,7 +276,7 @@ export function ciCardHtml(b, ctx) {
           <span class="chip ${chipTone}">${statusText}</span>
         </h4>
         <div class="wt-note">
-          <strong>İş Akışı:</strong> ${esc(ci.workflow || 'ci.yml')} ${ci.duration ? `· Süre: ${esc(ci.duration)}` : ''}
+          <strong>İş Akışı:</strong> ${esc(ci.workflow || 'CI')} ${ci.duration ? `· Süre: ${esc(ci.duration)}` : ''}
           ${ci.failedStep ? `<br><span class="ci-failed-tag">Patlayan Adım: ${esc(ci.failedStep)}</span>` : ''}
         </div>
 
@@ -487,7 +487,7 @@ export function prDetailCardHtml(b) {
         <div class="layer-line"><strong>Başlık:</strong> ${esc(b.pr.title)}</div>
         ${b.pr.author ? `<div class="layer-line"><strong>Yazar:</strong> @${esc(b.pr.author)}</div>` : ''}
         ${b.pr.ci ? `
-          <div class="layer-line"><strong>CI Durumu:</strong> <span class="chip ${b.pr.ci.state === 'SUCCESS' ? 'ok' : 'danger'} sm mono">CI: ${esc(b.pr.ci.state)}</span> (${esc(b.pr.ci.workflow || 'ci.yml')})</div>
+          <div class="layer-line"><strong>CI Durumu:</strong> <span class="chip ${b.pr.ci.state === 'SUCCESS' ? 'ok' : 'danger'} sm mono">CI: ${esc(b.pr.ci.state)}</span> (${esc(b.pr.ci.workflow || 'CI')})</div>
         ` : ''}
         ${b.pr.body ? `
           <div class="wt-label">PR Açıklaması</div>

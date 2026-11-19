@@ -50,6 +50,7 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 - `internal/gitengine/simulation.go`: `Manager`, in-memory `simRepo` sanal durum yönetimi, `SyncSpine`, `ProtectDefaultBranch`, `CheckForUpdates`, kalıcı `actionLogs`.
 - `internal/gitengine/live_mutations.go`: Canlı Git/GitHub mutasyonları (`commitWorkingTreeLive` yerel `checkout -b` akışı, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive` & `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`).
 - `internal/gitengine/collector_github.go`: `gh` ile açık/birleşmiş PR, CI ve Branch Protection/Ruleset sorgusu (10 sn `ghCache`; her mutasyondan sonra `InvalidateGHCache`).
+- **Uydurma CI yok:** Canlı motor hiçbir yerde sabit/tahmini CI değeri (SUCCESS, süre, adım adı, `ci.yml`) üretmez; bilinmiyorsa alan boş kalır. Yalnızca simülasyon/demo verisi sahte değer taşıyabilir.
 - `internal/gitengine/collector_github.go` ek: `fetchMainCI` → `RepoMeta.MainCI` (merge sonrası `main` testleri); birleşmiş PR'lara sahte CI yazma (`CI` boş kalır), yeşil asla varsayılmaz.
 - `internal/gitengine/prunable.go`: `IsPrunable` — 🧹 Temizle sayacı ve temizliği için tek kural (`BranchArc.prunable`; sayaç `b.prunable` sayar, kendi koşulunu yazma; `fallback.js` aynı kuralı taşır).
 - `internal/gitengine/basebranch.go`: `SetBaseBranch` — omurga dalının kalıcı elle seçimi (`/api/repo/base-branch`); `detectDefaultBranch` önce seçimi, sonra `origin/HEAD`'i kullanır. Simülasyon/fallback reddeder.
