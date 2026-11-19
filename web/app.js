@@ -9,6 +9,7 @@ import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from '.
 import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
 import { renderRayPopovers } from './modules/rails.js';
+import { pollDecision } from './modules/polling.js';
 import { renderKPIs } from './modules/kpi.js';
 import { renderTopbar } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
@@ -536,29 +537,33 @@ async function bootstrap() {
   // Smart Git FS Event Listener / Lightweight Ping
   // Diskte .git/HEAD veya .git/index mtime değişmedikçe ağır snapshot çağrılmaz, sıfır zıplama!
   let lastGitSig = '';
+  let lastFullAt = Date.now();
   setInterval(async () => {
     if (state.offlineMode || state.drag || state.panning) return;
     if (el.modal && !el.modal.hidden) return;
     if (el.conflictStudioModal && !el.conflictStudioModal.hidden) return;
-    if (state.selectedBranchId || state.selectedNodeSha) return; // Kullanıcı bir öğeyi incelerken tuvali zıplatma!
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
     try {
+      let pingChanged = false;
       const ping = await apiCall('/api/system/git-status-ping', 'GET');
       if (ping && ping.sig) {
-        if (!lastGitSig) {
-          lastGitSig = ping.sig;
-          return;
-        }
-        if (ping.sig === lastGitSig) {
-          // Git deposunda hiçbir dosya/dal/commit değişmemiş: Sıfır işlem, sıfır zıplama!
-          return;
-        }
+        if (lastGitSig && ping.sig !== lastGitSig) pingChanged = true;
         lastGitSig = ping.sig;
       }
 
-      // Sadece gerçek bir Git değişikliği algılandığında snapshot çek:
+      // Karar tek yerde (polling.js): git değişikliği VEYA CI koşuyorsa aralıklı yenileme (seçili olsa bile).
+      const decision = pollDecision({
+        pingChanged,
+        snap: state.snapshot,
+        now: Date.now(),
+        lastFullAt,
+        selectionActive: Boolean(state.selectedBranchId || state.selectedNodeSha), // seçili öğeyi zıplatma
+      });
+      if (decision !== 'fetch') return;
+
+      lastFullAt = Date.now();
       const nextSnap = await apiCall('/api/snapshot');
       const sig = snapshotSignature(nextSnap);
       if (sig && sig !== state.lastSig) {
