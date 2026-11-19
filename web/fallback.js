@@ -456,7 +456,7 @@
           lastCommitMsg: cleanCommit,
           draftPrTitle: cleanTitle,
           draftPrBody: cleanBody,
-          changedFiles: ['CHANGELOG.md'],
+          changedFiles: files.length > 0 ? [...files] : ['CHANGELOG.md'],
         });
         return recompute();
       },
@@ -472,6 +472,29 @@
       dismissProposal() {
         sim.pendingProposal = null;
         return recompute();
+      },
+      // Bekleyen AI önerisini onaylar (sunucudaki Manager.ApproveProposal ile aynı kurallar): öneri kimliği eşleşmeli,
+      // boş alanlar önerinin değerlerini kullanır, dosyalar HER ZAMAN önerinin kendisinden gelir. Hata olursa öneri
+      // bekleyen durumda kalır.
+      approveProposal(payload = {}) {
+        const prop = sim.pendingProposal;
+        if (!prop) throw new Error('bekleyen AI önerisi yok (zaten onaylanmış, reddedilmiş veya süresi dolmuş olabilir)');
+        if ((payload.proposalId || '').trim() !== prop.id) {
+          throw new Error('öneri değişmiş veya artık geçerli değil; sayfayı yenileyip güncel öneriyi onaylayın');
+        }
+        const branchName = (payload.branchName || '').trim() || prop.branchName;
+        const message = (payload.message || '').trim() || prop.message;
+        const prTitle = (payload.prTitle || '').trim() || prop.prTitle;
+        const prBody = (payload.prBody || '').trim() || prop.prBody;
+        if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(branchName) || branchName.includes('..') || branchName.endsWith('/') || branchName.endsWith('.lock')) {
+          throw new Error(`Geçersiz dal adı: ${branchName}`);
+        }
+        if (branchName === (sim.repo.defaultBranch || 'main')) {
+          throw new Error(`PR açmak için ${sim.repo.defaultBranch || 'main'} dışında yeni bir özellik dalı adı girin`);
+        }
+        const result = this.commitWorkingTree(branchName, message, prTitle, prBody, true, [...(prop.files || [])]);
+        sim.pendingProposal = null;
+        return recompute() || result;
       },
       proposeCommit(branchName, message, files = [], prTitle = '', prBody = '') {
         const cleanBranch = (branchName || '').trim();

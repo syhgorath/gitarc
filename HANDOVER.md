@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.9.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **111 üst düzey Go testi + 148 JS testi geçti** (`gitarc`: 20 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 88 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **121 üst düzey Go testi + 159 JS testi geçti** (`gitarc`: 21 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 97 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -40,10 +40,10 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
   - Bayraklar: `-addr` (`127.0.0.1:7432`), `-repo` (`.`, demo için `"sim"`), `-open` (`true`), `-mcp` (`false`), `-team` (`false`).
   - Statik dosyaları `//go:embed web` ile gömer ve kök yanıtta sıkı CSP başlığı set eder:
     `default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
-  - **32 `/api/*` rota kaydı** (`a.guard(...)` arkasında; eski istemciler için `/api/sync-spine`, `/api/reset`, `/api/run-local`, `/api/branch/prune-gone` takma adları dahil):
+  - **33 `/api/*` rota kaydı** (`a.guard(...)` arkasında; eski istemciler için `/api/sync-spine`, `/api/reset`, `/api/run-local`, `/api/branch/prune-gone` takma adları dahil):
     - `GET /api/snapshot`, `GET /api/diff` (`POST` da kabul eder), `GET /api/system/git-status-ping` (sıfır maliyetli değişiklik algılama imzası)
     - `POST /api/repo/switch`, `/api/repo/add`, `/api/repo/remove`, `/api/system/choose-folder`
-    - `POST /api/branch/create`, `/api/branch/checkout`, `/api/branch/merge`, `/api/branch/promote`, `/api/working-tree/commit`, `/api/working-tree/discard`, `/api/working-tree/diff-stat`, `/api/proposal/dismiss`
+    - `POST /api/branch/create`, `/api/branch/checkout`, `/api/branch/merge`, `/api/branch/promote`, `/api/working-tree/commit`, `/api/working-tree/discard`, `/api/working-tree/diff-stat`, `/api/proposal/approve`, `/api/proposal/dismiss`
     - `POST /api/conflict/inspect`, `/api/branch/resolve`, `/api/branch/fix-ci`
     - `POST /api/branch/delete`, `/api/branch/prune`, `/api/pr/edit`, `/api/commit/amend`
     - `POST /api/spine/sync`, `/api/logs/clear`, `/api/system/update-check`, `/api/repo/protect`, `/api/simulation/reset`, `/api/test/run`
@@ -151,18 +151,21 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
    - `NewManager`, `recordLog` ve `AddProject` `$HOME/.gitarc/{logs,projects}.json` dosyalarına yazar. Her test paketinde (`gitarc`, `internal/gitengine`, `internal/mcp`) `TestMain` `HOME`/`USERPROFILE`'ı geçici dizine alır. Yeni bir test paketi eklersen aynı `TestMain`'i ekle, yoksa testler geliştiricinin gerçek loglarını ve proje listesini kirletir/siler.
 9. **Şerit sınırı yok:**
    - Yeni kod `MaxHemisphereLanes`/`lane <= 4` gibi bir üst sınır varsaymamalı (`yOfLane`, `computeBranchGeometry`, `AssignLanes`, `fallback.js`). Mega-repo demosunda sahne dikeyde uzar; bu bilinçli bir tercihtir (`TestAssignLanesNoLaneCap`, canvas testleri korur).
-10. **Yavaş ağ işlerini snapshot içinde bloklama (arka plan + bayat veri):**
+10. **AI öneri onayı (`ApproveProposal`) kuralları:**
+    - `POST /api/proposal/approve` → `Manager.ApproveProposal(proposalId, branchName, message, prTitle, prBody)`. Kullanıcı yalnızca **metinleri** düzenler; dosya listesi HER ZAMAN önerinin kendisinden gelir (istemci `files` alanı yok sayılır). Öneri kimliği eşleşmezse reddedilir, aynı anda tek onay çalışır (`proposalBusy`), Team modunda HEAD değiştirilemez, gizli dosya/birleşmiş dal engelleri `CommitWorkingTree` içinde yeniden uygulanır; hata olursa öneri bekleyen durumda kalır (yeniden denenebilir). Üçlü eşlik: canlı (`commitWorkingTreeLive`), simülasyon (sanal dal, `ChangedFiles` = önerinin dosyaları) ve `fallback.js` `approveProposal` aynı kuralları uygular. Testler: `proposal_approve_test.go` (gerçek git + sahte `gh`), `main_proposal_test.go`, `tests/js/fallback-proposal.test.mjs`.
+    - Stüdyoda çalışma alanı tespiti `isWorkingTreeBranch(b)` (utils.js) tek tanımıdır (`local-wip-*` veya `wip/working-tree`); hiçbir yerde üretilmeyen `b.isWorkingTreeWip` alanına bakma. `tests/js/inspector-cards.test.mjs` her stüdyo butonu kimliğinin `STUDIO_ACTION_IDS` içinde olduğunu denetler (ölü düğme bırakmaz).
+11. **Yavaş ağ işlerini snapshot içinde bloklama (arka plan + bayat veri):**
     - `git fetch --prune` ve tüm `gh` sorguları `collector_github.go` içindeki `repoBG` durumunda **arka planda, tek uçuşla** çalışır (`fetchRemoteCached`, `fetchGHMetadataCached`). `CollectLiveRepo` yalnızca `fetchWait` (1 sn) / `ghWait` (2 sn) bekler; sonuç gelmediyse eldeki son başarılı veriyi döndürür. Yeni bir ağ sorgusu eklersen aynı kalıbı kullan ve `SyncStep` kaydet.
     - **Başarısız sorgu eldeki veriyi ezmez** ve boş sonuç önbelleğe yazılmaz (eski kod bunu yapıyordu). `InvalidateGHCache` veriyi silmez, süresi dolmuş işaretler.
     - Sonuçlar `repoBG.version` ile `QuickRepoSignature`'a girer; arayüz kendiliğinden yenilenir. `Repo.SyncSteps` (`fetch`, `prs`, `merged`, `protection`) ve `Repo.ProtectionState` (`active`/`none`/`unknown`) snapshot'ta taşınır; `snapshotSignature` bunları içerir. Prometheus'ta `gh pr list --json statusCheckRollup` ~5 sn sürer (eski 4 sn sınırı hep aşılıyordu).
     - GitHub 404 (yönetici değilsin) **"Korumasız" değil "unknown"**dır. Simülasyon ve `fallback.js` aynı `syncSteps`/`protectionState` şeklini üretir. Testler: `bgsync_test.go` (yavaş `gh`, başarısız yenileme, bayat veri, tek uçuş, 404, sim eşliği); stub `slow(key, saniye)` ile yavaşlatılır.
-11. **`state.js` kimlikleri `index.html`'de olmalı:**
+12. **`state.js` kimlikleri `index.html`'de olmalı:**
     - Eşleşmeyen bir kimlik sessizce `undefined` olur ve `if (el.x)` bloğu hiç çalışmaz (senkron rozeti bu yüzden hiç güncellenmedi). `tests/js/registry.test.mjs` bunu denetler; bilinen eski ölü kalıntılar `KNOWN_DEAD` listesindedir (`radar-count`, `btn-logs-modal`, `log-count`) — düzeltince listeden çıkar.
-12. **Merge noktası bilinmeyen birleşmiş dal çizme (`HistoryOnly`):**
+13. **Merge noktası bilinmeyen birleşmiş dal çizme (`HistoryOnly`):**
     - Omurga yalnızca son 12 first-parent commit'tir (`collector.go`, `-n 12`). Merge commit'i bu pencerede olmayan birleşmiş dallar (squash vb.) için `EndSpineIndex: lastSpine` ile sahte bir konum atanır; bu dallar `HistoryOnly: true` ile işaretlenir ve **asla parabol olarak çizilmez** (aksi halde Prometheus gibi depolarda 40 dal tek bir sahte dağ oluşturur). Yeni bir "birleşmiş dal" üretim yolu eklersen merge konumunu gerçekten bulamıyorsan `HistoryOnly` set et. `TestMergedBranchOutsideSpineWindowIsHistoryOnly` gerçek repoyla bunu denetler. Çevrimdışı `LocalFallbackEngine` demosunda hep gerçek merge noktası olduğundan bu alanı üretmez; çip arayüzü ortaktır.
-13. **Açık tema ve koyu bloklar:**
+14. **Açık tema ve koyu bloklar:**
     - Alt çekmece/stüdyo sütunlarının zeminleri `--terminal-bg` / `--diff-bg` değişkenleridir (koyu: `#070a11`/`#090d16`, açık: `#eef1f6`/`#f8f9fc`); sabit renk kodu yazma, yoksa açık temada siyah şerit çıkar. Log/CI kutuları (`--log-bg`, `.terminal-box`) açık temada bilinçli olarak koyu kalır (IDE terminali görünümü).
-14. **`go test` kapsamı ve node:**
+15. **`go test` kapsamı ve node:**
     - `canvas_js_test.go` `node --test tests/js/` komutunu çalıştırır; node yoksa test atlanır (CI `ubuntu-latest` üzerinde node hazırdır). `tests/js/` `web/` dışındadır, bu yüzden ikiliye gömülmez ve CSP testine takılmaz.
 
 ---
@@ -172,8 +175,6 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
 1. Kullanıcının sonradan ileteceği ek **UI geliştirme fikirleri** (kullanıcı tarif ettiğinde ele alınacak).
 2. Ekran görüntüleri (`docs/` altında) eklenerek zenginleştirilmiş **`README.md` güzelleştirmesi**.
 3. **Testsiz kalan yollar:** `gh` kurulu olmayan ortam dalları (`PATH`'ten `gh` çıkarılarak denenmeli) ve Windows/Linux dışı işletim sistemi dalları (`handleChooseFolder` yalnızca çalışılan OS dalı için kapsanır).
-5. **AI öneri "Onayla" düğmesi çalışmıyor (bilinen eksik):** arayüz `POST /api/proposal/approve` çağırıyor ama `main.go`'da bu rota yok (yalnızca `/api/proposal/dismiss` var; canlı modda `HTTP 404` toast'ı). Çevrimdışı `LocalFallbackEngine` içinde de `approveProposal` yok (yalnızca `dismissProposal` var). Çözüm fikri: mevcut `CommitWorkingTree(branch, msg, prTitle, prBody, pushAndPR, files)` üstüne `Manager.ApproveProposal` + rota + simülasyon + `fallback.js` (üçlü eşlik). Arayüz tarafı hazır: `proposal.js`, `buildApprovePayload`.
-6. **Stüdyodaki "🚀 Dala Aktar / Commit" düğmesi ölü:** `studio.js` içindeki `#studio-act-commit` için hiçbir olay dinleyicisi yok (çalışma alanı seçiliyken tıklamak hiçbir şey yapmaz). İnspector'daki `act-wt-commit-*` düğmeleri çalışır.
 4. **`CHANGELOG.md`:** şerit sınırının kaldırılması, dinamik omurga yerleşimi ve test altyapısı (`0.8.0` altında veya yeni sürümde) henüz kayda geçmedi.
 
 ---

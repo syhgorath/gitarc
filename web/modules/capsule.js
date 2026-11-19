@@ -6,7 +6,7 @@
 // boşluk düzeni etkiler).
 import { state } from './state.js';
 import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H } from './constants.js';
-import { esc, truncate, svgEl } from './utils.js';
+import { esc, truncate, svgEl, isWorkingTreeBranch } from './utils.js';
 
 export function capsulePositionForApex(b, apexX, apexY) {
   if (b.state === 'merged') {
@@ -53,7 +53,7 @@ export function mergedPillModel(b, isSelected) {
 // Kartın kararlarını etkileyen tüm dal durumları tek yerde.
 export function branchFlags(b) {
   const isLower = b.hemisphere === 'lower';
-  const isWorkingTreeWip = b.id === 'local-wip-working-tree' || b.id.startsWith('local-wip-') || b.name === 'wip/working-tree';
+  const isWorkingTreeWip = isWorkingTreeBranch(b);
   return {
     isLower,
     isWorkingTreeWip,

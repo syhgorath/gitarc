@@ -220,3 +220,11 @@ export function snapshotSignature(snap) {
   const syncSig = (r.syncSteps || []).map((s) => `${s.id}=${s.state}/${s.count || 0}`).join(',');
   return `${r.id}:${r.ahead}:${r.behind}:${r.dirtyCount}:${snap.nodes?.length || 0}:${lastNode}:${bSig}:${logSig}:${r.protectionState || ''}:${syncSig}`;
 }
+
+// Sanal "çalışma alanı" dalı mı? (kaydedilmemiş değişiklikleri temsil eden `local-wip-working-tree` ve ona benzer
+// `local-wip-*` taslak dalları). Kapsül, stüdyo ve diff bu tek tanımı kullanır. Not: eskiden stüdyo, hiçbir yerde
+// üretilmeyen `b.isWorkingTreeWip` alanına bakıyordu; bu yüzden çalışma alanı seçiliyken stüdyoda "Dala Aktar /
+// Commit" düğmesi hiç görünmüyordu.
+export function isWorkingTreeBranch(b) {
+  return Boolean(b && (b.id === 'local-wip-working-tree' || (b.id || '').startsWith('local-wip-') || b.name === 'wip/working-tree'));
+}

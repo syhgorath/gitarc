@@ -3,7 +3,7 @@
 // HTML üretimi saf fonksiyonlardadır (Node'da test edilir); `updateStudioPanels` ve `renderStudioInlineDiff`
 // bunları DOM'a yazıp olayları bağlar.
 import { state, el } from './state.js';
-import { esc, truncate } from './utils.js';
+import { esc, truncate, isWorkingTreeBranch } from './utils.js';
 import { apiCall } from './api.js';
 import { CHECK_STUDIO_VIEW, classifyCheck } from './inspector-model.js';
 
@@ -93,7 +93,7 @@ export function studioActionsHtml(b) {
         ${b.hasLocal ? '<button type="button" class="btn danger sm" id="studio-act-del">🧹 Kalıntıyı Sil</button>' : ''}
       </div>
     `;
-  } else if (b.isWorkingTreeWip) {
+  } else if (isWorkingTreeBranch(b)) {
     actionButtonsHtml = `
       <div class="studio-actions-grid">
         <button type="button" class="btn primary sm" id="studio-act-commit">🚀 Dala Aktar / Commit</button>
@@ -114,7 +114,7 @@ export function studioActionsHtml(b) {
 }
 
 export function studioBranchTypeLabel(b) {
-  return b.hemisphere === 'upper' ? '☁️ Üst Ray · PR' : (b.isWorkingTreeWip ? '✏️ Alt Ray · Çalışma' : '💻 Alt Ray · Yerel');
+  return b.hemisphere === 'upper' ? '☁️ Üst Ray · PR' : (isWorkingTreeBranch(b) ? '✏️ Alt Ray · Çalışma' : '💻 Alt Ray · Yerel');
 }
 
 export function studioDetailHtml(b) {
@@ -151,7 +151,7 @@ export async function renderStudioInlineDiff(targetObj, onOpenDiff = null) {
   if (el.studioDiffMeta) el.studioDiffMeta.textContent = 'Yükleniyor...';
 
   const isCommit = Boolean(targetObj.shortSha && !targetObj.name);
-  const isWorkingTree = Boolean(targetObj.isWorkingTreeWip || targetObj.id === 'local-wip-working-tree');
+  const isWorkingTree = isWorkingTreeBranch(targetObj);
   const target = isWorkingTree ? 'working-tree' : (isCommit ? (targetObj.sha || targetObj.shortSha) : targetObj.name);
   const diffType = isWorkingTree ? 'working-tree' : (isCommit ? 'commit' : 'branch');
 
@@ -194,10 +194,49 @@ export async function renderStudioInlineDiff(targetObj, onOpenDiff = null) {
   }
 }
 
+// Stüdyo sol kolonundaki butonların (id) karşılığı geri çağrılar.
+export const STUDIO_ACTION_IDS = [
+  'studio-act-checkout', 'studio-act-checkout-main', 'studio-act-merge', 'studio-act-promote',
+  'studio-act-del', 'studio-act-diff', 'studio-act-commit',
+];
+
+export function dispatchStudioAction(actId, b, callbacks, btn) {
+  const { onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenDiff, onSelectBranch } = callbacks;
+  switch (actId) {
+    case 'studio-act-checkout':
+      if (onCheckoutBranch) onCheckoutBranch(b.id, btn);
+      break;
+    case 'studio-act-checkout-main':
+      if (onCheckoutBranch) onCheckoutBranch('main', btn);
+      break;
+    case 'studio-act-merge':
+      if (onMergeBranch) onMergeBranch(b.id, btn);
+      break;
+    case 'studio-act-promote':
+      if (onPromoteBranch) onPromoteBranch(b.id, undefined, undefined, btn);
+      break;
+    case 'studio-act-del':
+      if (onDeleteBranch) onDeleteBranch(b.id, btn);
+      break;
+    case 'studio-act-diff':
+      if (onOpenDiff) {
+        if (isWorkingTreeBranch(b)) onOpenDiff('working-tree', 'working-tree');
+        else onOpenDiff(b.name, 'branch');
+      }
+      break;
+    case 'studio-act-commit':
+      // Çalışma alanını seçer: sağ Inspector'daki Konsolsuz Commit & PR formu açılır.
+      if (onSelectBranch) onSelectBranch(b.id);
+      break;
+    default:
+      break;
+  }
+}
+
 export async function updateStudioPanels(b, callbacks = {}) {
   if (!el.studioBranchDetail) return;
 
-  const { onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenDiff } = callbacks;
+  const { onOpenDiff } = callbacks;
 
   if (!b) {
     if (el.studioBranchChip) el.studioBranchChip.textContent = 'Seçim Yok';
@@ -214,26 +253,10 @@ export async function updateStudioPanels(b, callbacks = {}) {
   el.studioBranchDetail.innerHTML = studioDetailHtml(b);
 
   // Sol Kolon Aksiyon Listener'ları
-  document.getElementById('studio-act-checkout')?.addEventListener('click', (ev) => {
-    if (onCheckoutBranch) onCheckoutBranch(b.id, ev.currentTarget);
-  });
-  document.getElementById('studio-act-checkout-main')?.addEventListener('click', (ev) => {
-    if (onCheckoutBranch) onCheckoutBranch('main', ev.currentTarget);
-  });
-  document.getElementById('studio-act-merge')?.addEventListener('click', (ev) => {
-    if (onMergeBranch) onMergeBranch(b.id, ev.currentTarget);
-  });
-  document.getElementById('studio-act-promote')?.addEventListener('click', (ev) => {
-    if (onPromoteBranch) onPromoteBranch(b.id, undefined, undefined, ev.currentTarget);
-  });
-  document.getElementById('studio-act-del')?.addEventListener('click', (ev) => {
-    if (onDeleteBranch) onDeleteBranch(b.id, ev.currentTarget);
-  });
-  document.getElementById('studio-act-diff')?.addEventListener('click', () => {
-    if (onOpenDiff) {
-      if (b.isWorkingTreeWip) onOpenDiff('working-tree', 'working-tree');
-      else onOpenDiff(b.name, 'branch');
-    }
+  STUDIO_ACTION_IDS.forEach((id) => {
+    document.getElementById(id)?.addEventListener('click', (ev) => {
+      dispatchStudioAction(id, b, callbacks, ev.currentTarget);
+    });
   });
 
   // 2. Orta Kolon Durum & Hata Vurgusu

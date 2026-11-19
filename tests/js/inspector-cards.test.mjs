@@ -10,7 +10,9 @@ import {
 } from '../../web/modules/inspector-cards.js';
 import {
   diffLineClass, diffLinesHtml, diffPanelHtml, studioCiStepsHtml, studioActionsHtml, studioBranchTypeLabel, studioDetailHtml,
+  STUDIO_ACTION_IDS, dispatchStudioAction,
 } from '../../web/modules/studio.js';
+import { isWorkingTreeBranch } from '../../web/modules/utils.js';
 
 const open = (id, extra = {}) => ({ id, name: id, state: 'open', hemisphere: 'upper', hasLocal: true, hasRemote: false, aheadMain: 1, ...extra });
 const pr = (n, ci, extra = {}) => ({ number: n, title: 'T', reviewState: 'APPROVED', ...(ci ? { ci } : {}), ...extra });
@@ -219,7 +221,9 @@ test('studioCiStepsHtml: real checks use the shared classifier; summary-only CI 
 test('studioActionsHtml: buttons per branch kind (the working-tree commit button exists in the markup)', () => {
   assert.deepEqual(ids(studioActionsHtml(open('m', { state: 'merged', hasLocal: true }))), ['studio-act-diff', 'studio-act-del']);
   assert.deepEqual(ids(studioActionsHtml(open('m', { state: 'merged', hasLocal: false }))), ['studio-act-diff']);
-  assert.deepEqual(ids(studioActionsHtml(open('w', { isWorkingTreeWip: true }))), ['studio-act-commit', 'studio-act-diff']);
+  assert.deepEqual(ids(studioActionsHtml(open('local-wip-working-tree', { hemisphere: 'lower' }))), ['studio-act-commit', 'studio-act-diff'], 'the real working-tree branch (by id) gets the commit button');
+  assert.deepEqual(ids(studioActionsHtml(open('x', { name: 'wip/working-tree' }))), ['studio-act-commit', 'studio-act-diff'], 'recognised by name too');
+  assert.deepEqual(ids(studioActionsHtml(open('a', { isWorkingTreeWip: true }))), ['studio-act-checkout', 'studio-act-promote', 'studio-act-diff', 'studio-act-del'], 'the old never-set property no longer matters');
   assert.deepEqual(ids(studioActionsHtml(open('a', { pr: pr(1) }))), ['studio-act-checkout', 'studio-act-merge', 'studio-act-diff', 'studio-act-del']);
   assert.deepEqual(ids(studioActionsHtml(open('a', { isHead: true }))), ['studio-act-checkout-main', 'studio-act-promote', 'studio-act-diff', 'studio-act-del']);
 });
@@ -227,9 +231,50 @@ test('studioActionsHtml: buttons per branch kind (the working-tree commit button
 test('studioDetailHtml / studioBranchTypeLabel', () => {
   assert.equal(studioBranchTypeLabel(open('a')), '☁️ Üst Ray · PR');
   assert.equal(studioBranchTypeLabel(open('a', { hemisphere: 'lower' })), '💻 Alt Ray · Yerel');
-  assert.equal(studioBranchTypeLabel(open('a', { hemisphere: 'lower', isWorkingTreeWip: true })), '✏️ Alt Ray · Çalışma');
+  assert.equal(studioBranchTypeLabel(open('local-wip-working-tree', { hemisphere: 'lower' })), '✏️ Alt Ray · Çalışma');
   const html = studioDetailHtml(open('a-very-long-branch-name-that-needs-cutting', { author: EVIL, localSha: 'abcdef1234', pr: pr(1, { state: 'SUCCESS' }) }));
   assert.match(html, /abcdef1/);
   assert.doesNotMatch(html, /<img/);
   assert.match(studioDetailHtml(open('a')), /HEAD/, 'falls back to HEAD when no sha is known');
+});
+
+// ---------- working tree detection and studio action routing ----------
+test('isWorkingTreeBranch: the virtual working tree and local-wip-* drafts, nothing else', () => {
+  assert.equal(isWorkingTreeBranch({ id: 'local-wip-working-tree', name: 'wip/working-tree' }), true);
+  assert.equal(isWorkingTreeBranch({ id: 'local-wip-foo', name: 'foo (yerel)' }), true);
+  assert.equal(isWorkingTreeBranch({ id: 'x', name: 'wip/working-tree' }), true);
+  assert.equal(isWorkingTreeBranch({ id: 'br-local-wip', name: 'wip/keychain-probe' }), false, 'a normal branch that merely starts with wip/ is a real branch');
+  assert.equal(isWorkingTreeBranch({ id: 'feat', name: 'feat/x', isWorkingTreeWip: true }), false, 'the old never-set property is not a signal');
+  assert.equal(isWorkingTreeBranch(null), false);
+  assert.equal(isWorkingTreeBranch({}), false);
+});
+
+test('dispatchStudioAction: every studio button maps to a callback — including the working-tree commit button (it used to be dead)', () => {
+  const calls = [];
+  const rec = (name) => (...a) => calls.push([name, ...a]);
+  const cb = { onCheckoutBranch: rec('checkout'), onMergeBranch: rec('merge'), onPromoteBranch: rec('promote'), onDeleteBranch: rec('delete'), onOpenDiff: rec('diff'), onSelectBranch: rec('select') };
+  const b = { id: 'b1', name: 'feat/b1' };
+  const wip = { id: 'local-wip-working-tree', name: 'wip/working-tree' };
+  const btn = { tag: 'btn' };
+  dispatchStudioAction('studio-act-checkout', b, cb, btn);
+  dispatchStudioAction('studio-act-checkout-main', b, cb, btn);
+  dispatchStudioAction('studio-act-merge', b, cb, btn);
+  dispatchStudioAction('studio-act-promote', b, cb, btn);
+  dispatchStudioAction('studio-act-del', b, cb, btn);
+  dispatchStudioAction('studio-act-diff', b, cb, btn);
+  dispatchStudioAction('studio-act-diff', wip, cb, btn);
+  dispatchStudioAction('studio-act-commit', wip, cb, btn);
+  dispatchStudioAction('nope', b, cb, btn);
+  assert.deepEqual(calls, [
+    ['checkout', 'b1', btn], ['checkout', 'main', btn], ['merge', 'b1', btn], ['promote', 'b1', undefined, undefined, btn], ['delete', 'b1', btn],
+    ['diff', 'feat/b1', 'branch'], ['diff', 'working-tree', 'working-tree'], ['select', 'local-wip-working-tree'],
+  ]);
+  assert.doesNotThrow(() => dispatchStudioAction('studio-act-commit', wip, {}, btn), 'missing callbacks are ignored');
+});
+
+test('every button id the studio markup can produce has a dispatcher entry', () => {
+  const produced = new Set();
+  const samples = [open('m', { state: 'merged', hasLocal: true }), open('local-wip-working-tree', { hemisphere: 'lower' }), open('a', { pr: pr(1) }), open('h', { isHead: true })];
+  for (const b of samples) for (const id of ids(studioActionsHtml(b))) produced.add(id);
+  for (const id of produced) assert.ok(STUDIO_ACTION_IDS.includes(id), `${id} has no listener (dead button)`);
 });
