@@ -9,10 +9,15 @@
 | Bölge | Anlamı |
 | :--- | :--- |
 | **Merkez ray (`main`)** | Commit düğümleri, etiketler ve `origin/main ↑ / ↓` senkron farkı |
-| **Üst yarı-küre** | Uzak dala pushlanmış, açık Pull Request ve CI durumu taşıyan dallar |
-| **Alt yarı-küre** | Henüz pushlanmamış yerel dallar ve kirli çalışma ağacı (`wip/working-tree`) |
+| **Uzak (üst yarı-küre)** | Uzak dala pushlanmış, açık Pull Request ve CI durumu taşıyan dallar |
+| **Yerel (alt yarı-küre)** | Henüz pushlanmamış yerel dallar ve kirli çalışma ağacı (`wip/working-tree`), kesikli mor yay |
 | **Kapalı yeşil yay** | `main`'e geri dönen, birleşmiş dallar |
 | **Renkli yaylar** | Kırmızı: CI hatası · Turuncu: çakışma · Sarı nabız: CI çalışıyor |
+| **Kesik iz** | Yerel dal pushlanıp PR olunca eski konumundan uzak konumuna giden kısa kesik çizgi ("uzağa gidiyor") |
+
+Sol üst köşede `UZAK` ve sol alt köşede `YEREL` etiketleri süzgeç görevi görür; yanlarında omurga dalı seçici (`⚙ main`), `🗂 Geçmiş` ve `⏳ Uzun Ömürlü` çipleri durur.
+
+![Köşe etiketleri ve çipler: Uzak / Yerel, omurga seçici, Geçmiş, Uzun Ömürlü](docs/screenshots/ust-cubuk-ve-cipler.png)
 
 Dallar kalabalıklaştıkça şerit sayısı sınırsız artar, omurga düğümleri açılır ve dış yaylar iç yayları kapsayacak biçimde çizilir.
 
@@ -22,6 +27,14 @@ Dallar kalabalıklaştıkça şerit sayısı sınırsız artar, omurga düğüml
 CI hatası, çakışma, Cross-PR dosya çarpışması ve `origin: gone` kalıntıları tam genişlikte kartlarla listelenir. Kartlar etkilenen dosyaları, ayıklanmış CI hata logunu, kopyalanabilir terminal komutunu ve tek tıkla eylemleri (`CI Hatasını Gör`, `Çakışma Stüdyosu`, `Dalı Temizle`) içerir.
 
 ![Hata radarı: CI hatası kartı, adımlar ve canlı diff](docs/screenshots/hata-radari.png)
+
+### Birleşmiş PR'ın tam detayı ve dosya dosya diff
+Birleşmiş bir dalı seçince GitHub'daki gerçek PR başlığı, açıklaması ve yazarı görünür; **Değişen Dosyalar** kartı her dosyayı durumu (`A`/`M`/`D`) ve `+eklenen / -silinen` satırlarıyla listeler. Bir dosyaya tıklamak, birleşme commit'inin getirdiği değişiklikleri dosya dosya gösteren tam diff penceresini açar (dal çoktan silinmiş olsa bile).
+
+![Birleşmiş PR detayı ve değişen dosyalar](docs/screenshots/birlesmis-pr-detay.png)
+
+### Merge sonrası `main` testleri
+Üst çubuktaki `main CI` rozeti, birleştirdikten sonra omurgada çalışan testin sonucunu gösterir (`⏳ koşuyor` / `✓` / `❌ kırık`). Kırılırsa Hata Radarı'nda kritik bir kart belirir. Veri okunamıyorsa rozet gizlenir; GitArc hiçbir yerde sahte yeşil göstermez.
 
 ### Çakışma Çözüm Stüdyosu
 Çakışan dosyalar sol tarafta (**şu an olan**) gerçek 3 yollu `git merge-file` blokları, sağ tarafta (**olacak olan**) canlı önizleme olarak yan yana gösterilir. Dosya türüne göre `★ ÖNERİLEN` strateji sunulur: `union`, `ours`, `theirs` veya elle/AI düzenleme. Çözüm, çalışma ağacınıza dokunmadan geçici bir `git worktree` içinde uygulanır; `go.mod` varsa `go vet ./...` geçmeden pushlanmaz.
@@ -33,7 +46,15 @@ CI hatası, çakışma, Cross-PR dosya çarpışması ve `origin: gone` kalınt�
 
 ![Kokpit turu](docs/screenshots/kokpit-turu.png)
 
+### Açık ve koyu tema
+`◐` düğmesi temayı değiştirir; tüm paneller, stüdyo ve terminal kutuları iki temada da okunur.
+
+![Açık tema](docs/screenshots/acik-tema.png)
+
 ### Diğer yetenekler
+- **Omurga dalı seçimi:** Varsayılan dal `origin/HEAD`'den bulunur (git-flow'da `develop` olabilir); yanlışsa `⚙` ile elle seçilir ve projeye kaydedilir.
+- **Uzun ömürlü dallar:** `develop`, `release/*`, `1.x` gibi dallar kalıntı temizliğinden ve silmeden korunur, `⏳ Uzun Ömürlü` çipinde listelenir.
+- **Temizle:** Uzakta silinmiş/birleşmiş kalıntı dalları tek tıkla, tek `git push --delete` ile temizler; sayaç ve temizlik aynı kuralı kullanır.
 - **Hata geçirmezlik:** Ön koşulları kullanıcıya yüklemez, güvenli olduğunda kendisi çözer (silinecek dal aktifse `main`'e geçer, kirli ağaçla `Push & PR` basılırsa önce commit atar). Boş dalı GitHub'a göndermeden önce yerelde durdurur.
 - **Taze yerel dal ayrımı:** `main`'e göre commit'i olmayan yeni dallar yanlışlıkla "silinmiş kalıntı" sayılmaz, `🌱 Yeni Yerel Dal` olarak gösterilir.
 - **Konsolsuz commit & PR:** Kirli çalışma ağacını yeni dala alıp commit mesajı, PR başlığı ve açıklamasıyla tek tıkla push + PR açar.

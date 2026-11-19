@@ -11,7 +11,7 @@ export function modeLabel(repo, offline) {
 }
 
 export function versionView(repo) {
-  const text = `v${repo.appVersion || '0.9.0'}${repo.teamMode ? ' · TEAM' : ''}${repo.updateAvailable ? ' ⬆ Güncelle' : ''}`;
+  const text = `v${repo.appVersion || '0.10.0'}${repo.teamMode ? ' · TEAM' : ''}${repo.updateAvailable ? ' ⬆ Güncelle' : ''}`;
   return { text, className: `btn mono ${repo.updateAvailable ? 'warn' : 'ghost'}` };
 }
 

@@ -133,7 +133,7 @@ export function branchHeaderHtml(v) {
       <div class="det-title-row">
         <h3 class="det-branch-name">${isVirtualWip ? '✏️ Çalışma Alanı (Kaydedilmemiş Değişiklikler)' : esc(b.name)}</h3>
         <span class="chip ${b.state === 'merged' ? 'ok' : (isVirtualWip ? 'purple' : (b.hemisphere === 'lower' ? 'purple' : 'accent'))}">
-          ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : (isAlreadySynced ? '✓ main ile Eşit (Kalıntı Dal)' : (b.hemisphere === 'lower' && b.aheadMain === 0 ? '🌱 Yeni Yerel Dal' : b.hemisphere === 'lower' ? 'Yerel · Local' : 'Üst Ray · PR')))}
+          ${isVirtualWip ? 'Yerel Taslak · Uncommitted' : (b.state === 'merged' ? 'Tam Parabol' : (isAlreadySynced ? '✓ main ile Eşit (Kalıntı Dal)' : (b.hemisphere === 'lower' && b.aheadMain === 0 ? '🌱 Yeni Yerel Dal' : b.hemisphere === 'lower' ? 'Yerel · Local' : 'Uzak · PR')))}
         </span>
       </div>
       <div class="det-badges">

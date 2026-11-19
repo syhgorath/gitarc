@@ -708,8 +708,8 @@
       },
       checkUpdates() {
         return {
-          currentVersion: sim.repo.appVersion || '0.9.0',
-          latestVersion: sim.repo.appVersion || '0.9.0',
+          currentVersion: sim.repo.appVersion || '0.10.0',
+          latestVersion: sim.repo.appVersion || '0.10.0',
           updateAvailable: false,
           updateCommand: 'git pull --ff-only origin main && go build -o gitarc .',
           teamMode: Boolean(sim.repo.teamMode),
