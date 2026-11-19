@@ -9,7 +9,8 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 | Katman | Dosya | Satır | Sorumluluk | Durum / Hedef |
 |---|---|---|---|---|
 | **Web Frontend** | `web/app.js` | 494 | Ana orkestratör ve yaşam döngüsü | ✅ 3.470 satırdan 494 satıra düşürüldü |
-| **Web Frontend** | `web/modules/canvas.js` | 756 | SVG paraboller, koordinatlar ve kapsül çizimleri | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/canvas.js` | ~930 | SVG çizimi: kapsüller, KPI/topbar, etkileşimler | 🔄 Sırada: `filters.js`, DOM parçaları (`kpi`, `topbar`, `capsule`, `scene`, `interactions`) |
+| **Web Frontend** | `web/modules/layout.js` | ~200 | Saf yerleşim matematiği (omurga, şerit, yay geometrisi, `computeView`) | ✅ `canvas.js`'ten ayrıldı, tekrarlar birleşti |
 | **Web Frontend** | `web/modules/inspector.js` | 708 | Sağ detay paneli, formlar ve PR açıklama kartları | ✅ Modüler ayrıldı |
 | **Web Frontend** | `web/modules/modals.js` | 327 | Çakışma stüdyosu, proje yöneticisi ve kokpit turu | ✅ Modüler ayrıldı |
 | **Web Frontend** | `web/modules/dock.js` | 261 | PocketUI alt çekmece, radar ve log akışı | ✅ Modüler ayrıldı |
