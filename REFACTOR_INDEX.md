@@ -9,7 +9,8 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 | Katman | Dosya | Satır | Sorumluluk | Durum / Hedef |
 |---|---|---|---|---|
 | **Web Frontend** | `web/app.js` | 494 | Ana orkestratör ve yaşam döngüsü | ✅ 3.470 satırdan 494 satıra düşürüldü |
-| **Web Frontend** | `web/modules/canvas.js` | ~760 | SVG çizimi: kapsüller, `renderSVG`, etkileşimler | 🔄 Sırada (3b): `capsule`, `scene`, `interactions` |
+| **Web Frontend** | `web/modules/canvas.js` | ~500 | `renderSVG`, etkileşimler, geçmiş çipi | 🔄 Sırada (3b-2): `scene`, `interactions` |
+| **Web Frontend** | `web/modules/capsule.js` | ~345 | Kapsül modelleri (saf) + DOM yazıcıları | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/kpi.js` | ~70 | KPI çipleri (`buildKpiModel` saf + `renderKPIs`) | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/topbar.js` | ~125 | Üst çubuk ve senkron rozeti (saf modeller + `renderTopbar`) | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/filters.js` | ~60 | Süzgeç koşulları ve KPI sayıları için tek tablo (`FILTERS`) | ✅ `canvas.js`'ten ayrıldı, `upper` süzgeci düzeltildi |
