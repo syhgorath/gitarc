@@ -6,7 +6,7 @@
 
 Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme oturumunun sonunda Git ve GitHub işlemlerini kendisi tek tıkla (kopyala-yapıştır ile) çalıştırmak istemektedir:
 
-- Değişiklikleri tamamladıktan ve doğrulama komutunu (`go vet ./... && go test -count=1 -v ./... && go build -o gitarc .`) çalıştırdıktan sonra **otomatik commit veya push yapma** (kullanıcı açıkça istemedikçe).
+- Değişiklikleri tamamladıktan ve doğrulama komutunu (`go vet ./... && go test -count=1 -v ./... && go build -o gitarc .`) çalıştırdıktan sonra (tam komut seti için Bölüm 4) **otomatik commit veya push yapma** (kullanıcı açıkça istemedikçe).
 - Bunun yerine her zaman yanıtın sonunda aşağıdaki kalıpta hazır, tek tıkla kopyalanabilir komut blokları ve açıklamalar sun:
   1. **Dal / Commit Komutu:** Önerilen branch adı (`git checkout -b ...`), `git add`, anlamlı Conventional Commit başlıklı `git commit -m "..."` ve `git push -u origin ...` komutu.
   2. **PR Başlığı (Tek Satır):** GitHub Web arayüzüne yapıştırılacak yalın PR başlığı.
@@ -14,20 +14,24 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 
 ## 2. Kırmızı Çizgiler (Asla İhlal Etme)
 
-1. **Sıfır Dış Bağımlılık (`go.mod`):** Projede yalnızca Go standart kütüphanesi (`stdlib`) ve `//go:embed web` kullanılır. Harici Go paketi, `npm`/`node_modules` veya CDN linki ekleme.
+1. **Sıfır Dış Bağımlılık (`go.mod`):** Projede yalnızca Go standart kütüphanesi (`stdlib`) ve `//go:embed web` kullanılır. Harici Go paketi, `npm`/`node_modules` veya CDN linki ekleme. (Node'un **yerleşik** `node --test` koşucusu ve `node:assert` serbesttir; `tests/js/` altındaki testler yalnızca bunları kullanır ve `package.json` gerektirmez.)
 2. **Sıkı CSP (`style-src-attr 'none'`):**
-   - `web/index.html` ve `web/app.js` içinde **ASLA** satır içi `style="..."` veya `style='...'` özniteliği yazma (`el.style.*` ataması da yapma).
+   - `web/index.html`, `web/app.js`, `web/fallback.js` ve `web/modules/*.js` içinde **ASLA** satır içi `style="..."` veya `style='...'` özniteliği yazma (`el.style.*` ataması da yapma).
    - `web/*.html` içinde harici `http://` veya `https://` URL kullanma (`http://www.w3.org/2000/svg` SVG XML namespace hariç).
    - Tüm görsel durumları `web/tasarim.css` içinde CSS sınıfı olarak tanımla (`hidden`, `.running-pulse`, `.ci-running`, `.ci-fail` vb.). `main_test.go` içindeki `TestWebAssetsStrictCSPCompliance` bunu her `go test` koşusunda zorunlu denetler.
 3. **Üçlü Motor Eşliği (Tri-Mode Parity):** Eklenen her yeni özellik veya aksiyon şu 3 yerde birden çalışmalıdır:
    - **Canlı Git/GitHub Motoru:** `internal/gitengine/collector.go` + `internal/gitengine/simulation.go` (`*Live` metotlar)
    - **Sunucu Simülasyon Motoru:** `internal/gitengine/simulation.go` (`simRepo` bellek-içi durumu)
-   - **Tarayıcı Offline Yedek Motoru:** `web/app.js` içindeki `LocalFallbackEngine`
+   - **Tarayıcı Offline Yedek Motoru:** `web/fallback.js` içindeki `LocalFallbackEngine` (yerleşim mantığı gibi paylaşılan davranışlar `internal/gitengine/lanes.go` ile birebir aynı kalmalıdır; şerit sayısı **sınırsızdır**, üst sınır ekleme)
 4. **Zero-Touch Çalışma Dizini Kuralı:** Çakışma algılama (`git merge-tree --write-tree`) ve çakışma çözümü (`ResolveBranchConflict` geçici izole `git worktree`) kullanıcının aktif çalışma ağacındaki (`HEAD`) kirli dosyalara asla dokunmamalıdır. Çözüm pushlanmadan önce `go.mod` varsa `go vet ./...` doğrulamasından geçirilmelidir.
 5. **Team Server Modu (`-team`):** `m.IsTeamMode()` aktifken paylaşılan `HEAD`'i değiştiren işlemler (`CheckoutBranch`, `AmendLastCommit`, `CommitWorkingTree`) engellenir; izole `worktree` çözümü, uzak dal silme/merge işlemleri çalışmaya devam eder.
 6. **Güvenlik Kalkanları (`main.go`):** `Host` (DNS Rebinding), `gitarc_session` (`HttpOnly`, `SameSite=Strict`), `POST` isteklerinde `X-Requested-With: gitarc` + `Origin` kontrolü ve `validateBranchName`/`sanitizeID` girdi doğrulamaları korunmalıdır.
 7. **Binary Yeniden Derleme:** `web/` dosyaları `//go:embed web` ile ikiliye gömülür; her UI veya Go değişikliği sonrası `go build -o gitarc .` çalıştırılmalıdır.
-8. **Hata Geçirmezlik Prensibi (Foolproof UX & Otomatik Ön Koşul Çözümü):**
+8. **Test Hijyeni:**
+   - Her test paketinde `TestMain` `HOME`/`USERPROFILE`'ı geçici dizine almalıdır; aksi halde `NewManager`/`recordLog`/`AddProject` geliştiricinin gerçek `~/.gitarc/logs.json` ve `projects.json` dosyalarına yazar. Yeni test paketi eklersen aynı `TestMain`'i ekle.
+   - Testler gerçek `gh`'yi, ağı veya gerçek GitHub'ı kullanmaz: `gh` akışları için `newGHStub(t)` (`internal/gitengine/ghstub_test.go`), GitHub uzak deposu için yolunda `github.com` geçen **yerel bare depo** (`newGitHubLikeRepo`) kullan.
+   - `web/index.html` içine elle yazılı `?v=...` sürüm sorgusu ekleme; sunucu zaten `no-store` verir (`TestStaticAssetsAreNeverCachedAndHaveNoHardcodedVersionQuery`).
+9. **Hata Geçirmezlik Prensibi (Foolproof UX & Otomatik Ön Koşul Çözümü):**
    - **Kullanıcıyı Çıkmaz Sokağa Sokma:** Bir aksiyon öncesinde Git ön koşulu gerekiyorsa (örn. silinecek dalın aktif `HEAD` olması, PR açılacak dalda kaydedilmemiş kirli dosyaların bulunması) çalışma ağacı temiz/güvenli olduğu sürece kullanıcıya *"önce başka dala geçin"* veya *"önce commit atın"* hatası döndürme; arka planda güvenli ön adımı (`git switch main`, `git add -A && git commit`) otomatik uygula.
    - **Taze Yerel Dal Koruması:** `aheadMain == 0` olan taze yerel dallar asla `origin: gone` / silinmiş kalıntı sayılmaz; `🌱 Yeni Yerel Dal` olarak alt rayda açık mor parabolle gösterilir, eylemlerinde silme yerine `🎯 Dala Geç` ve `🚀 Push & PR Aç` yer alır.
    - **Mükerrer Dal Açma Engeli:** Hem arayüzde hem API'de mevcut veya birleşmiş dal adlarıyla dal açılması engellenir.
@@ -38,21 +42,23 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
 
 ## 3. Mimari ve Dosya Haritası (`v0.8.0`)
 
-- `main.go` / `main_test.go`: HTTP sunucusu, güvenlik middleware (`root`, `guard`), 20 `/api/*` uç noktası, `-addr`, `-repo`, `-open`, `-mcp`, `-team` bayrakları, CSP & API güvenlik testleri.
+- `main.go` / `main_test.go`: HTTP sunucusu, güvenlik middleware (`root`, `guard`), 32 `/api/*` rota kaydı (takma adlar dahil), `-addr`, `-repo`, `-open`, `-mcp`, `-team` bayrakları. Testler: `main_test.go` (CSP & güvenlik akışı), `main_guard_test.go` (oturum, `decodePOST`, Origin), `main_handlers_test.go` (canlı/sim handler akışı, statik başlıklar), `canvas_js_test.go` (JS testlerini `go test` içinden çalıştırır).
 - `internal/model/model.go`: `CockpitSnapshot`, `RepoMeta`, `CommitNode`, `BranchArc`, `PRStatus`, `CIStatus`, `ConflictDetail`, `ConflictStudioPayload`, `ActionLogEntry`.
 - `internal/gitengine/collector.go`: `AppVersion` (`0.8.0`), `CollectLiveRepo`, SHA-bazlı `evalCache`, 40-dal sıralı penceresi, `collectLocalBranches` (taze yerel dal ayrımı), `collectRemoteOnlyBranches`, `ParseMergeTreeOutput`, `BuildSuggestedCommand`.
 - `internal/gitengine/simulation.go`: `Manager`, in-memory `simRepo` sanal durum yönetimi, `SyncSpine`, `ProtectDefaultBranch`, `CheckForUpdates`, kalıcı `actionLogs`.
 - `internal/gitengine/live_mutations.go`: Canlı Git/GitHub mutasyonları (`commitWorkingTreeLive` yerel `checkout -b` akışı, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive` & `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`).
-- `internal/gitengine/conflict_studio.go`, `diagnostics.go`, `lanes.go`: İzole 3-yollu `git merge-file` stüdyosu ve akıllı öneri, ters indeks Cross-PR çarpışma ve CI log ayıklama, interval packing şerit yerleşimi.
-- `internal/gitengine/engine_test.go`: Gerçek geçici bare/clone Git depolarıyla mutasyon, boş dal / otomatik `HEAD` temizliği ve iş akışı doğrulamaları dahil 17 test.
+- `internal/gitengine/collector_github.go`: `gh` ile açık/birleşmiş PR, CI ve Branch Protection/Ruleset sorgusu (10 sn `ghCache`; her mutasyondan sonra `InvalidateGHCache`).
+- `internal/gitengine/conflict_studio.go`, `diagnostics.go`, `lanes.go`: İzole 3-yollu `git merge-file` stüdyosu ve akıllı öneri, ters indeks Cross-PR çarpışma ve CI log ayıklama, deterministik interval packing şerit yerleşimi (sınırsız şerit).
+- `internal/gitengine/*_test.go` (73 üst düzey test, kapsam %82): `engine_test.go` (gerçek geçici bare/clone depolarıyla mutasyon ve iş akışları), `lanes_test.go`, `gaps_test.go` (proje yönetimi, sync, merge, sürüm kontrolü), `helpers_test.go` (saf yardımcılar, `newTempRepo`), `ghstub_test.go` + `gh_stub_test.go` (sahte `gh` stub'ı), `main_test.go` (`HOME` izolasyonu).
 - `internal/mcp/server.go` & `server_test.go`: Sıfır bağımlılıklı `stdio` JSON-RPC 2.0 MCP sunucusu (`gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`).
-- `web/index.html`, `web/tasarim.css`, `web/fallback.js`, `web/app.js`: Parabolik SVG kokpit, **PocketUI Alt Çekmece (Bottom Dock)** (`#bottom-dock` · Radar / Loglar / Son İşlemler), **Tam Genişlik Hata Radarı Kartları** (`.radar-card`), alt ray yerel kalıntı kuyruğu (`.svg-local-remnant-path` / `.cap-local-remnant`), Sağ Inspector (`suggestUniqueBranchName`), `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve modüler `LocalFallbackEngine` (`fallback.js`).
+- `tests/js/canvas.test.mjs`: `canvas.js` geometri/yerleşim değişmezleri için Node yerleşik testleri (19 test; `web/` dışında olduğundan ikiliye gömülmez).
+- `web/index.html`, `web/tasarim.css`, `web/fallback.js`, `web/app.js` (orkestratör) ve `web/modules/*.js` (`state`, `constants`, `utils`, `api`, `canvas`, `inspector`, `dock`, `modals`): Parabolik SVG kokpit, **PocketUI Alt Çekmece (Bottom Dock)** (`#bottom-dock` · Radar / Loglar / Son İşlemler), **Tam Genişlik Hata Radarı Kartları** (`.radar-card`), alt ray yerel kalıntı kuyruğu (`.svg-local-remnant-path` / `.cap-local-remnant`), Sağ Inspector (`suggestUniqueBranchName`), `CI: RUNNING` nabız + `pendingAutoMerge` kuyruğu, modal stüdyolar ve modüler `LocalFallbackEngine` (`fallback.js`).
 
 ## 4. Zorunlu Doğrulama Adımları (Her Görev Sonu)
 
-Değişiklik yaptıktan sonra yanıt vermeden önce mutlaka şu iki komutu çalıştırıp tüm testlerin sıfır hatayla geçtiğini gör:
+Değişiklik yaptıktan sonra yanıt vermeden önce mutlaka şu komutları çalıştırıp tüm testlerin sıfır hatayla geçtiğini gör (CI `-race` ile çalışır; `go test` node kuruluysa `tests/js` testlerini de çalıştırır):
 ```bash
-go vet ./... && go test -count=1 -v ./... && go build -o gitarc .
-node --check web/fallback.js && node --check web/app.js
+go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .
+for f in web/*.js web/modules/*.js; do node --check "$f"; done
 ```
-Ayrıca yeni eklediğin her Go iş mantığı veya bugfix için `engine_test.go`, `main_test.go` veya `server_test.go` içinde otomatik test yaz.
+Ayrıca yeni eklediğin her Go iş mantığı veya bugfix için ilgili `*_test.go` dosyasında (`engine_test.go`, `gaps_test.go`, `lanes_test.go`, `main_*_test.go`, `server_test.go`) otomatik test yaz; `gh` gerektiren akışlar için `newGHStub(t)`, SVG yerleşim/geometri değişiklikleri için `tests/js/canvas.test.mjs` kullan. Ayrıntılar `HANDOVER.md` Bölüm 8'dedir.
