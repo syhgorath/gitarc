@@ -99,6 +99,8 @@ type DiffFileSummary struct {
 	Status    string `json:"status"` // "M", "A", "D", "R"
 	Additions int    `json:"additions"`
 	Deletions int    `json:"deletions"`
+	// Patch: yalnızca bu dosyanın diff'i (satır içi paneller için; çok büyükse kırpılır, tamamı RawDiff'tedir).
+	Patch string `json:"patch,omitempty"`
 }
 
 // DiffResult represents a full diff inspection result for a commit, branch, or working tree.

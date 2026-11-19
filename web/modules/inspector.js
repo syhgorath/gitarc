@@ -280,11 +280,12 @@ export function renderInspector(callbacks = {}) {
     html += syncedCardHtml(b);
   }
 
+  // Değişen dosyalar kartı HER dal için aynı: dosya dosya +/- ve tıklayınca o dosyanın diff'i (eskiden yalnızca adlar vardı
+  // ve içeriğe ulaşılamıyordu). Birleşmiş dal birleşme commit'inden, diğerleri dal/çalışma alanından okunur.
   const mergeCommit = mergeCommitOf(b, snap);
-  if (mergeCommit && !isVirtualWip) {
+  const hasFiles = Boolean(mergeCommit) || (b.changedFiles || []).length > 0;
+  if (hasFiles) {
     html += mergedFilesCardHtml();
-  } else if (b.changedFiles?.length) {
-    html += changedFilesCardHtml(b);
   }
 
   if (b.pr && isOpen) {
@@ -308,35 +309,38 @@ export function renderInspector(callbacks = {}) {
   }
 
   wireBranchControls(b, v, callbacks);
-  if (mergeCommit && !isVirtualWip) loadMergedFiles(b, mergeCommit, callbacks);
+  if (hasFiles) loadMergedFiles(b, mergeCommit, callbacks);
 }
 
-// Birleşmiş dalın dosya listesi: birleşme commit'inin diff'inden (dosya dosya +/-) yüklenir; satıra tıklayınca tam diff açılır.
+// Dal pencerelerindeki dosya listesi: diff'ten (dosya dosya +/-) yüklenir; satıra tıklayınca O DOSYANIN diff'i açılır.
+// Diff alınamazsa (örn. çevrimdışı) bilinen dosya adları istatistiksiz gösterilir.
 async function loadMergedFiles(b, mergeCommit, callbacks) {
-  const sha = mergeCommit.sha || mergeCommit.shortSha;
-  try {
-    let res;
-    if (state.offlineMode || window.location.protocol === 'file:') {
-      res = window.LocalFallbackEngine?.getDiff ? window.LocalFallbackEngine.getDiff(sha, 'merge') : { files: [] };
-    } else {
-      res = await apiCall(`/api/diff?target=${encodeURIComponent(sha)}&type=merge`);
-    }
+  const [target, type] = diffArgsFor(b, state.snapshot);
+  const fallbackFiles = (b.changedFiles || []).map((path) => ({ path, status: 'M' }));
+  const paint = (files, countText) => {
     if (state.selectedBranchId !== b.id) return; // kullanıcı başka bir öğeye geçti
     const list = document.getElementById('merged-files-list');
     const count = document.getElementById('merged-files-count');
     if (!list) return;
-    const files = res?.files || [];
     list.innerHTML = mergedFilesRowsHtml(files);
-    if (count) count.textContent = `${files.length} dosya · +${res?.totalAdds || 0} / -${res?.totalDels || 0}`;
+    if (count) count.textContent = countText;
     list.querySelectorAll('.merged-file-row').forEach((row) => {
       row.addEventListener('click', () => {
-        if (callbacks.onOpenDiff) callbacks.onOpenDiff(sha, 'merge');
+        const f = files[Number(row.getAttribute('data-file-idx'))];
+        if (callbacks.onOpenDiff) callbacks.onOpenDiff(target, type, f?.path || '');
       });
     });
+  };
+  try {
+    let res;
+    if (state.offlineMode || window.location.protocol === 'file:') {
+      res = window.LocalFallbackEngine?.getDiff ? window.LocalFallbackEngine.getDiff(target, type) : { files: [] };
+    } else {
+      res = await apiCall(`/api/diff?target=${encodeURIComponent(target)}&type=${encodeURIComponent(type)}`);
+    }
+    const files = res?.files?.length ? res.files : fallbackFiles;
+    paint(files, `${files.length} dosya · +${res?.totalAdds || 0} / -${res?.totalDels || 0}`);
   } catch (err) {
-    const count = document.getElementById('merged-files-count');
-    if (count) count.textContent = 'okunamadı';
-    const list = document.getElementById('merged-files-list');
-    if (list) list.innerHTML = `<div class="muted">Dosyalar alınamadı: ${esc(err.message)}</div>`;
+    paint(fallbackFiles, fallbackFiles.length ? `${fallbackFiles.length} dosya` : 'okunamadı');
   }
 }

@@ -25,6 +25,15 @@ export function diffLinesHtml(rawPatch) {
   }).join('');
 }
 
+// Satır içi panelin dosya sekmeleri: her dosya bir sekme (ad, +/-); seçili olan işaretlenir.
+export function diffTabsHtml(files, activeIdx = 0) {
+  return `<div class="studio-diff-tabs">${(files || []).map((f, i) => `
+    <button type="button" class="studio-diff-tab ${i === activeIdx ? 'active' : ''}" data-diff-tab="${i}" title="${esc(f.path)}">
+      <span class="studio-diff-tab-name">${esc((f.path || '').split('/').pop())}</span>
+      <span class="diff-stat-add">+${f.additions || 0}</span><span class="diff-stat-del">-${f.deletions || 0}</span>
+    </button>`).join('')}</div>`;
+}
+
 export function diffPanelHtml(firstFile, linesHtml) {
     return `
       <div class="studio-diff-container">
@@ -174,19 +183,24 @@ export async function renderStudioInlineDiff(targetObj, onOpenDiff = null) {
       return;
     }
 
-    const firstFile = diffData.files[0];
+    const files = diffData.files;
     if (el.studioDiffMeta) {
-      el.studioDiffMeta.textContent = `${diffData.files.length} dosya (${truncate(firstFile.path || '', 22)})`;
+      el.studioDiffMeta.textContent = `${files.length} dosya · +${diffData.totalAdds || 0} / -${diffData.totalDels || 0}`;
     }
 
-    const rawPatch = firstFile.patch || '';
-    if (!rawPatch) {
-      el.studioDiffContent.innerHTML = `<div class="studio-placeholder">Dosya: ${esc(firstFile.path)} (İkili veya boş içerik)</div>`;
-      return;
-    }
-
-    const linesHtml = diffLinesHtml(rawPatch);
-    el.studioDiffContent.innerHTML = diffPanelHtml(firstFile, linesHtml);
+    // Dosya sekmeleri: her dosyanın içeriği (eklenen/silinen satırlar) bir tıkla görünür.
+    const show = (idx) => {
+      const file = files[idx];
+      const rawPatch = file.patch || '';
+      const body = rawPatch
+        ? diffPanelHtml(file, diffLinesHtml(rawPatch))
+        : `<div class="studio-placeholder">Dosya: ${esc(file.path)} (ikili dosya ya da içerik yok)</div>`;
+      el.studioDiffContent.innerHTML = (files.length > 1 ? diffTabsHtml(files, idx) : '') + body;
+      el.studioDiffContent.querySelectorAll('.studio-diff-tab').forEach((tab) => {
+        tab.addEventListener('click', () => show(Number(tab.getAttribute('data-diff-tab'))));
+      });
+    };
+    show(0);
   } catch (err) {
     el.studioDiffContent.innerHTML = `<div class="studio-placeholder">Diff alınamadı: ${esc(err.message)}</div>`;
     if (el.studioDiffMeta) el.studioDiffMeta.textContent = 'Hata';

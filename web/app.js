@@ -48,7 +48,7 @@ export function getActionCallbacks() {
     onDeleteBranch: handleDeleteBranch,
     onPruneGone: handlePruneGone,
     onOpenConflictStudio: openConflictStudio,
-    onOpenDiff: (target, type) => openDiffViewer(target, type),
+    onOpenDiff: (target, type, focusPath) => openDiffViewer(target, type, focusPath),
     onFixCI: handleFixCI,
     onLocalTestRun: handleLocalTestRun,
     onEditPR: handleEditPR,

@@ -46,3 +46,21 @@ test('offline engine never suggests deleting a copy that is not there', () => {
     if (/git push origin --delete/.test(b.suggestedCmd || '') && (b.state === 'merged' || b.originGone)) assert.ok(b.hasRemote, `${b.name}: remote delete suggested without a remote copy`);
   }
 });
+
+import { diffTabsHtml } from '../../web/modules/studio.js';
+
+test('file rows without stats (offline fallback) show the name but no +0/-0', () => {
+  const html = mergedFilesRowsHtml([{ path: 'a.go', status: 'M' }]);
+  assert.match(html, /a\.go/);
+  assert.doesNotMatch(html, /diff-stat-add/);
+});
+
+test('inline diff tabs: one tab per file with +/- and the active one marked; hostile names escaped', () => {
+  const html = diffTabsHtml([{ path: 'internal/a.go', additions: 3, deletions: 1 }, { path: '<img src=x>.go' }], 1);
+  assert.equal((html.match(/studio-diff-tab /g) || []).length, 2);
+  assert.match(html, /data-diff-tab="0"/);
+  assert.match(html, /studio-diff-tab active" data-diff-tab="1"/);
+  assert.match(html, /diff-stat-add">\+3/);
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /a\.go/, 'shows the file name, not the whole path');
+});

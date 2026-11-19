@@ -45,3 +45,12 @@ test('every el.<name> used in the code is defined in the registry', () => {
   }
   assert.deepEqual([...new Set(undefinedUses)], [], 'el.* properties used but never defined in state.js');
 });
+
+// Regression: the Diff viewer ids (`diff-viewer-modal`, `diff-files-list`, ...) existed in index.html and as aliases but were
+// never in the `ids` list, so `el.diffModal` was undefined and `openDiffViewer` returned at once: the modal could not be opened
+// from anywhere ("Diff Gör", file rows). An alias to an id that is not registered is always undefined.
+test('every el.<alias> = el[id] uses an id that is actually in the registered ids list', () => {
+  const registered = new Set(registryIds);
+  const orphan = aliasIds.filter((a) => !registered.has(a.id));
+  assert.deepEqual(orphan.map((a) => `${a.prop}→${a.id}`), [], 'aliases pointing at ids missing from the ids list are always undefined');
+});

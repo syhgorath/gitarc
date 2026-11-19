@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.10.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **166 üst düzey Go testi + 215 JS testi geçti** (`gitarc`: 21 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 106 · kapsam **%84**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **170 üst düzey Go testi + 218 JS testi geçti** (`gitarc`: 21 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 106 · kapsam **%84**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 

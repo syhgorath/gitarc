@@ -4076,3 +4076,37 @@ body.demo-mode .loading-hint,
 body.no-project .loading-hint {
   display: none;
 }
+
+/* Satır içi diff panelinin dosya sekmeleri */
+.studio-diff-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.studio-diff-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.studio-diff-tab.active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.studio-diff-tab-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
