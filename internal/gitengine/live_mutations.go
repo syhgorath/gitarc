@@ -385,7 +385,7 @@ func (m *Manager) amendLastCommitLive(live *repoEntry, branchID, message string)
 }
 
 func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	_, _, _ = runCmd(ctx, live.path, "git", "fetch", "--prune", "origin")
@@ -443,6 +443,9 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 	if remoteName == "" {
 		remoteName = "origin"
 	}
+	// Uzak kopyalar TEK `git push --delete a b c` ile silinir: her dal için ayrı push (ve ağ gidiş-dönüşü) yavaş
+	// bir bağlantıda zaman bütçesini bitiriyor, ilk birkaç dal silinip kalanı sessizce atlanıyordu.
+	var remoteTargets []string
 	for _, b := range snapBefore.Branches {
 		if !b.HasRemote || b.Name == currentBranch || b.Name == defBranch || b.LongLived {
 			continue
@@ -455,14 +458,39 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 			continue
 		}
 		if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/remotes/"+remoteName+"/"+b.Name); err == nil {
-			if _, _, err := runCmd(ctx, live.path, "git", "push", remoteName, "--delete", b.Name); err == nil {
-				removedNames[b.Name] = true
+			remoteTargets = append(remoteTargets, b.Name)
+		}
+	}
+	var pushOut string
+	var pushErr error
+	if len(remoteTargets) > 0 {
+		args := append([]string{"push", remoteName, "--delete"}, remoteTargets...)
+		pushOut, _, pushErr = runCmd(ctx, live.path, "git", args...)
+		for _, n := range remoteTargets {
+			// Başarıyı komutun çıkış koduna değil gerçek sonuca bakarak say (kısmi başarı mümkün).
+			if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/remotes/"+remoteName+"/"+n); err != nil {
+				removedNames[n] = true
 			}
 		}
 	}
 
 	InvalidateGHCache(live.path)
 	snap, err := m.Snapshot()
+	if err == nil && pushErr != nil {
+		failed := len(remoteTargets)
+		for _, n := range remoteTargets {
+			if removedNames[n] {
+				failed--
+			}
+		}
+		if failed > 0 {
+			detail := fmt.Sprintf("%d uzak dal silinemedi: %s", failed, strings.TrimSpace(pushOut))
+			if len(removedNames) == 0 {
+				return snap, 0, fmt.Errorf("%s", detail)
+			}
+			m.recordLog("info", "Kalıntı Temizliği", "", detail, "")
+		}
+	}
 	return snap, len(removedNames), err
 }
 

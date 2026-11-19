@@ -1,8 +1,12 @@
 package gitengine
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gitarc/internal/model"
 )
@@ -76,5 +80,51 @@ func TestPruneGoneFinishesInOneClick(t *testing.T) {
 	out, _ := runGitOut(dir, "branch", "-a")
 	if strings.Contains(out, "feat/") {
 		t.Errorf("leftover feature branches after one cleanup:\n%s", out)
+	}
+}
+
+// Kullanıcının yakaladığı hata: 9 kalıntı daldan yalnızca 1-2'si siliniyordu. Her dal için ayrı `git push --delete`
+// yavaş bir uzak depoda (burada: her push'a 2 sn ekleyen bir kanca) 15 sn'lik bütçeyi bitiriyor, kalanlar sessizce
+// atlanıyordu. Şimdi tüm uzak kopyalar TEK push ile silinir.
+func TestPruneGoneDeletesManyRemoteBranchesDespiteSlowRemote(t *testing.T) {
+	dir, run := newGitHubLikeRepo(t)
+	const n = 10
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("feat/old-%d", i)
+		addFeatureBranch(t, dir, run, name)
+		run("push", "-u", "origin", name)
+		run("merge", "--no-ff", name, "-m", "Merge pull request #1 from "+name)
+		run("branch", "-D", name) // yalnızca uzak kopya kalsın
+	}
+	run("push", "origin", "main")
+
+	bare, err := runGitOut(dir, "remote", "get-url", "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := filepath.Join(strings.TrimSpace(bare), "hooks", "pre-receive")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nsleep 2\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := NewManager(dir)
+	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	snap, removed, err := mgr.PruneGone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != n {
+		t.Errorf("removed = %d, want %d (took %s)", removed, n, time.Since(start))
+	}
+	for _, b := range snap.Branches {
+		if b.Prunable {
+			t.Errorf("still prunable: %s", b.Name)
+		}
+	}
+	if out, _ := runGitOut(dir, "ls-remote", "--heads", "origin"); strings.Contains(out, "feat/old-") {
+		t.Errorf("remote still has old branches:\n%s", out)
 	}
 }
