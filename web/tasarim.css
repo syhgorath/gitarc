@@ -2061,6 +2061,13 @@ body {
   font-weight: 600;
 }
 
+.dock-badge.danger,
+.dock-tab.active .dock-badge.danger {
+  background: var(--danger-weak);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+}
+
 .dock-tab.active .dock-badge {
   background: var(--accent);
   color: #fff;
