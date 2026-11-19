@@ -14,7 +14,7 @@ import (
 // tests never touch the network or the developer's real GitHub account.
 //
 // Keys: pr_list_open, pr_list_merged, pr_list_merged_head, pr_create, pr_merge,
-// pr_edit, pr_close, run_view, api_protection_get, api_protection_put, api_rulesets.
+// pr_edit, pr_close, run_view, run_list, api_protection_get, api_protection_put, api_rulesets.
 // Every invocation is appended to calls.log; stdin of `api -X PUT` is saved to
 // api_protection_put.stdin.
 type ghStub struct {
@@ -41,7 +41,11 @@ case "$1" in
       edit) key="pr_edit" ;;
       close) key="pr_close" ;;
     esac ;;
-  run) key="run_view" ;;
+  run)
+    case "$2" in
+      list) key="run_list" ;;
+      *) key="run_view" ;;
+    esac ;;
   api)
     case "$all" in
       *"-X PUT"*) key="api_protection_put"; cat > "$d/$key.stdin" ;;

@@ -37,3 +37,11 @@ test('defensive defaults', () => {
   assert.equal(pollDecision(), 'skip');
   assert.equal(pollDecision({}), 'skip');
 });
+
+test('main CI running after a merge keeps the loop refreshing until it finishes', () => {
+  const snap = { repo: { mainCI: { state: 'RUNNING' } }, branches: [] };
+  assert.equal(hasPendingCI(snap), true);
+  assert.equal(pollDecision({ snap, now: 100000, lastFullAt: 0, selectionActive: true }), 'fetch');
+  assert.equal(hasPendingCI({ repo: { mainCI: { state: 'SUCCESS' } }, branches: [] }), false);
+  assert.equal(hasPendingCI({ repo: { mainCI: { state: 'FAILURE' } }, branches: [] }), false);
+});

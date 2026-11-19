@@ -401,3 +401,21 @@ func BuildDiagnostics(branches []model.BranchArc) []model.DiagnosticItem {
 
 	return items
 }
+
+// mainCIFailureDiag: omurga dalının son CI çalıştırması başarısızsa kritik uyarı (merge sonrası testler kırık).
+func mainCIFailureDiag(mc *model.MainCIStatus, defaultBranch string) model.DiagnosticItem {
+	detail := strings.TrimSpace(strings.Join([]string{mc.SHA, mc.Title}, " · "))
+	if strings.Trim(detail, " ·") == "" {
+		detail = "Son çalıştırma başarısız"
+	}
+	return model.DiagnosticItem{
+		ID:         "main-ci-failure",
+		Severity:   "critical",
+		Kind:       "main_ci_failure",
+		BranchName: defaultBranch,
+		Title:      fmt.Sprintf("%s CI kırık: %s", defaultBranch, mc.Workflow),
+		Detail:     detail,
+		ActionHint: "Başarısız çalıştırmayı GitHub Actions'ta açıp inceleyin",
+		URL:        mc.URL,
+	}
+}

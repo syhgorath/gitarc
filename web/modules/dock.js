@@ -119,6 +119,7 @@ export function renderRadar(callbacks = {}) {
     else if (d.kind === 'conflict') kindLabel = 'Merge Çakışması';
     else if (d.kind === 'cross_pr') kindLabel = 'Cross-PR Çarpışması';
     else if (d.kind === 'prune_candidate') kindLabel = 'Silinmiş/Kalıntı Dal';
+    else if (d.kind === 'main_ci_failure') kindLabel = 'Omurga Testleri Kırık';
 
     const files = d.files || b?.conflict?.files || [];
     let filesHtml = '';
@@ -144,6 +145,9 @@ export function renderRadar(callbacks = {}) {
     } else if (d.kind === 'prune_candidate') {
       actBtnText = '🧹 Dalı Temizle';
       actAction = 'prune';
+    } else if (d.kind === 'main_ci_failure') {
+      actBtnText = '🔗 Çalıştırmayı Aç';
+      actAction = 'open-url';
     }
 
     const suggestedCmd = b?.suggestedCmd || d.actionHint || '';
@@ -156,7 +160,7 @@ export function renderRadar(callbacks = {}) {
           <strong class="rc-title">${esc(d.title)}</strong>
         </div>
         <div class="rc-actions">
-          <button type="button" class="rc-action-btn" data-act="${actAction}" data-branch="${esc(d.branchId || '')}">${actBtnText}</button>
+          <button type="button" class="rc-action-btn" data-act="${actAction}" data-branch="${esc(d.branchId || '')}" data-url="${esc(d.url || '')}">${actBtnText}</button>
         </div>
       </div>
       <div class="rc-body">
@@ -176,7 +180,11 @@ export function renderRadar(callbacks = {}) {
       ev.stopPropagation();
       const act = ev.currentTarget.dataset.act;
       const brId = ev.currentTarget.dataset.branch;
-      if (act === 'studio' && brId && onOpenConflictStudio) {
+      if (act === 'open-url') {
+        const url = ev.currentTarget.dataset.url || '';
+        if (url.startsWith('https://')) window.open(url, '_blank', 'noopener');
+        else showToast('Çalıştırma bağlantısı bulunamadı', 'warn');
+      } else if (act === 'studio' && brId && onOpenConflictStudio) {
         onOpenConflictStudio(brId);
       } else if (act === 'prune' && onPruneGone) {
         onPruneGone();

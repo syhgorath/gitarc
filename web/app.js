@@ -461,6 +461,10 @@ async function bootstrap() {
   el.studioApplyBtn?.addEventListener('click', () => applyConflictStudio(applySnapshot));
 
   // Security & Protection Modal Events
+  el.btnMainCI?.addEventListener('click', () => {
+    const url = el.btnMainCI.dataset.url;
+    if (url && url.startsWith('https://')) window.open(url, '_blank', 'noopener');
+  });
   el.btnProtectBranch?.addEventListener('click', () => {
     if (el.securityUpdateModal) el.securityUpdateModal.hidden = false;
     renderSecurityUpdateModal();
