@@ -93,7 +93,7 @@ func TestPostOnlyEndpointsRejectGET(t *testing.T) {
 
 func TestStaticAssetsAreNeverCachedAndHaveNoHardcodedVersionQuery(t *testing.T) {
 	c := newAPIClient(t, gitengine.NewManager(""))
-	for _, p := range []string{"/", "/app.js", "/tasarim.css", "/modules/canvas.js"} {
+	for _, p := range []string{"/", "/app.js", "/tasarim.css", "/modules/scene.js"} {
 		req := httptest.NewRequest(http.MethodGet, "http://"+c.host+p, nil)
 		req.Host = c.host
 		rec := httptest.NewRecorder()
