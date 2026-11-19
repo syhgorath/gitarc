@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.8.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -v ./... && go build -o gitarc .` → **20/20 test geçti** (`gitarc`: 2, `gitarc/internal/gitengine`: 17, `gitarc/internal/mcp`: 1, `gitarc/internal/model`: test dosyası yok), `node --check web/app.js` → **0 hata**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **86 üst düzey Go testi + 19 JS testi geçti** (`gitarc`: 10 (JS sarmalayıcı dahil), `internal/gitengine`: 73 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -39,13 +39,14 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
   - Bayraklar: `-addr` (`127.0.0.1:7432`), `-repo` (`.`, demo için `"sim"`), `-open` (`true`), `-mcp` (`false`), `-team` (`false`).
   - Statik dosyaları `//go:embed web` ile gömer ve kök yanıtta sıkı CSP başlığı set eder:
     `default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'none'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`
-  - **23 `/api/*` uç noktası** (`a.guard(...)` arkasında):
-    - `GET /api/snapshot`
-    - `POST /api/repo/switch`, `/api/repo/add`, `/api/repo/remove`
-    - `POST /api/branch/create`, `/api/branch/checkout`, `/api/branch/merge`, `/api/branch/promote`, `/api/working-tree/commit`, `/api/working-tree/discard`, `/api/working-tree/diff-stat`
+  - **32 `/api/*` rota kaydı** (`a.guard(...)` arkasında; eski istemciler için `/api/sync-spine`, `/api/reset`, `/api/run-local`, `/api/branch/prune-gone` takma adları dahil):
+    - `GET /api/snapshot`, `GET /api/diff` (`POST` da kabul eder), `GET /api/system/git-status-ping` (sıfır maliyetli değişiklik algılama imzası)
+    - `POST /api/repo/switch`, `/api/repo/add`, `/api/repo/remove`, `/api/system/choose-folder`
+    - `POST /api/branch/create`, `/api/branch/checkout`, `/api/branch/merge`, `/api/branch/promote`, `/api/working-tree/commit`, `/api/working-tree/discard`, `/api/working-tree/diff-stat`, `/api/proposal/dismiss`
     - `POST /api/conflict/inspect`, `/api/branch/resolve`, `/api/branch/fix-ci`
     - `POST /api/branch/delete`, `/api/branch/prune`, `/api/pr/edit`, `/api/commit/amend`
     - `POST /api/spine/sync`, `/api/logs/clear`, `/api/system/update-check`, `/api/repo/protect`, `/api/simulation/reset`, `/api/test/run`
+  - `Cache-Control: no-cache, no-store, must-revalidate` (+ `Pragma`, `Expires`) tüm statik dosyalara `root()` üzerinden eklenir; bu yüzden `index.html` içinde **elle yazılı `?v=...` sürüm sorgusu kullanılmaz** (bkz. Bölüm 6, madde 7).
 - **`internal/model/model.go`:** Frontend ve MCP'nin tükettiği tüm JSON veri kontratları (`CockpitSnapshot`, `RepoMeta`, `BranchArc`, `PRStatus`, `CIStatus`, `ConflictDetail`, `CrossPRWarning`, `ConflictStudioPayload`, `ActionLogEntry`).
 - **`internal/gitengine/collector.go`:**
   - `AppVersion` sabiti (`VERSION` dosyası ile her zaman senkron tutulmalıdır!).
@@ -59,6 +60,8 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 - **`internal/gitengine/live_mutations.go`:**
   - Canlı Git ve GitHub mutasyonlarının tamamı (`commitWorkingTreeLive`, `promoteBranchLive`, `mergeBranchLive`, `deleteBranchLive`, `pruneGoneLive` otomatik `HEAD → main` geçişi, `updatePRMetaLive`, `amendLastCommitLive`, `createBranchLive`, `checkoutBranchLive`).
   - Her mutasyon öncesi `IsTeamMode()` ve güvenlik kontrolleri yapılır, sonuç `m.recordLog` / `m.logLiveOutcome` ile geçmişe yazılır.
+- **`internal/gitengine/lanes.go`:** `AssignLanes` — her yarı-küre (`upper`/`lower`) için bağımsız, deterministik interval packing. Kısa aralıklar iç şeride (Lane 1) gider, eşitlikte `start` sonra `Name` sırası kullanılır; açık/gone dallar uç kapsülü için +1 tampon ayırır. **Şerit sayısı sınırsızdır** (eski `MaxHemisphereLanes = 4` kaldırıldı); `web/fallback.js` içindeki kopyası aynı davranışı korur (Tri-Mode eşliği).
+- **Diğer `internal/gitengine` dosyaları:** `collector_github.go` (`gh` ile açık/birleşmiş PR, CI ve Branch Protection/Ruleset sorgusu, 10 sn `ghCache`; `InvalidateGHCache` her mutasyondan sonra çağrılır), `diagnostics.go` (CI log ayıklama, Cross-PR, `IsSpecialAutoMergeFile`), `diff_service.go`, `guard_config.go` (secret/`git add -A` kalkanı), `proposals.go` (AI commit/PR teklif IPC dosyası `.git/gitarc_proposal.json`), `logs_persistence.go` (`~/.gitarc/logs.json`), `playground.go`, `simulation_enterprise_mock.go`.
 - **`internal/gitengine/conflict_studio.go`:** `InspectBranchConflict` ve `ResolveBranchConflict`. Çakışan dosyaları geçici `git worktree add --detach` üzerinde 3-yollu `git merge-file -p` ile inceler; çözümden sonra `go.mod` mevcutsa `go vet ./...` çalıştırır, hata alırsa `worktree`'yi temizleyip pushlamadan hatayı döner.
 - **`internal/mcp/server.go`:** MCP JSON-RPC 2.0 `stdio` sunucusu (`protocolVersion = "2024-11-05"`). Sunulan 5 araç: `gitarc_status`, `gitarc_check_conflicts`, `gitarc_ci_failure_digest`, `gitarc_sync_main`, `gitarc_resolve_conflict`.
 
@@ -74,8 +77,10 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 - **`web/tasarim.css`:** Tüm tema renkleri (`--sky`, `--purple`, `--emerald`, `--danger`, `--warn`, `--warn-orange`), SVG yay animasyonları (`ciStrokePulse`, `ciRunningPulse`), kart nabız halkaları (`pulseRedRing`, `pulseRunningRing`, `dotBlink`), **PocketUI Bottom Dock** (`.bottom-dock`, `.dock-collapsed`), **Tam Genişlik Hata Radarı Kartları** (`.radar-card`, `.rc-header`, `.rc-badge`, `.rc-files-row`, `.rc-ci-snippet`, `.rc-cmd-row`), ve modal/form düzenleri.
 - **`web/fallback.js`:**
   - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti bağımsız çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur, simüle CI extraction, çakışma ve pipeline yönetimini barındırır). `app.js`'den önce yüklenir (`window.LocalFallbackEngine`).
+- **`web/modules/*.js` (ES modülleri, `app.js` bunları içe aktarır):** `state.js` (reaktif durum + DOM kayıt defteri), `constants.js` (`MAIN_Y`, `SPINE_STEP_X`, `LANE_*` geometri sabitleri), `utils.js` (`esc`, `svgEl`, durum yardımcıları), `api.js`, `canvas.js` (SVG parabol geometrisi ve kapsüller), `inspector.js`, `dock.js`, `modals.js`.
+  - **`canvas.js` yerleşim mantığı:** `layoutSpinePositions` (omurga düğümleri dal kalabalığına göre açılır, hep artan sıra), `layoutBranchCrowd` (birleşmiş dallar için `{crowd, rank}`), `yOfLane` (şerit sınırı yok), `computeBranchGeometry` (birleşmiş yaylarda dış şeritler daha yüksek ve geniş olur, sol marj `SPINE_START_X - 50`), `layoutOpenApexPositions` (açık kapsüller arası en az `OPEN_CAPSULE_MIN_GAP_X`). Tüm birleşmiş dallar gösterilir (eski "son 8 yay" katlaması kaldırıldı); sahne yüksekliği/genişliği sabit üst sınıra takılmaz.
 - **`web/app.js`:**
-  - Ana kokpit kontrolcüsü, DOM/SVG render, durum yönetimi ve olay dinleyicileri.
+  - Ana kokpit orkestratörü, yaşam döngüsü ve olay dinleyicileri.
   - `apiCall(path, method, body)`: Tüm POST isteklerine `X-Requested-With: gitarc` başlığı ekler.
   - 4 saniyelik sessiz canlı polling (`setInterval`, `snapshotSignature(snap)` değişirse `applySnapshot` çağırır; kullanıcı `INPUT`/`TEXTAREA`/`SELECT` odaklıyken veya modal/drag açıkken DOM'u ezmez).
   - `setupBottomDock()` & `renderRadar()`: Alt çekmece sekmeleri ve tam genişlikte, etkilenen dosya etiketli, CI kırılma özetli ve tek tık aksiyonlu hata radarı kartları render edilir.
@@ -102,8 +107,8 @@ Ekonomik modeller bir katmanı atlayıp tutarsızlık üretmemesi için her yeni
    - Modelde yeni değişebilen bir alan varsa **`snapshotSignature(snap)`** içine mutlaka dahil et (yoksa 4 saniyelik canlı güncelleme UI'ı yenilemez!).
    - Tüm kullanıcı verilerini DOM'a basarken **`esc(...)`** ile HTML escape et.
 5. **Doğrulama & Testler:**
-   - İlgili `*_test.go` dosyasına test ekle (`t.TempDir()` ile gerçek geçici git reposu kurarak test et).
-   - `go vet ./... && go test -count=1 -v ./... && go build -o gitarc .` ve `node --check web/app.js` çalıştır.
+   - İlgili `*_test.go` dosyasına test ekle (`newTempRepo(t)` / `t.TempDir()` ile gerçek geçici git reposu kur). `gh` gerektiren akışlar için `newGHStub(t)`, SVG yerleşim değişiklikleri için `tests/js/canvas.test.mjs` kullan (Bölüm 8).
+   - `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` ve `node --check web/*.js web/modules/*.js` çalıştır.
 
 ---
 
@@ -139,11 +144,35 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
    - `CHANGELOG.md` veya lock dosyalarında `union` (ikisini alt alta koru) güvenli ve önerilir (`★ ÖNERİLEN`), fakat `.go` / kaynak kod dosyalarında iki tarafın aynı satırdaki değişken tanımını (`:=`) alt alta yapıştırarak `no new variables on left side of :=` derleme hatası üretebilir. Bu yüzden `conflict_studio.go` kaynak kod dosyalarında `ours` önerir ve her çözümde `go vet ./...` kapısından geçirir.
 6. **Sürüm Numarası Eşliği:**
    - Yeni sürüm kesildiğinde **`VERSION`**, **`internal/gitengine/collector.go` (`AppVersion`)** ve **`CHANGELOG.md`** mutlaka güncellenmelidir; `TestMegaRepoCacheTeamModeAndProtection` içindeki `CheckForUpdates` testi `AppVersion` eşitliğini doğrular.
+7. **Önbellek ve sürüm sorgusu:**
+   - `web/index.html` içine `tasarim.css?v=0.8.0` gibi elle yazılı sürüm sorgusu **ekleme**: sunucu zaten her statik dosyaya `no-store` verir, ES modülleri (`modules/*.js`) sorguyu hiç almaz ve sürüm yükselince unutulur. `TestStaticAssetsAreNeverCachedAndHaveNoHardcodedVersionQuery` bunu denetler.
+8. **Testler gerçek `~/.gitarc` dizinine yazmamalı:**
+   - `NewManager`, `recordLog` ve `AddProject` `$HOME/.gitarc/{logs,projects}.json` dosyalarına yazar. Her test paketinde (`gitarc`, `internal/gitengine`, `internal/mcp`) `TestMain` `HOME`/`USERPROFILE`'ı geçici dizine alır. Yeni bir test paketi eklersen aynı `TestMain`'i ekle, yoksa testler geliştiricinin gerçek loglarını ve proje listesini kirletir/siler.
+9. **Şerit sınırı yok:**
+   - Yeni kod `MaxHemisphereLanes`/`lane <= 4` gibi bir üst sınır varsaymamalı (`yOfLane`, `computeBranchGeometry`, `AssignLanes`, `fallback.js`). Mega-repo demosunda sahne dikeyde uzar; bu bilinçli bir tercihtir (`TestAssignLanesNoLaneCap`, canvas testleri korur).
+10. **`go test` kapsamı ve node:**
+    - `canvas_js_test.go` `node --test tests/js/` komutunu çalıştırır; node yoksa test atlanır (CI `ubuntu-latest` üzerinde node hazırdır). `tests/js/` `web/` dışındadır, bu yüzden ikiliye gömülmez ve CSP testine takılmaz.
 
 ---
 
 ## 7. Sıradaki Geliştirme Fikirleri (Backlog)
 
-Kullanıcıyla konuşulan ama henüz başlanmamış iki başlık:
 1. Kullanıcının sonradan ileteceği ek **UI geliştirme fikirleri** (kullanıcı tarif ettiğinde ele alınacak).
 2. Ekran görüntüleri (`docs/` altında) eklenerek zenginleştirilmiş **`README.md` güzelleştirmesi**.
+3. **Testsiz kalan yollar:** `handleChooseFolder` ve `openBrowser` (işletim sistemi diyaloğu/süreç başlatma), `main()`, `gh` kurulu olmayan ortam dalları (`PATH`'ten `gh` çıkarılarak denenmeli).
+4. **`CHANGELOG.md`:** şerit sınırının kaldırılması, dinamik omurga yerleşimi ve test altyapısı (`0.8.0` altında veya yeni sürümde) henüz kayda geçmedi.
+
+---
+
+## 8. Test Altyapısı
+
+| Katman | Konum | Ne test eder |
+| :--- | :--- | :--- |
+| Go birim/entegrasyon | `internal/gitengine/*_test.go` | Gerçek geçici git depolarıyla mutasyonlar (`newTempRepo`), `lanes_test.go` (şerit paketleme), `gaps_test.go` (proje yönetimi, sync, merge, sürüm kontrolü), `helpers_test.go` (saf yardımcılar + canlı create/checkout/amend) |
+| Sahte `gh` stub'ı | `internal/gitengine/ghstub_test.go`, `gh_stub_test.go` | PATH başına geçici bir `gh` kabuk betiği konur; çıktı/çıkış kodu `stub.set("pr_list_open", json, 0)` ile ayarlanır, çağrılar `stub.called(...)` ile doğrulanır. GitHub uzak deposu, yolunda `github.com` geçen **yerel bare depodur** (`newGitHubLikeRepo`), yani hiçbir push/fetch diskin dışına çıkmaz. Windows'ta atlanır |
+| HTTP/güvenlik | `main_test.go`, `main_guard_test.go`, `main_handlers_test.go` | Host/Origin/CSRF/çerez, `decodePOST` (405/400/1 MB), simülasyon ve canlı depoda uçtan uca handler akışı, statik dosya başlıkları, CSP |
+| MCP | `internal/mcp/server_test.go` | JSON-RPC araçları |
+| Canvas (JS) | `tests/js/canvas.test.mjs` (+ `canvas_js_test.go` sarmalayıcısı) | `canvas.js` geometri/yerleşim değişmezleri (Node yerleşik `node:test`, npm bağımlılığı yok) |
+| İzolasyon | her pakette `main_test.go` / `main_home_test.go` | `TestMain` → `HOME` geçici dizin |
+
+**Yeni `gh` davranışı test ederken:** `newGHStub(t)` çağır, anahtarlar: `pr_list_open`, `pr_list_merged`, `pr_list_merged_head`, `pr_create`, `pr_merge`, `pr_edit`, `pr_close`, `run_view`, `api_protection_get`, `api_protection_put`, `api_rulesets`. Her mutasyon testinde `InvalidateGHCache(dir)` çağırmayı unutma (10 sn önbellek).
