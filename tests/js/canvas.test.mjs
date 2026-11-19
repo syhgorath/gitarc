@@ -10,7 +10,7 @@ import {
 import {
   xOfSpine, layoutSpinePositions, layoutBranchCrowd, yOfLane,
   layoutOpenApexPositions, computeBranchGeometry, branchToneClass,
-  branchStrokeColor, matchesFilter, computeView, MIN_READABLE_SCALE,
+  branchStrokeColor, matchesFilter, computeView, MIN_READABLE_SCALE, splitHistory, MAX_MERGE_SPREAD,
 } from '../../web/modules/canvas.js';
 
 const merged = (id, s, e, lane = 1, hemisphere = 'upper') =>
@@ -296,4 +296,44 @@ test('computeView: a realistic enterprise scene becomes readable after fix A + C
   assert.ok(lastSpine < 3600, `enterprise spine should stay compact, got ${lastSpine}`);
   const v = computeView({ sceneW: lastSpine + 240 + 2400, sceneH: 400, minY: 0, containerW: 1739 });
   assert.ok(1739 / v.viewW >= MIN_READABLE_SCALE - 1e-9);
+});
+
+test('splitHistory separates history-only branches from drawable ones', () => {
+  const list = [merged('a', 1, 2), { ...merged('h1', 0, 9), historyOnly: true }, open('o', 3, 4), { ...merged('h2', 0, 9), historyOnly: true }];
+  const { drawn, history } = splitHistory(list);
+  assert.deepEqual(drawn.map((b) => b.id), ['a', 'o']);
+  assert.deepEqual(history.map((b) => b.id), ['h1', 'h2']);
+  assert.deepEqual(splitHistory(null), { drawn: [], history: [] });
+  assert.deepEqual(splitHistory([null, undefined]).history, []);
+});
+
+test('splitHistory keeps every branch exactly once (nothing lost, nothing duplicated)', () => {
+  const list = Array.from({ length: 50 }, (_, i) => (i % 3 === 0 ? { ...merged(`m${i}`, 0, 9), historyOnly: true } : merged(`m${i}`, i % 5, (i % 5) + 2)));
+  const { drawn, history } = splitHistory(list);
+  assert.equal(drawn.length + history.length, list.length);
+  assert.equal(new Set([...drawn, ...history].map((b) => b.id)).size, list.length);
+});
+
+test('computeBranchGeometry: merge points never drift further than MAX_MERGE_SPREAD from their real position (prometheus regression)', () => {
+  state.spinePositions = undefined;
+  const real = computeBranchGeometry({ ...merged('flat', 4, 6, 1) });
+  for (const lane of [2, 6, 12, 40, 200]) {
+    const b = merged(`l${lane}`, 4, 6, lane);
+    const g = computeBranchGeometry(b, null, null, null, new Map([[b.id, { crowd: 40, rank: 39 }]]));
+    const leftDrift = real.startX - g.startX;
+    const rightDrift = g.endX - real.endX;
+    assert.ok(leftDrift <= MAX_MERGE_SPREAD + 1e-9, `lane ${lane}: start drifted ${leftDrift}`);
+    assert.ok(rightDrift <= MAX_MERGE_SPREAD + 1e-9, `lane ${lane}: end drifted ${rightDrift}`);
+  }
+});
+
+test('computeBranchGeometry: forty overlapping merged arches stay within a bounded width', () => {
+  const branches = Array.from({ length: 40 }, (_, i) => merged(`b${i}`, 2, 8, i + 1));
+  state.spinePositions = layoutSpinePositions(new Array(12).fill({}), branches);
+  const crowd = layoutBranchCrowd(branches);
+  const geoms = branches.map((b) => computeBranchGeometry(b, null, null, null, crowd));
+  const minX = Math.min(...geoms.map((g) => g.startX));
+  const maxX = Math.max(...geoms.map((g) => g.endX));
+  const trueSpan = xOfSpine(8) - xOfSpine(2);
+  assert.ok(maxX - minX <= trueSpan + 2 * MAX_MERGE_SPREAD + 1e-6, `scene ${maxX - minX} exceeds true span ${trueSpan} + 2*spread`);
 });

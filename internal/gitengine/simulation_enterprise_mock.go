@@ -1,6 +1,10 @@
 package gitengine
 
-import "gitarc/internal/model"
+import (
+	"fmt"
+
+	"gitarc/internal/model"
+)
 
 // buildEnterpriseSimulation creates a large-scale repository simulation representing
 // an enterprise engineering organization with 4 primary tracks and 50 active developers.
@@ -498,6 +502,38 @@ autoscaling:
 			LastCommitMsg:    "exp(sandbox): evaluate v8 isolate heap snapshot limits",
 			ChangedFiles:     []string{"runtime/v8/isolate.cc"},
 		},
+	}
+
+	// Geçmiş birleşmiş PR'lar: squash/eski merge nedeniyle merge noktaları omurga penceresinde
+	// bulunamaz. Gerçek bir konumları olmadığı için parabol çizilmez, "geçmiş" çipinde listelenir.
+	historyNames := []struct{ name, author string }{
+		{"feat/audit-log-export", "alice.chen"}, {"fix/s3-multipart-retry", "david.kim"},
+		{"chore/bump-protobuf-3-25", "elena.rostova"}, {"feat/rbac-service-accounts", "carlos.silva"},
+		{"docs/runbook-failover", "sarah.jenkins"}, {"fix/grpc-keepalive-leak", "kenji.sato"},
+		{"feat/tenant-quota-api", "fatima.zahra"}, {"refactor/config-loader", "lucas.muller"},
+	}
+	for i, h := range historyNames {
+		num := 760 + i*3
+		branches = append(branches, model.BranchArc{
+			ID:              fmt.Sprintf("br-ent-history-%d", num),
+			Name:            h.name,
+			Hemisphere:      "upper",
+			State:           "merged",
+			StartSpineIndex: 0,
+			EndSpineIndex:   len(nodes) - 1,
+			MergeSHA:        "",
+			OriginGone:      true,
+			HistoryOnly:     true,
+			Author:          h.author,
+			LastCommitMsg:   "merged: " + h.name,
+			PR: &model.PRStatus{
+				Number:      num,
+				Title:       "merged: " + h.name,
+				Author:      h.author,
+				ReviewState: "MERGED",
+				CI:          &model.CIStatus{State: "SUCCESS", Workflow: "ci.yml", Duration: "—"},
+			},
+		})
 	}
 
 	return simWorkspace{

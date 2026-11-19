@@ -155,3 +155,26 @@ func TestAssignLanesShorterSpanGetsInnerLane(t *testing.T) {
 		t.Fatalf("short span must nest inside long span: %+v", branches)
 	}
 }
+
+func TestAssignLanesSkipsHistoryOnlyBranches(t *testing.T) {
+	branches := []model.BranchArc{
+		{ID: "real-a", Name: "a", Hemisphere: "upper", State: "merged", StartSpineIndex: 1, EndSpineIndex: 3},
+		{ID: "real-b", Name: "b", Hemisphere: "upper", State: "merged", StartSpineIndex: 2, EndSpineIndex: 4},
+	}
+	// 30 history-only branches pinned across the whole spine must not steal lanes.
+	for i := 0; i < 30; i++ {
+		branches = append(branches, model.BranchArc{
+			ID: fmt.Sprintf("h%02d", i), Name: fmt.Sprintf("h%02d", i), Hemisphere: "upper", State: "merged",
+			StartSpineIndex: 0, EndSpineIndex: 11, HistoryOnly: true,
+		})
+	}
+	AssignLanes(branches)
+	if laneOf(t, branches, "real-a") != 1 || laneOf(t, branches, "real-b") != 2 {
+		t.Fatalf("real arches must keep compact lanes, got a=%d b=%d", laneOf(t, branches, "real-a"), laneOf(t, branches, "real-b"))
+	}
+	for _, b := range branches {
+		if b.HistoryOnly && b.Lane != 0 {
+			t.Fatalf("history-only branch %s must not be assigned a lane, got %d", b.ID, b.Lane)
+		}
+	}
+}

@@ -34,6 +34,10 @@ func assignHemisphereLanes(branches []model.BranchArc, hemisphere string) {
 		if h != hemisphere {
 			continue
 		}
+		// Gerçek bir konumu olmayan geçmiş dalları çizilmez, şerit de tüketmez.
+		if b.HistoryOnly {
+			continue
+		}
 		start := b.StartSpineIndex
 		end := b.EndSpineIndex
 		if end < start {

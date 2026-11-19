@@ -79,12 +79,34 @@
               </button>
 
               <!-- Kulvar 2: main Omurgası -->
-              <div class="lane-label-card spine" id="btn-main-lane">
-                <div class="lane-label-head">
-                  <span class="lane-dot spine"></span>
-                  <span class="lane-name">main</span>
+              <div class="lane-spine-group">
+                <div class="lane-label-card spine" id="btn-main-lane">
+                  <div class="lane-label-head">
+                    <span class="lane-dot spine"></span>
+                    <span class="lane-name">main</span>
+                  </div>
+                  <div class="lane-sub">Production · Korunan</div>
                 </div>
-                <div class="lane-sub">Production · Korunan</div>
+
+                <!-- Geçmiş: merge noktası omurgada bulunamayan birleşmiş dallar (parabol çizilmez) -->
+                <div class="history-lane-wrap" id="history-lane-wrap" hidden>
+                  <button type="button" class="lane-label-card history" id="btn-history-lane" aria-expanded="false" aria-controls="history-popover" title="Merge noktası omurga penceresinde bulunamayan birleşmiş dallar">
+                    <div class="lane-label-head">
+                      <span class="lane-dot history"></span>
+                      <span class="lane-name">Geçmiş</span>
+                      <span class="ray-pill-count" id="history-count"></span>
+                    </div>
+                    <div class="lane-sub">Birleşmiş · omurga dışı</div>
+                  </button>
+                  <div class="history-popover" id="history-popover" role="dialog" aria-label="Geçmiş birleşmiş dallar" hidden>
+                    <div class="ray-popover-head">
+                      <span class="ray-popover-title">🗂 Geçmiş birleşmiş dallar</span>
+                      <button type="button" class="ray-popover-close" id="history-close" aria-label="Kapat">✕</button>
+                    </div>
+                    <div class="history-hint">Merge noktaları omurga penceresinde (son commit'ler) bulunamadığı için parabol olarak çizilmez.</div>
+                    <div class="ray-popover-body" id="history-list"></div>
+                  </div>
+                </div>
               </div>
 
               <!-- Kulvar 3: Alt Ray (Yerel & Taslak) -->

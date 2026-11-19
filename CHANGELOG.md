@@ -2,6 +2,16 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
+## [Yayımlanmamış]
+
+### Eklenenler
+- **"Geçmiş" Çipi (`historyOnly`):** Birleşmiş ama merge noktası omurga penceresinde (son 12 commit) bulunamayan dallar (squash ile birleşenler, eski merge'ler) artık parabol olarak çizilmez. Sol raydaki `main` kartının altında `🗂 Geçmiş` çipinde (sayaçlı) listelenir; bir dala tıklamak Inspector'da açar (`🧹 Sil / Temizle` dahil). `Esc` veya dışarı tıklama listeyi kapatır. MegaCorp demosunda 8 örnek geçmiş dal vardır.
+- **`BranchArc.historyOnly` alanı:** Canlı motor, merge noktasını bulamadığı birleşmiş yerel ve uzak dalları işaretler; `omitempty` olduğu için eski istemcilerle uyumludur. Bu dallar `AssignLanes` içinde şerit tüketmez.
+
+### Düzeltilenler
+- **Uydurma merge noktası:** Merge commit'i omurga penceresinde olmayan birleşmiş dallar omurganın son düğümüne sabitlenip tam genişlikte parabol olarak çiziliyordu (Prometheus gibi büyük depolarda 40 dal 40 şerit ve tek bir dev "dağ" oluşturuyordu). Artık yalnızca gerçek merge noktası olan dallar çizilir.
+- **Yapay uç genişletme:** Birleşmiş yayların iki ucu şerit numarasıyla orantılı olarak (40 şeritte ±1900 px) gerçek merge konumundan uzaklaştırılıyordu. Sapma `MAX_MERGE_SPREAD` (2 omurga adımı) ile sınırlandı.
+
 ## [0.9.0] - 2026-11-19
 
 ### Eklenenler
