@@ -120,6 +120,7 @@ export function renderRadar(callbacks = {}) {
     else if (d.kind === 'cross_pr') kindLabel = 'Cross-PR Çarpışması';
     else if (d.kind === 'prune_candidate') kindLabel = 'Silinmiş/Kalıntı Dal';
     else if (d.kind === 'main_ci_failure') kindLabel = 'Omurga Testleri Kırık';
+    else if (d.kind === 'stale_branch') kindLabel = 'Eskimiş Dal';
 
     const files = d.files || b?.conflict?.files || [];
     let filesHtml = '';

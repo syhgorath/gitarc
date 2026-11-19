@@ -1393,6 +1393,12 @@ body {
   color: var(--warn-orange);
 }
 
+.cap-alert-pill.old {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+}
+
 .cap-alert-pill.cross {
   background: var(--warn-weak);
   border: 1px solid var(--warn-border);

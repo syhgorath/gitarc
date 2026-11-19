@@ -216,3 +216,11 @@ test('the open card carries the Uzak / Yerel row and escapes hostile data', () =
   const evil = whereHtmlOf(ob({ pr: { number: '<img src=x onerror=1>' } }));
   assert.doesNotMatch(evil, /<img/);
 });
+
+test('a branch cut outside the spine window gets an "Eski dal" pill with the real behind count', () => {
+  const html = alertsHtmlOf({ id: 'a', name: 'feat/old', state: 'open', hemisphere: 'upper', baseOutsideWindow: true, behindMain: 23 });
+  assert.match(html, /cap-alert-pill old/);
+  assert.match(html, /Eski dal · ↓23/);
+  assert.doesNotMatch(alertsHtmlOf({ id: 'a', name: 'x', state: 'open', hemisphere: 'upper', behindMain: 23 }), /Eski dal/);
+  assert.doesNotMatch(alertsHtmlOf({ id: 'a', name: 'x', state: 'merged', hemisphere: 'upper', baseOutsideWindow: true }), /Eski dal/);
+});

@@ -143,6 +143,8 @@ type BranchArc struct {
 	HistoryOnly bool `json:"historyOnly,omitempty"`
 	// LongLived: develop/release/* gibi uzun ömürlü dal; kalıntı temizliğinden ve silmeden korunur.
 	LongLived bool `json:"longLived,omitempty"`
+	// BaseOutsideWindow: dalın ayrıldığı commit omurga penceresinin (son 12 commit) başında ya da daha eskisinde; konum "en sol".
+	BaseOutsideWindow bool `json:"baseOutsideWindow,omitempty"`
 	// Prunable: "🧹 Temizle" bu dal için gerçekten bir şey yapabilir (sayaç ve temizlik aynı kuralı kullanır).
 	Prunable bool `json:"prunable,omitempty"`
 	ColorToken      string `json:"colorToken,omitempty"`
@@ -250,7 +252,7 @@ type CrossPRWarning struct {
 type DiagnosticItem struct {
 	ID         string   `json:"id"`
 	Severity   string   `json:"severity"` // "critical" | "warning" | "info"
-	Kind       string   `json:"kind"`     // "ci_failure" | "conflict" | "cross_pr" | "prune_candidate" | "main_ci_failure"
+	Kind       string   `json:"kind"`     // "ci_failure" | "conflict" | "cross_pr" | "prune_candidate" | "main_ci_failure" | "stale_branch"
 	BranchID   string   `json:"branchId"`
 	BranchName string   `json:"branchName"`
 	Title      string   `json:"title"`

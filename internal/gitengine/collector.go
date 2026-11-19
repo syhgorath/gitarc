@@ -23,6 +23,9 @@ const (
 )
 
 type cachedBranchEval struct {
+	startResolved bool // omurga penceresinde olmayan bir merge-base için konum çözüldü mü
+	startIdx      int
+	baseOutside   bool
 	mergeBaseSHA string
 	aheadMain    int
 	behindMain   int
@@ -548,6 +551,33 @@ func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 	return fmt.Sprintf("git switch %s", b.Name)
 }
 
+// resolveStartOutsideSpine: merge-base omurga penceresindeki düğümlerden biri değilse, ana hatta girdiği en eski
+// düğümü bulur (`merge-base --is-ancestor`, ikili arama: ~4 git çağrısı). idx==0 ise baz pencerenin başında ya da
+// ondan eskidir: outside=true (dal "daha eski" bir noktadan ayrılmıştır). ok=false: konum belirlenemedi (varsayılan).
+func resolveStartOutsideSpine(ctx context.Context, repoPath, mb string, nodes []model.CommitNode) (idx int, outside bool, ok bool) {
+	if mb == "" || len(nodes) == 0 {
+		return 0, false, false
+	}
+	isAnc := func(i int) bool {
+		_, _, err := runCmd(ctx, repoPath, "git", "merge-base", "--is-ancestor", mb, nodes[i].SHA)
+		return err == nil
+	}
+	last := len(nodes) - 1
+	if !isAnc(last) {
+		return 0, false, false
+	}
+	lo, hi := 0, last
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if isAnc(mid) {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	return lo, lo == 0, true
+}
+
 func cloneConflict(c *model.ConflictDetail) *model.ConflictDetail {
 	if c == nil {
 		return nil
@@ -559,7 +589,7 @@ func cloneConflict(c *model.ConflictDetail) *model.ConflictDetail {
 	return &cp
 }
 
-func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, branchRef, branchSHA string, nodes []model.CommitNode, shaToIdx map[string]int, lastSpine int) (startIdx int, baseSHA string, aheadMain, behindMain int, changed []string, conflict *model.ConflictDetail, cacheHit bool) {
+func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, branchRef, branchSHA string, nodes []model.CommitNode, shaToIdx map[string]int, lastSpine int) (startIdx int, baseSHA string, aheadMain, behindMain int, changed []string, conflict *model.ConflictDetail, baseOutside bool, cacheHit bool) {
 	startIdx = lastSpine - 1
 	if startIdx < 0 {
 		startIdx = 0
@@ -577,22 +607,33 @@ func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, br
 				if idx, exists := shaToIdx[cached.mergeBaseSHA]; exists {
 					startIdx = idx
 					baseSHA = nodes[idx].ShortSHA
+				} else if cached.startResolved && cached.startIdx < len(nodes) {
+					startIdx, baseOutside = cached.startIdx, cached.baseOutside
+					baseSHA = nodes[startIdx].ShortSHA
 				}
 			}
 			var changedCopy []string
 			if len(cached.changedFiles) > 0 {
 				changedCopy = append([]string(nil), cached.changedFiles...)
 			}
-			return startIdx, baseSHA, cached.aheadMain, cached.behindMain, changedCopy, cloneConflict(cached.conflict), true
+			return startIdx, baseSHA, cached.aheadMain, cached.behindMain, changedCopy, cloneConflict(cached.conflict), baseOutside, true
 		}
 	}
 
 	mb := ""
+	startResolved := false
 	if mbOut, _, err := runCmd(ctx, repoPath, "git", "merge-base", baseRef, branchRef); err == nil {
 		mb = strings.TrimSpace(mbOut)
 		if idx, ok := shaToIdx[mb]; ok {
 			startIdx = idx
 			baseSHA = nodes[idx].ShortSHA
+		} else if idx, outside, ok := resolveStartOutsideSpine(ctx, repoPath, mb, nodes); ok {
+			// Merge-base omurga penceresinde (son 12 ilk-ebeveyn commit) yok. Eskiden başlangıç sessizce omurganın
+			// ucuna (lastSpine-1) konuyordu: 14 commit önce ayrılmış unutulmuş bir dal, sanki yeni ayrılmış gibi
+			// çiziliyordu. Şimdi baz commit'in ana hatta girdiği en eski düğüm bulunur; pencereden de eskiyse en sola konur.
+			startIdx, baseOutside = idx, outside
+			baseSHA = nodes[idx].ShortSHA
+			startResolved = true
 		}
 	}
 
@@ -623,6 +664,9 @@ func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, br
 			evalCache = map[string]cachedBranchEval{}
 		}
 		evalCache[cacheKey] = cachedBranchEval{
+			startResolved: startResolved,
+			startIdx:      startIdx,
+			baseOutside:   baseOutside,
 			mergeBaseSHA: mb,
 			aheadMain:    aheadMain,
 			behindMain:   behindMain,
@@ -632,7 +676,7 @@ func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, br
 		evalCacheMu.Unlock()
 	}
 
-	return startIdx, baseSHA, aheadMain, behindMain, changed, conflict, false
+	return startIdx, baseSHA, aheadMain, behindMain, changed, conflict, baseOutside, false
 }
 
 func parsePorcelainFiles(out string) []string {
@@ -881,7 +925,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			continue
 		}
 
-		startIdx, baseSHA, aheadMain, behindMain, changed, conflict, hit := evaluateBranchVsBase(
+		startIdx, baseSHA, aheadMain, behindMain, changed, conflict, baseOutside, hit := evaluateBranchVsBase(
 			ctx, repoPath, baseRef, baseTipSHA, name, localSHA, nodes, shaToIdx, lastSpine,
 		)
 		if hit {
@@ -1007,6 +1051,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			Hemisphere:       hemisphere,
 			State:            state,
 			StartSpineIndex:  startIdx,
+			BaseOutsideWindow: baseOutside,
 			EndSpineIndex:    endIdx,
 			BaseSHA:          baseSHA,
 			HasRemote:        hasRemote,
@@ -1039,6 +1084,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 				Hemisphere:       "lower",
 				State:            "open",
 				StartSpineIndex:  startIdx,
+				BaseOutsideWindow: baseOutside,
 				EndSpineIndex:    endIdx,
 				BaseSHA:          baseSHA,
 				HasRemote:        false,
@@ -1149,7 +1195,7 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				continue
 			}
 
-			startIdx, baseSHA, aheadMain, behindMain, changed, conflict, hit := evaluateBranchVsBase(
+			startIdx, baseSHA, aheadMain, behindMain, changed, conflict, baseOutside, hit := evaluateBranchVsBase(
 				ctx, repoPath, baseRef, baseTipSHA, remoteRef, remoteSHA, nodes, shaToIdx, lastSpine,
 			)
 			if hit {
@@ -1224,6 +1270,7 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				Hemisphere:      "upper",
 				State:           "open",
 				StartSpineIndex: startIdx,
+				BaseOutsideWindow: baseOutside,
 				EndSpineIndex:   endIdx,
 				BaseSHA:         baseSHA,
 				HasRemote:       true,
