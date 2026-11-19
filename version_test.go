@@ -24,7 +24,7 @@ func TestVersionConsistency(t *testing.T) {
 	cases := []struct{ file, want string }{
 		{"web/index.html", `id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v` + v + `</button>`},
 		{"web/index.html", `Mevcut sürüm: v` + v},
-		{"web/modules/canvas.js", `appVersion || '` + v + `'`},
+		{"web/modules/topbar.js", `appVersion || '` + v + `'`},
 		{"web/fallback.js", `currentVersion: sim.repo.appVersion || '` + v + `'`},
 		{"web/fallback.js", `latestVersion: sim.repo.appVersion || '` + v + `'`},
 	}
