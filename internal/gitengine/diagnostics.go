@@ -377,6 +377,19 @@ func BuildDiagnostics(branches []model.BranchArc) []model.DiagnosticItem {
 			})
 		}
 
+		if b.BaseOutsideWindow && b.State == "open" && b.BehindMain > 0 && !b.LongLived {
+			items = append(items, model.DiagnosticItem{
+				ID:         "stale-" + b.ID,
+				Severity:   "info",
+				Kind:       "stale_branch",
+				BranchID:   b.ID,
+				BranchName: b.Name,
+				Title:      fmt.Sprintf("Eskimiş dal: main'in %d commit gerisinde", b.BehindMain),
+				Detail:     fmt.Sprintf("%s, omurganın gösterilen penceresinden daha eski bir noktadan ayrılmış; birleştirmeden önce güncellemek çakışma riskini azaltır", b.Name),
+				ActionHint: fmt.Sprintf("git switch %s && git merge origin/main", b.Name),
+			})
+		}
+
 		if (b.OriginGone || b.State == "gone") && !b.LongLived {
 			items = append(items, model.DiagnosticItem{
 				ID:         "gone-" + b.ID,

@@ -153,6 +153,9 @@ export function alertsHtmlOf(b) {
   if (f.isRemoteOnly) {
     html += '<span class="cap-alert-pill cross">☁ Sadece Origin</span>';
   }
+  if (b.baseOutsideWindow && b.state === 'open') {
+    html += `<span class="cap-alert-pill old" title="Bu dal, omurganın gösterilen penceresinden daha eski bir noktadan ayrılmış; parabol bilerek en soldan başlar">⏳ Eski dal · ↓${b.behindMain || 0}</span>`;
+  }
   if (f.hasConflict) {
     html += `<span class="cap-alert-pill conflict">${b.conflict.isChangelogOrLock ? '⚠ CHANGELOG / Lock' : '⚠ Conflict'}</span>`;
   }
