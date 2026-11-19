@@ -12,13 +12,6 @@ export function getMergedLogs() {
 
 export function renderLogBadge(onRenderModal = null) {
   const logs = getMergedLogs();
-  const errCount = logs.filter((l) => l.level === 'error').length;
-  if (el.logCount) {
-    el.logCount.textContent = String(errCount > 0 ? errCount : logs.length);
-  }
-  if (el.btnLogsModal) {
-    el.btnLogsModal.classList.toggle('danger', errCount > 0);
-  }
   if (el.logsModal && !el.logsModal.hidden && onRenderModal) {
     onRenderModal();
   }
@@ -91,7 +84,6 @@ export function renderRadar(callbacks = {}) {
   const { onSelectBranch, onOpenConflictStudio, onPruneGone } = callbacks;
   const diags = state.snapshot?.diagnostics || [];
   if (el.dockRadarCount) el.dockRadarCount.textContent = diags.length;
-  if (el.radarCount) el.radarCount.textContent = `${diags.length} uyarı`;
   if (!el.radarList) return;
   el.radarList.innerHTML = '';
 
