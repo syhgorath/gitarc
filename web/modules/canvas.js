@@ -100,6 +100,19 @@ export function computeView({ sceneW, sceneH, minY, zoom = 1, panX = 0, panY = 0
   };
 }
 
+// Birleşmiş ama merge noktası omurga penceresinde bulunamayan dallar (historyOnly) gerçek bir
+// konuma sahip değildir; parabol olarak çizilmez, "geçmiş" çipinde listelenir.
+export function splitHistory(branches) {
+  const drawn = [];
+  const history = [];
+  (branches || []).forEach((b) => (b && b.historyOnly ? history : drawn).push(b));
+  return { drawn, history };
+}
+
+// Birleşmiş yayların iki ucunun kalabalık yüzünden gerçek merge konumundan en fazla ne kadar
+// uzaklaştırılabileceği (sahne birimi). Sınırsız büyürse çizim gerçeği yansıtmaz.
+export const MAX_MERGE_SPREAD = 2 * SPINE_STEP_X;
+
 export function yOfLane(hemisphere, lane, isMerged = false) {
   const l = Math.max(1, lane || 1);
   const offset = isMerged ? (54 + (l - 1) * 36) : (LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y);
@@ -145,7 +158,7 @@ export function computeBranchGeometry(b, tipXOverride = null, tipYOverride = nul
     const lane = Math.max(1, b.lane || 1);
     const crowdInfo = branchCrowdLayout?.get(b.id) || state.branchCrowdLayout?.get(b.id) || { crowd: 1, rank: 0 };
     const spreadStep = Math.min(48, 16 + crowdInfo.crowd * 3);
-    const spread = (lane - 1) * spreadStep + (crowdInfo.rank * 8);
+    const spread = Math.min(MAX_MERGE_SPREAD, (lane - 1) * spreadStep + (crowdInfo.rank * 8));
 
     const startX = Math.max(SPINE_START_X - 50, baseStartX - spread);
     const endX = baseEndX + spread;
@@ -619,7 +632,9 @@ export function renderSVG(callbacks = {}) {
   const branches = snap.branches || [];
 
   // Tüm birleşmiş dalları göster (kullanıcı tercihi: dallar silinmez, 2 merge noktası kalabalığa göre açılır)
-  const visibleBranches = branches.filter((b) => {
+  // historyOnly dallar (merge noktası bilinmeyen) parabol olarak çizilmez; sol raydaki "Geçmiş" çipinde listelenir.
+  const { drawn } = splitHistory(branches);
+  const visibleBranches = drawn.filter((b) => {
     if (b.state !== 'merged') return true;
     return state.showMergedArches !== false;
   });
@@ -963,6 +978,23 @@ export function setupCanvasInteractions(onRenderSVG = null) {
     });
   }
 
+  // "Geçmiş" çipi: aç/kapat, dışarı tıklayınca veya Esc ile kapat
+  const histBtn = document.getElementById('btn-history-lane');
+  const histPop = document.getElementById('history-popover');
+  const setHistoryOpen = (open) => {
+    state.historyOpen = Boolean(open);
+    if (histPop) histPop.hidden = !state.historyOpen;
+    histBtn?.setAttribute('aria-expanded', String(state.historyOpen));
+  };
+  histBtn?.addEventListener('click', (ev) => { ev.stopPropagation(); setHistoryOpen(!state.historyOpen); });
+  document.getElementById('history-close')?.addEventListener('click', () => setHistoryOpen(false));
+  document.addEventListener('click', (ev) => {
+    if (state.historyOpen && !ev.target.closest?.('#history-lane-wrap')) setHistoryOpen(false);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && state.historyOpen) setHistoryOpen(false);
+  });
+
   if (el.toggleMerged) {
     el.toggleMerged.addEventListener('change', (ev) => {
       state.showMergedArches = ev.target.checked;
@@ -1008,6 +1040,50 @@ export function renderRayPopovers(callbacks = {}) {
 
   if (el.upperRayCount) el.upperRayCount.textContent = upperCount > 0 ? String(upperCount) : '';
   if (el.lowerRayCount) el.lowerRayCount.textContent = lowerTotal > 0 ? String(lowerTotal) : '';
+
+  renderHistoryCard(callbacks);
+}
+
+// Sol raydaki "Geçmiş" çipi: omurgada merge noktası bulunamayan birleşmiş dalları listeler.
+export function renderHistoryCard(callbacks = {}) {
+  const wrap = document.getElementById('history-lane-wrap');
+  const list = document.getElementById('history-list');
+  const pop = document.getElementById('history-popover');
+  const btn = document.getElementById('btn-history-lane');
+  if (!wrap || !list || !pop || !btn) return;
+
+  const { history } = splitHistory(state.snapshot?.branches);
+  wrap.hidden = history.length === 0;
+  const countEl = document.getElementById('history-count');
+  if (countEl) countEl.textContent = history.length > 0 ? String(history.length) : '';
+  if (history.length === 0) state.historyOpen = false;
+
+  pop.hidden = !state.historyOpen;
+  btn.setAttribute('aria-expanded', String(Boolean(state.historyOpen)));
+
+  list.innerHTML = '';
+  history.forEach((b) => {
+    const item = document.createElement('div');
+    item.className = 'ray-item history-item';
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    item.dataset.branchId = b.id;
+    const pr = b.pr?.number ? `#${b.pr.number} · ` : '';
+    const who = b.author || b.pr?.author || '';
+    item.innerHTML = `<div><div class="ray-item-title">${esc(truncate(b.name, 34))}</div>`
+      + `<div class="ray-item-sub">${esc(pr + (who ? '@' + who : 'birleşmiş'))}</div></div>`;
+    const choose = () => {
+      state.historyOpen = false;
+      pop.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      if (callbacks.onSelectBranch) callbacks.onSelectBranch(b.id);
+    };
+    item.addEventListener('click', choose);
+    item.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); choose(); }
+    });
+    list.appendChild(item);
+  });
 }
 
 

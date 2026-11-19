@@ -658,6 +658,50 @@ body {
   background: rgba(88, 166, 255, 0.06);
 }
 
+.lane-spine-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-lane-wrap {
+  position: relative;
+}
+
+.lane-label-card.history {
+  width: 100%;
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.lane-dot.history {
+  background: var(--muted);
+}
+
+.history-popover {
+  position: absolute;
+  bottom: 0;
+  left: calc(100% + 18px);
+  width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-3);
+  z-index: 60;
+  overflow: hidden;
+}
+
+.history-hint {
+  padding: 6px 10px;
+  font-size: 10px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.history-popover .ray-popover-body {
+  max-height: clamp(120px, 30vh, 260px);
+}
+
 .lane-label-card.lower {
   border-color: rgba(188, 140, 255, 0.25);
   background: rgba(188, 140, 255, 0.06);

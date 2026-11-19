@@ -846,6 +846,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 				State:            "merged",
 				StartSpineIndex:  startIdx,
 				EndSpineIndex:    lastSpine,
+				HistoryOnly:      true, // merge noktası omurgada bulunamadı: uydurma parabol çizilmez
 				BaseSHA:          baseSHA,
 				MergeSHA:         localSHA,
 				HasRemote:        hasRemote,
@@ -1085,6 +1086,7 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 					State:           "merged",
 					StartSpineIndex: startIdx,
 					EndSpineIndex:   lastSpine,
+					HistoryOnly:     true, // merge noktası omurgada bulunamadı: uydurma parabol çizilmez
 					BaseSHA:         baseSHA,
 					MergeSHA:        remoteSHA,
 					HasRemote:       true,

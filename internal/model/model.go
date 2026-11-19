@@ -127,6 +127,9 @@ type BranchArc struct {
 	EndSpineIndex   int    `json:"endSpineIndex"`
 	BaseSHA         string `json:"baseSha"`
 	MergeSHA        string `json:"mergeSha,omitempty"`
+	// HistoryOnly: birleşmiş ama merge noktası omurga penceresinde (son N commit) bulunamayan dal.
+	// Gerçek bir konumu olmadığı için parabol olarak çizilmez; arayüzde "geçmiş" çipinde listelenir.
+	HistoryOnly bool `json:"historyOnly,omitempty"`
 	ColorToken      string `json:"colorToken,omitempty"`
 
 	// Upper layer of Branch Pair Capsule (GitHub Remote / PR / Review / CI)
