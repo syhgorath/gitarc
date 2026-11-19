@@ -9,9 +9,10 @@ import {
 } from '../../web/modules/constants.js';
 import {
   xOfSpine, layoutSpinePositions, layoutBranchCrowd, yOfLane,
-  layoutOpenApexPositions, computeBranchGeometry, branchToneClass,
-  branchStrokeColor, matchesFilter, computeView, MIN_READABLE_SCALE, splitHistory, MAX_MERGE_SPREAD,
-} from '../../web/modules/canvas.js';
+  layoutOpenApexPositions, computeBranchGeometry,
+  computeView, MIN_READABLE_SCALE, splitHistory, MAX_MERGE_SPREAD,
+} from '../../web/modules/layout.js';
+import { branchToneClass, branchStrokeColor, matchesFilter } from '../../web/modules/canvas.js';
 
 const merged = (id, s, e, lane = 1, hemisphere = 'upper') =>
   ({ id, name: id, state: 'merged', hemisphere, lane, startSpineIndex: s, endSpineIndex: e });

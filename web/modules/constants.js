@@ -8,6 +8,9 @@ export const SPINE_START_X = 140;
 export const SPINE_STEP_X = 156;
 export const LANE_BASE_OFFSET = 85;
 export const LANE_STEP_Y = 75;
+// Birleşmiş (kapalı) yayların şerit yüksekliği: tek tanım, yOfLane ve geometri ikisi de bunu kullanır
+export const MERGED_LANE_BASE = 52;
+export const MERGED_LANE_STEP = 36;
 export const FO_W = 222;
 export const FO_H = 114;
 export const MERGED_FO_W = 188;
