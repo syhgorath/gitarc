@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.9.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **100 üst düzey Go testi + 40 JS testi geçti** (`gitarc`: 20 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 77 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **111 üst düzey Go testi + 55 JS testi geçti** (`gitarc`: 20 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 88 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -151,11 +151,18 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
    - `NewManager`, `recordLog` ve `AddProject` `$HOME/.gitarc/{logs,projects}.json` dosyalarına yazar. Her test paketinde (`gitarc`, `internal/gitengine`, `internal/mcp`) `TestMain` `HOME`/`USERPROFILE`'ı geçici dizine alır. Yeni bir test paketi eklersen aynı `TestMain`'i ekle, yoksa testler geliştiricinin gerçek loglarını ve proje listesini kirletir/siler.
 9. **Şerit sınırı yok:**
    - Yeni kod `MaxHemisphereLanes`/`lane <= 4` gibi bir üst sınır varsaymamalı (`yOfLane`, `computeBranchGeometry`, `AssignLanes`, `fallback.js`). Mega-repo demosunda sahne dikeyde uzar; bu bilinçli bir tercihtir (`TestAssignLanesNoLaneCap`, canvas testleri korur).
-10. **Merge noktası bilinmeyen birleşmiş dal çizme (`HistoryOnly`):**
+10. **Yavaş ağ işlerini snapshot içinde bloklama (arka plan + bayat veri):**
+    - `git fetch --prune` ve tüm `gh` sorguları `collector_github.go` içindeki `repoBG` durumunda **arka planda, tek uçuşla** çalışır (`fetchRemoteCached`, `fetchGHMetadataCached`). `CollectLiveRepo` yalnızca `fetchWait` (1 sn) / `ghWait` (2 sn) bekler; sonuç gelmediyse eldeki son başarılı veriyi döndürür. Yeni bir ağ sorgusu eklersen aynı kalıbı kullan ve `SyncStep` kaydet.
+    - **Başarısız sorgu eldeki veriyi ezmez** ve boş sonuç önbelleğe yazılmaz (eski kod bunu yapıyordu). `InvalidateGHCache` veriyi silmez, süresi dolmuş işaretler.
+    - Sonuçlar `repoBG.version` ile `QuickRepoSignature`'a girer; arayüz kendiliğinden yenilenir. `Repo.SyncSteps` (`fetch`, `prs`, `merged`, `protection`) ve `Repo.ProtectionState` (`active`/`none`/`unknown`) snapshot'ta taşınır; `snapshotSignature` bunları içerir. Prometheus'ta `gh pr list --json statusCheckRollup` ~5 sn sürer (eski 4 sn sınırı hep aşılıyordu).
+    - GitHub 404 (yönetici değilsin) **"Korumasız" değil "unknown"**dır. Simülasyon ve `fallback.js` aynı `syncSteps`/`protectionState` şeklini üretir. Testler: `bgsync_test.go` (yavaş `gh`, başarısız yenileme, bayat veri, tek uçuş, 404, sim eşliği); stub `slow(key, saniye)` ile yavaşlatılır.
+11. **`state.js` kimlikleri `index.html`'de olmalı:**
+    - Eşleşmeyen bir kimlik sessizce `undefined` olur ve `if (el.x)` bloğu hiç çalışmaz (senkron rozeti bu yüzden hiç güncellenmedi). `tests/js/registry.test.mjs` bunu denetler; bilinen eski ölü kalıntılar `KNOWN_DEAD` listesindedir (`radar-count`, `btn-logs-modal`, `log-count`) — düzeltince listeden çıkar.
+12. **Merge noktası bilinmeyen birleşmiş dal çizme (`HistoryOnly`):**
     - Omurga yalnızca son 12 first-parent commit'tir (`collector.go`, `-n 12`). Merge commit'i bu pencerede olmayan birleşmiş dallar (squash vb.) için `EndSpineIndex: lastSpine` ile sahte bir konum atanır; bu dallar `HistoryOnly: true` ile işaretlenir ve **asla parabol olarak çizilmez** (aksi halde Prometheus gibi depolarda 40 dal tek bir sahte dağ oluşturur). Yeni bir "birleşmiş dal" üretim yolu eklersen merge konumunu gerçekten bulamıyorsan `HistoryOnly` set et. `TestMergedBranchOutsideSpineWindowIsHistoryOnly` gerçek repoyla bunu denetler. Çevrimdışı `LocalFallbackEngine` demosunda hep gerçek merge noktası olduğundan bu alanı üretmez; çip arayüzü ortaktır.
-11. **Açık tema ve koyu bloklar:**
+13. **Açık tema ve koyu bloklar:**
     - Alt çekmece/stüdyo sütunlarının zeminleri `--terminal-bg` / `--diff-bg` değişkenleridir (koyu: `#070a11`/`#090d16`, açık: `#eef1f6`/`#f8f9fc`); sabit renk kodu yazma, yoksa açık temada siyah şerit çıkar. Log/CI kutuları (`--log-bg`, `.terminal-box`) açık temada bilinçli olarak koyu kalır (IDE terminali görünümü).
-12. **`go test` kapsamı ve node:**
+14. **`go test` kapsamı ve node:**
     - `canvas_js_test.go` `node --test tests/js/` komutunu çalıştırır; node yoksa test atlanır (CI `ubuntu-latest` üzerinde node hazırdır). `tests/js/` `web/` dışındadır, bu yüzden ikiliye gömülmez ve CSP testine takılmaz.
 
 ---

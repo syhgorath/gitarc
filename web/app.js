@@ -4,6 +4,7 @@ import { state, el, initElements } from './modules/state.js';
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
+import { protectionView } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG, renderKPIs, renderTopbar, renderRayPopovers, setupCanvasInteractions } from './modules/canvas.js';
 import { renderInspector } from './modules/inspector.js';
@@ -307,16 +308,18 @@ function populateBaseCommitOptions() {
 function renderSecurityUpdateModal() {
   const snap = state.snapshot;
   if (!snap) return;
-  const isProtected = Boolean(snap.repo.branchProtected);
+  const prot = protectionView(snap.repo);
   if (el.secProtBadge) {
-    el.secProtBadge.textContent = isProtected ? '🛡️ Aktif Korumalı' : '🔓 Korumasız';
-    el.secProtBadge.className = `chip ${isProtected ? 'ok' : 'warn'}`;
+    el.secProtBadge.textContent = prot.badge;
+    el.secProtBadge.className = `chip ${prot.chip}`.trim();
   }
   if (el.secProtSummary) {
-    el.secProtSummary.textContent = snap.repo.protectionSummary || (isProtected ? 'Korumalı' : 'Doğrudan push açık');
+    el.secProtSummary.textContent = snap.repo.protectionSummary
+      || (prot.state === 'active' ? 'Korumalı' : prot.state === 'unknown' ? 'Koruma durumu okunamadı' : 'Doğrudan push açık');
   }
   if (el.btnEnableProtection) {
-    el.btnEnableProtection.hidden = isProtected;
+    // Yalnızca "Korumasız" kesinse öner; "Bilinmiyor"da (yetki yok) koruma açmaya çalışmak anlamsız.
+    el.btnEnableProtection.hidden = !prot.canEnable;
   }
   if (el.secTeamChip) {
     el.secTeamChip.hidden = !snap.repo.teamMode;

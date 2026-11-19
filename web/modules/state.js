@@ -37,7 +37,7 @@ export function initElements() {
     'dock-tab-actions', 'dock-radar-count', 'dock-log-count', 'dock-action-count',
     'dock-toggle-btn', 'dock-clear-btn', 'dock-pane-radar', 'dock-pane-logs',
     'dock-pane-actions', 'dock-logs-stream', 'dock-actions-stream', 'inspector-detail',
-    'prune-count', 'drag-hint', 'spine-sync-badge', 'engineStatus', 'zoom-reset',
+    'prune-count', 'drag-hint', 'engineStatus', 'zoom-reset',
     'toggle-merged-arches', 'create-branch-modal', 'new-branch-form', 'new-branch-name',
     'new-branch-base', 'toast-stack', 'conflict-studio-modal', 'studio-branch-badge',
     'studio-file-tabs', 'studio-guide-box', 'studio-guide-text', 'studio-strategy-bar',
@@ -98,7 +98,9 @@ export function initElements() {
   el.detail = el['inspector-detail'];
   el.pruneCount = el['prune-count'];
   el.dragHint = el['drag-hint'];
-  el.spineSyncBadge = el['spine-sync-badge'];
+  // Rozetin gerçek kimliği btn-canvas-sync'tir ('spine-sync-badge' yalnızca CSS sınıfıdır). Eski eşleme
+  // hiçbir öğeyi bulamadığı için rozet güncellenmiyor, hep HTML'deki "(Synced)" metnini gösteriyordu.
+  el.spineSyncBadge = el['btn-canvas-sync'];
   el.btnCanvasSync = el['btn-canvas-sync'];
   el.canvasSyncDot = el['canvas-sync-dot'];
   el.canvasSyncText = el['canvas-sync-text'];

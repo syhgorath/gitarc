@@ -245,7 +245,8 @@ func (m *Manager) QuickRepoSignature() string {
 		indexMod = indexInfo.ModTime().UnixNano()
 	}
 
-	return fmt.Sprintf("%s:%d:%d", live.id, headMod, indexMod)
+	// bgVersion: arka plan fetch/gh sonuçları geldiğinde imza değişsin, arayüz taze veriyi çeksin.
+	return fmt.Sprintf("%s:%d:%d:%d", live.id, headMod, indexMod, bgVersion(live.path))
 }
 
 // Snapshot returns the current CockpitSnapshot for the active repository.
@@ -1049,6 +1050,14 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 	repoMeta.AppVersion = AppVersion
 	repoMeta.LatestVersion = m.latestVer
 	repoMeta.UpdateAvailable = m.updateAvail
+	if repoMeta.ProtectionState == "" {
+		if repoMeta.BranchProtected {
+			repoMeta.ProtectionState = "active"
+		} else {
+			repoMeta.ProtectionState = "none"
+		}
+	}
+	repoMeta.SyncSteps = simSyncSteps(branches)
 	repoMeta.SecretPatterns = DefaultGuardConfig.SecretPatterns
 	repoMeta.NoGitAddAll = DefaultGuardConfig.NoGitAddAll
 
@@ -1460,4 +1469,26 @@ func (m *Manager) ProtectDefaultBranch() (model.CockpitSnapshot, error) {
 	m.simRepo.repo.ProtectionSummary = "PR Zorunlu + CI Status Checks + Force-Push Kilitli"
 	m.recordLogLocked("ok", "Branch Protection", m.simRepo.repo.DefaultBranch, "main dalı korumaya alındı (PR + CI + Force-Push kilitli)", "")
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
+}
+
+// simSyncSteps, simülasyon modunda canlı motordaki SyncSteps şeklini (hepsi "ok") taklit eder.
+func simSyncSteps(branches []model.BranchArc) []model.SyncStep {
+	now := time.Now().Format(time.RFC3339)
+	openPRs, mergedPRs := 0, 0
+	for _, b := range branches {
+		if b.PR == nil || b.PR.Number == 0 {
+			continue
+		}
+		if b.State == "open" {
+			openPRs++
+		} else if b.State == "merged" {
+			mergedPRs++
+		}
+	}
+	return []model.SyncStep{
+		{ID: "fetch", Label: "git fetch", State: "ok", At: now, DurationMs: 410},
+		{ID: "prs", Label: "PR listesi", State: "ok", At: now, DurationMs: 1200, Count: openPRs},
+		{ID: "merged", Label: "Birleşmiş PR", State: "ok", At: now, DurationMs: 800, Count: mergedPRs},
+		{ID: "protection", Label: "Koruma", State: "ok", At: now, DurationMs: 300},
+	}
 }

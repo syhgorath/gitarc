@@ -8,6 +8,7 @@ import {
 import {
   esc, truncate, svgEl, isMergedOrGone, isOpenPR, isLocalOpen, isMyBranch
 } from './utils.js';
+import { summarizeSync, protectionView } from './syncsteps.js';
 
 export function xOfSpine(idx) {
   if (state.spinePositions && state.spinePositions[idx] !== undefined) {
@@ -321,10 +322,11 @@ export function renderTopbar(callbacks = {}) {
   const btnSync = document.getElementById('btn-sync-spine');
   if (btnSync) btnSync.disabled = snap.repo.mode !== 'live' && snap.repo.ahead === 0 && snap.repo.behind === 0;
 
-  const isProtected = Boolean(snap.repo.branchProtected);
+  const prot = protectionView(snap.repo);
   if (el.btnProtectBranch) {
-    el.btnProtectBranch.textContent = isProtected ? '🛡️ main Korumalı' : '🔓 Korumasız';
-    el.btnProtectBranch.className = `btn ${isProtected ? 'ok' : 'warn'}`;
+    el.btnProtectBranch.textContent = prot.button;
+    el.btnProtectBranch.className = `btn ${prot.btnClass}`;
+    el.btnProtectBranch.title = snap.repo.protectionSummary || 'GitHub main dal koruma ve güvenlik durumu';
   }
 
   const verTxt = `v${snap.repo.appVersion || '0.9.0'}`;
@@ -351,15 +353,27 @@ export function renderTopbar(callbacks = {}) {
     } else {
       el.spineSyncBadge.textContent = txt;
     }
-    if (el.canvasSyncDot) {
-      el.canvasSyncDot.className = `sync-dot ${isSynced ? 'synced' : 'pending'}`;
+    // 2. satır: veri toplama adımları (git fetch / PR listesi / koruma). "Synced" yalnızca yerel
+    // origin/main referansına bakar; hangi verinin eski veya eksik olduğunu bu satır gösterir.
+    const sync = summarizeSync(snap.repo.syncSteps);
+    const stepsEl = document.getElementById('canvas-sync-steps');
+    if (stepsEl) {
+      stepsEl.hidden = sync.items.length === 0;
+      stepsEl.innerHTML = sync.items
+        .map((i) => `<span class="sync-step ${i.tone}" title="${esc(i.title)}">${esc(i.text)}</span>`)
+        .join('');
     }
+    const healthy = isSynced && (sync.items.length === 0 || sync.allOk);
+    if (el.canvasSyncDot) {
+      el.canvasSyncDot.className = `sync-dot ${healthy ? 'synced' : 'pending'}`;
+    }
+    const stepsHint = sync.items.length ? `\n\nVeri toplama:\n${sync.title}` : '';
     if (isSynced) {
-      el.spineSyncBadge.classList.remove('skewed');
-      el.spineSyncBadge.title = `${defBranch} ile ${remoteName}/${defBranch} eşitlendi · Eşitlemek için tıklayın (git fetch & fast-forward)`;
+      el.spineSyncBadge.classList.toggle('skewed', !healthy);
+      el.spineSyncBadge.title = `${defBranch} ile ${remoteName}/${defBranch} eşitlendi · Eşitlemek için tıklayın (git fetch & fast-forward)${stepsHint}`;
     } else {
       el.spineSyncBadge.classList.add('skewed');
-      el.spineSyncBadge.title = `Fark var (↑${ahead} / ↓${behind}) · Şimdi senkronize etmek için tıklayın!`;
+      el.spineSyncBadge.title = `Fark var (↑${ahead} / ↓${behind}) · Şimdi senkronize etmek için tıklayın!${stepsHint}`;
     }
   }
 }

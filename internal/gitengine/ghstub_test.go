@@ -49,6 +49,7 @@ case "$1" in
       *protection*) key="api_protection_get" ;;
     esac ;;
 esac
+if [ -f "$d/$key.sleep" ]; then sleep "$(cat "$d/$key.sleep")"; fi
 if [ -f "$d/$key.out" ]; then cat "$d/$key.out"
 else
   case "$key" in pr_list_*) echo "[]" ;; esac
@@ -99,6 +100,14 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+// slow makes the stub wait before answering, e.g. slow("pr_list_open", "1.5").
+func (s *ghStub) slow(key, seconds string) {
+	s.t.Helper()
+	if err := os.WriteFile(filepath.Join(s.dir, key+".sleep"), []byte(seconds), 0644); err != nil {
+		s.t.Fatal(err)
+	}
 }
 
 func (s *ghStub) calls() []string {
