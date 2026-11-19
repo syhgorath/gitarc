@@ -2,27 +2,34 @@
 
 Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve SemVer sürümlemeyi izler.
 
-## [Yayımlanmamış]
-
-> `0.8.0` sürümünden sonra `main`'e giren değişiklikler. Sürüm kesildiğinde bu başlık yeni sürüm numarası ve tarihle değiştirilmeli; `VERSION` ve `internal/gitengine/collector.go` (`AppVersion`) ile birlikte güncellenmelidir.
+## [0.9.0] - 2026-11-19
 
 ### Eklenenler
+- **Koyu / Açık Tema Düğmesi (`theme.js`):** Daha önce işleyicisiz olan `◐` düğmesi bağlandı. Seçim `<html data-theme>` özniteliği ve `localStorage` (`gitarc_theme`) ile saklanır, sayfa yenilenince korunur; depolama kapalıysa koyu temaya düşer. Düğmenin `aria-pressed` ve başlığı güncellenir, satır içi `style` kullanılmaz (CSP uyumlu).
+- **Okunabilir Ölçek ve Güncel Bölgeye Yaslanma (`computeView`):** Çok geniş sahneler (örn. MegaCorp enterprise demosu) artık ekrana sığdırılıp okunmaz hale küçültülmez; en az `MIN_READABLE_SCALE` (0,5 px/birim) ölçekte çizilir, ilk açılışta ve depo değişince en güncel (sağ) bölgeye yaslanır, geri kalanı sürüklenerek gezilir. `#zoom-reset` en güncel bölgeye döner.
+- **Sürüm Tutarlılık Testi (`version_test.go`):** `VERSION`, `AppVersion`, `index.html`, `canvas.js`, `fallback.js` içindeki elle yazılı sürümler ve CHANGELOG başlığı birbiriyle eşleşmezse `go test` kırılır.
 - **Sınırsız Şerit & Dinamik Omurga Yerleşimi (`lanes.go`, `canvas.js`, `fallback.js`):** Çok sayıda çakışan dal artık üst üste yığılmak yerine her biri kendi şeridine yerleşir (eski `MaxHemisphereLanes = 4` sınırı üç motorda da kaldırıldı). Omurga düğümleri dal kalabalığına göre açılır (`layoutSpinePositions`), birleşmiş yayların iki merge noktası kalabalığa ve şeride göre uzaklaşır (`layoutBranchCrowd`), dış yaylar iç yayları kapsayacak biçimde daha yüksek ve geniş çizilir. Tüm birleşmiş dallar gösterilir (eski "son 8 yay" katlaması kaldırıldı); sahne boyutu sabit üst sınıra takılmaz.
 - **Diff Görüntüleyici (`/api/diff`, `diff_service.go`):** Commit, dal veya çalışma ağacı için birleşik diff üretimi ve `diff-stat` özeti.
 - **AI Commit/PR Teklif Kartı (`proposals.go`, `/api/proposal/dismiss`):** `.git/gitarc_proposal.json` IPC dosyası üzerinden gelen bekleyen teklif kokpitte gösterilir; reddedilince bellekten ve diskten silinir.
 - **Güvenlik Kalkanı Yapılandırması (`guard_config.go`):** Secret dosya/içerik desenleri ve `git add -A` yasağı (`StageSafeFiles`) varsayılan olarak devrededir; depo kökündeki `.gitarc` veya `.gitarc.json` dosyasıyla ek desenler tanımlanabilir (`LoadGuardConfig`). Kalıcı loglar `~/.gitarc/logs.json` içinde tutulur.
 - **Yeni API uçları:** `GET /api/system/git-status-ping` (ağır git komutu çalıştırmadan değişiklik algılama imzası), `POST /api/system/choose-folder`, ve eski istemciler için `/api/sync-spine`, `/api/reset`, `/api/run-local`, `/api/branch/prune-gone` takma adları.
 - **Test Altyapısı:**
-  - `canvas.js` yerleşim ve geometri değişmezleri için sıfır bağımlılıklı Node testleri (`tests/js/canvas.test.mjs`, 19 test); `go test` içinden de çalışır (`canvas_js_test.go`).
+  - `main()` uçtan uca (test ikilisi `GITARC_TEST_RUN_MAIN=1` ile kendini yeniden çalıştırır: sim sunucusu, port yedeği, `-team`, `-demo`, `-mcp`, SIGTERM), `openBrowser` ve `handleChooseFolder` (sahte `open`/`xdg-open`/`osascript`/`zenity`) testleri; ana paket kapsamı %37 → %74.
+  - `canvas.js` yerleşim ve geometri değişmezleri için sıfır bağımlılıklı Node testleri (`tests/js/`, 36 test: canvas geometrisi ve tema); `go test` içinden de çalışır (`canvas_js_test.go`).
   - Sahte `gh` stub'ı (`ghstub_test.go`): gerçek `gh`, ağ veya GitHub hesabı olmadan `fetchGHPRs`, `fetchGHMergedPRs`, Branch Protection/Ruleset, `promoteBranchLive`, `mergeBranchLive`, `updatePRMetaLive`, `deleteBranchLive` ve `ProtectDefaultBranch` testleri.
   - Şerit paketleme, proje yönetimi, `SyncSpine`, yerel merge/squash, sürüm kontrolü, oturum/CSRF/`decodePOST` ve canlı depoda uçtan uca HTTP handler testleri. `gitengine` kapsamı %62 → %82.
 
 ### Değişenler
+- **Enterprise Demosu Okunur Hale Geldi:** Omurga genişliği hesaplanırken yalnızca birleşmiş yaylar kalabalığa sayılır; açık dalların kapsülleri zaten ayrı yerleşir (10 açık PR son aralıkları 1000 px'e şişiriyordu). MegaCorp demosunda tarayıcı `viewBox` genişliği 8246 → 2838, omurga son noktası 6716 → 3231; sandbox omurgası 3244 → 2224.
+- **README:** ekran görüntüleri (`docs/screenshots/`), parabolik metafor tablosu, bayrak ve MCP araç tabloları, güvenlik modeli ve güncel test komutlarıyla yeniden yazıldı.
 - **Frontend modülerleşti:** `web/app.js` (3.470 → ~550 satır) `web/modules/` altındaki ES modüllerine bölündü (`state`, `constants`, `utils`, `api`, `canvas`, `inspector`, `dock`, `modals`); `LocalFallbackEngine` `web/fallback.js` dosyasına taşındı. Go tarafında `simulation.go` büyük dosyası `collector_github.go`, `live_mutations.go`, `projects.go`, `simulation_enterprise_mock.go` ve diğerlerine ayrıldı. Ayrıntı: `REFACTOR_INDEX.md`.
 - **Önbellek:** Tüm statik dosyalar `Cache-Control: no-cache, no-store, must-revalidate` (+ `Pragma`, `Expires`) ile sunulur; `index.html` içindeki elle yazılı `?v=` sürüm sorgusu gereksiz olduğu için kaldırıldı.
 - **Belgeler:** `HANDOVER.md` ve `AGENTS.md` güncel mimari, test altyapısı ve yeni kurallarla yenilendi.
 
 ### Düzeltilenler
+- **Sürükleme Birimi:** Tuval sürüklemesi piksel yerine yanlışlıkla `1/zoom` ile çevriliyordu; artık gerçek piksel → sahne birimi dönüşümü (`unitsPerPx`) kullanılır ve kaydırma sahne sınırlarına kırpılır.
+- **Açık Temada Siyah Şerit:** Alt çekmece ve stüdyo sütunlarındaki sabit koyu zeminler (`#070a11`, `#090d16`) `--terminal-bg` / `--diff-bg` değişkenlerine taşındı; açık temada siyah şerit ve siyah diff paneli kalmadı (log/CI kutuları bilinçli olarak koyu kalır).
+- **Eski Sürüm Metinleri:** `index.html` ve `fallback.js` içinde kalmış `v0.7.0` / `v0.8.0` yedek metinleri güncellendi.
 - **Testler gerçek `~/.gitarc` dizinine yazıyordu:** `gitarc`, `internal/gitengine` ve `internal/mcp` test paketlerine `HOME`/`USERPROFILE`'ı geçici dizine alan `TestMain` eklendi; testler artık geliştiricinin gerçek `logs.json` ve `projects.json` dosyalarını değiştirmez.
 
 ## [0.8.0] - 2026-11-17
