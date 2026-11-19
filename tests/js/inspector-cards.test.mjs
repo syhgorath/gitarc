@@ -285,3 +285,12 @@ test('every button id the studio markup can produce has a dispatcher entry', () 
   for (const b of samples) for (const id of ids(studioActionsHtml(b))) produced.add(id);
   for (const id of produced) assert.ok(STUDIO_ACTION_IDS.includes(id), `${id} has no listener (dead button)`);
 });
+
+test('layersHtml: a PR without CI data shows no CI line (merged PRs no longer carry an invented CI)', () => {
+  const merged = open('m', { state: 'merged', pr: { number: 80, title: 'Merge pull request #80', reviewState: 'MERGED' } });
+  const withoutCi = layersHtml(branchViewModel(merged, snapOf()));
+  assert.match(withoutCi, /PR #80/);
+  assert.doesNotMatch(withoutCi, /CI:/);
+  const withCi = layersHtml(branchViewModel(open('o', { pr: { number: 1, title: 't', reviewState: 'OPEN', ci: { state: 'SUCCESS', workflow: 'CI', duration: '1m' } } }), snapOf()));
+  assert.match(withCi, /CI: CI \(1m\)/);
+});
