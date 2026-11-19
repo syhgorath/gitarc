@@ -70,13 +70,13 @@ export function computeSceneBounds({ nodes, visibleBranches, apexLayout, branchC
   let calcMinY = MAIN_Y - 90;
   if (upperBranches.length > 0) {
     const highestUpperY = Math.min(...upperBranches.map((b) => computeBranchGeometry(b, null, null, apexLayout, branchCrowdLayout).apexY));
-    calcMinY = Math.min(calcMinY, highestUpperY - 70);
+    calcMinY = Math.min(calcMinY, highestUpperY - 86);
   }
 
   let calcMaxY = MAIN_Y + 90;
   if (lowerBranches.length > 0) {
     const lowestLowerY = Math.max(...lowerBranches.map((b) => computeBranchGeometry(b, null, null, apexLayout, branchCrowdLayout).apexY));
-    calcMaxY = Math.max(calcMaxY, lowestLowerY + 115);
+    calcMaxY = Math.max(calcMaxY, lowestLowerY + 131);
   }
 
   const minY = calcMinY - 25;

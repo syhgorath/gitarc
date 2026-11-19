@@ -100,6 +100,42 @@ export function badgeModel(b) {
   return { tone, pulse, text };
 }
 
+// Uzak / Yerel satırı: dalın GitHub'daki ve kendi bilgisayarındaki durumu yan yana iki çip olarak söyler
+// ("Uzak: PR #83 · Yerel: yok"). Çipler tek bakışta ayrımı verir; ayrıntı inspector'dadır.
+export function whereModel(b) {
+  const f = branchFlags(b);
+  const dirty = b.uncommittedCount || 0;
+  const ahead = b.aheadMain || 0;
+
+  let remote;
+  if (f.isWorkingTreeWip) remote = { text: '☁ Uzakta yok', tone: 'muted', title: 'Kaydedilmemiş çalışma: henüz uzakta bir karşılığı yok' };
+  else if (b.originGone || b.state === 'gone') remote = { text: '☁ Uzakta silinmiş', tone: 'warn', title: 'Uzak dal silinmiş (origin: gone)' };
+  else if (b.pr?.number) remote = { text: `☁ PR #${b.pr.number}`, tone: 'sky', title: `Uzakta açık Pull Request #${b.pr.number}` };
+  else if (b.hasRemote) remote = { text: '☁ Uzak: var', tone: 'sky', title: `origin/${b.name} mevcut (PR yok)` };
+  else remote = { text: '☁ Uzakta yok', tone: 'muted', title: 'Bu dal henüz GitHub\'a pushlanmamış' };
+
+  let local;
+  if (f.isWorkingTreeWip) local = { text: `💻 ${dirty} dosya`, tone: 'purple', title: `${dirty} kaydedilmemiş dosya` };
+  else if (!b.hasLocal) local = { text: '💻 Yerelde yok', tone: 'muted', title: 'Bu dalın yerel kopyası yok' };
+  else {
+    const parts = [];
+    if (ahead > 0) parts.push(`↑${ahead}`);
+    if (dirty > 0) parts.push(`${dirty} dirty`);
+    const text = parts.length ? `💻 ${parts.join(' · ')}` : '💻 eşit';
+    const title = parts.length
+      ? `Yerel: main'e göre ${ahead} commit ileride${dirty > 0 ? `, ${dirty} kaydedilmemiş dosya` : ''}`
+      : 'Yerel kopya main ile eşit, bekleyen değişiklik yok';
+    local = { text: b.isHead ? `${text} · HEAD` : text, tone: 'purple', title };
+  }
+  return { remote, local };
+}
+
+export function whereHtmlOf(b) {
+  const w = whereModel(b);
+  const chip = (kind, c) => `<span class="cap-loc ${kind} ${c.tone}" title="${esc(c.title)}">${esc(truncate(c.text, 22))}</span>`;
+  return `<div class="cap-where">${chip('remote', w.remote)}${chip('local', w.local)}</div>`;
+}
+
 export function subTextOf(b) {
   const f = branchFlags(b);
   return f.isWorkingTreeWip
@@ -229,6 +265,7 @@ export function openCardModel(b, ctx) {
       ${authorBadgeHtml}
       <span class="cap-badge ${badge.tone} ${badge.pulse ? 'running-pulse' : ''}">${esc(badge.text)}</span>
     </div>
+    ${whereHtmlOf(b)}
     <div class="cap-sub" title="${esc(subText)}">${esc(truncate(subText, 32))}</div>
     ${alertsHtml ? `<div class="cap-alerts">${alertsHtml}</div>` : ''}
     <div class="cap-actions">${actionRowHtml}</div>

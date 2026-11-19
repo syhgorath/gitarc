@@ -1335,6 +1335,33 @@ body {
   text-overflow: ellipsis;
 }
 
+.cap-where {
+  display: flex;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.cap-loc {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cap-loc.sky { background: var(--sky-weak); border-color: var(--sky-border); color: var(--sky); }
+.cap-loc.purple { background: var(--purple-weak); border-color: var(--purple-border); color: var(--purple); }
+.cap-loc.warn { background: var(--warn-weak); border-color: var(--warn-border); color: var(--warn); }
+.cap-loc.muted { opacity: 0.75; }
+
 .cap-sub {
   font-family: var(--mono);
   font-size: 9.5px;
