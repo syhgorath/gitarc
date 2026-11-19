@@ -6,7 +6,8 @@ import { state, el } from '../../web/modules/state.js';
 import {
   FILTERS, filterContext, filterTest, matchesPathLens, matchesBranchFilter, countMatching, dirtyFileCount,
 } from '../../web/modules/filters.js';
-import { matchesFilter, renderKPIs } from '../../web/modules/canvas.js';
+import { matchesFilter } from '../../web/modules/canvas.js';
+import { renderKPIs } from '../../web/modules/kpi.js';
 
 // ---- fixtures ----
 const open = (id, extra = {}) => ({ id, name: id, state: 'open', hemisphere: 'upper', hasLocal: false, ...extra });

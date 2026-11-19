@@ -6,7 +6,9 @@ import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
 import { protectionView } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
-import { renderSVG, renderKPIs, renderTopbar, renderRayPopovers, setupCanvasInteractions } from './modules/canvas.js';
+import { renderSVG, renderRayPopovers, setupCanvasInteractions } from './modules/canvas.js';
+import { renderKPIs } from './modules/kpi.js';
+import { renderTopbar } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
 import {
   openConflictStudio, closeConflictStudio, applyConflictStudio,
