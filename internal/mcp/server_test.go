@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -223,3 +224,18 @@ func TestMCPProposeCommit(t *testing.T) {
 	}
 }
 
+
+func TestToolsRefuseToServeDemoDataWhenThereIsNoRepo(t *testing.T) {
+	empty := t.TempDir()
+	old, _ := os.Getwd()
+	if err := os.Chdir(empty); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	mgr := gitengine.NewManager(empty)
+	res := callTool(toolCallParams{Name: "gitarc_status"}, mgr)
+	if !res.IsError || len(res.Content) == 0 || !strings.Contains(res.Content[0].Text, "Git deposu yok") {
+		t.Fatalf("without a repo the tools must say so instead of returning fake data: %+v", res)
+	}
+}

@@ -52,6 +52,24 @@ type Manager struct {
 	updateAvail     bool
 	pendingProposal *model.CommitProposal
 	proposalBusy    bool // ApproveProposal çalışırken ikinci bir onayı (çift tıklama) reddeder
+	// demoAllowed: demo/simülasyon depoları kullanıcıya gösterilebilir mi. Gerçek başlangıçta (bir depo yolu verildiğinde)
+	// yalnızca açıkça `-repo sim` istenirse true'dur; depo bulunamazsa sessizce demoya düşülmez, "proje yok" durumu
+	// gösterilir. `NewManager("")` (testler, gömülü kullanım) eski davranışı korur.
+	demoAllowed bool
+}
+
+// NoProject: açık bir proje yok (depo bulunamadı ya da son proje kaldırıldı) ve demo da istenmedi.
+func (m *Manager) NoProject() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeRepoID == ""
+}
+
+// DemoAllowed: demo depoları kullanılabilir mi (açıkça `-repo sim` ile ya da gömülü/test kullanımı).
+func (m *Manager) DemoAllowed() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.demoAllowed
 }
 
 type repoEntry struct {
@@ -81,16 +99,22 @@ func NewManager(extraRepoPath string) *Manager {
 	explicitSimulation := os.Getenv("GITARC_MODE") == "simulation" || extraRepoPath == "sim"
 	forceLive := os.Getenv("GITARC_MODE") == "live"
 	shouldBeLive := !explicitSimulation && (extraRepoPath != "" || forceLive)
+	m.demoAllowed = explicitSimulation || extraRepoPath == ""
+	// Gerçek başlangıçta (bir yol verildiğinde) depo kökü git'e buldurulur: alt klasör, worktree ve submodule dahil.
+	resolveRoot := extraRepoPath != ""
 
 	candidates := []repoEntry{}
 	if extraRepoPath != "" && extraRepoPath != "sim" {
 		abs, err := filepath.Abs(extraRepoPath)
-		if err == nil && isGitDir(abs) {
-			candidates = append(candidates, repoEntry{
-				id:   "live-custom",
-				name: filepath.Base(abs) + " (Canlı)",
-				path: abs,
-			})
+		if err == nil {
+			abs = repoRootFor(abs)
+			if abs != "" {
+				candidates = append(candidates, repoEntry{
+					id:   "live-custom",
+					name: filepath.Base(abs) + " (Canlı)",
+					path: abs,
+				})
+			}
 		}
 	}
 	if envRepo := os.Getenv("GITARC_REPO"); envRepo != "" && envRepo != "sim" {
@@ -111,7 +135,15 @@ func NewManager(extraRepoPath string) *Manager {
 			}
 		}
 	}
-	if wd, err := os.Getwd(); err == nil && isGitDir(wd) {
+	cwdRepo := ""
+	if wd, err := os.Getwd(); err == nil {
+		if resolveRoot {
+			cwdRepo = repoRootFor(wd)
+		} else if isGitDir(wd) {
+			cwdRepo = wd
+		}
+	}
+	if wd := cwdRepo; wd != "" {
 		already := false
 		for _, c := range candidates {
 			if filepath.Clean(c.path) == filepath.Clean(wd) {
@@ -159,6 +191,9 @@ func NewManager(extraRepoPath string) *Manager {
 			}
 		}
 	}
+	if !m.demoAllowed && m.activeRepoID == "sim-sandbox" {
+		m.activeRepoID = "" // bağlanacak proje yok ve demo istenmedi: "proje yok" durumu
+	}
 	m.logs = loadSavedLogs()
 	return m
 }
@@ -178,7 +213,9 @@ func (m *Manager) repoOptionsLocked() []model.RepoOption {
 			openCount++
 		}
 	}
-	opts := []model.RepoOption{
+	var opts []model.RepoOption
+	if m.demoAllowed {
+		opts = []model.RepoOption{
 		{
 			ID:            "sim-sandbox",
 			Name:          "GitArc Sandbox (Temel Demo)",
@@ -199,6 +236,7 @@ func (m *Manager) repoOptionsLocked() []model.RepoOption {
 			Ahead:         3,
 			Behind:        0,
 		},
+		}
 	}
 	for _, lr := range m.liveRepos {
 		opts = append(opts, model.RepoOption{
@@ -272,6 +310,11 @@ func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 			live = &entry
 			break
 		}
+	}
+	if active == "" {
+		snap := m.noProjectSnapshotLocked(opts)
+		m.mu.RUnlock()
+		return snap, nil
 	}
 	if live == nil {
 		snap := m.buildSimSnapshotLocked(opts)
@@ -374,6 +417,10 @@ func (m *Manager) ClearLogs() (model.CockpitSnapshot, error) {
 // SwitchRepo switches the active repository between simulation and discovered live repos.
 func (m *Manager) SwitchRepo(repoID string) (model.CockpitSnapshot, error) {
 	m.mu.Lock()
+	if !m.demoAllowed && strings.HasPrefix(repoID, "sim-") {
+		m.mu.Unlock()
+		return model.CockpitSnapshot{}, fmt.Errorf("demo depoları varsayılan olarak kapalıdır (yalnızca `gitarc -repo sim` ile açılır)")
+	}
 	if repoID == "sim-sandbox" || repoID == "sim-keylab" {
 		m.activeRepoID = "sim-sandbox"
 		m.simRepo = buildSandboxSimulation()
@@ -1554,4 +1601,23 @@ func simMainCI(meta model.RepoMeta, nodes []model.CommitNode) *model.MainCIStatu
 		}
 	}
 	return &cp
+}
+
+// noProjectSnapshotLocked: açık proje yokken arayüzün "Henüz proje yok" panelini göstermesi için boş bir anlık görüntü.
+func (m *Manager) noProjectSnapshotLocked(opts []model.RepoOption) model.CockpitSnapshot {
+	return model.CockpitSnapshot{
+		Repo: model.RepoMeta{
+			ID:         "none",
+			Mode:       "none",
+			Name:       "Proje yok",
+			TeamMode:   m.teamMode,
+			AppVersion: AppVersion,
+		},
+		Repos:       opts,
+		Nodes:       []model.CommitNode{},
+		Branches:    []model.BranchArc{},
+		Diagnostics: []model.DiagnosticItem{},
+		Logs:        m.recentLogsLocked(),
+		GeneratedAt: time.Now(),
+	}
 }

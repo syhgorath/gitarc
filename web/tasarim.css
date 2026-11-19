@@ -3963,3 +3963,89 @@ body {
   font-family: var(--mono);
   white-space: nowrap;
 }
+
+/* Demo kipi şeridi ve "proje yok" karşılama paneli (kipler gövde sınıfıyla seçilir: body.demo-mode / body.no-project) */
+.demo-banner {
+  display: none;
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  padding: 3px 14px;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-pill);
+  background: var(--warn-weak);
+  color: var(--warn);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+body.demo-mode .demo-banner {
+  display: block;
+}
+
+.no-project-card {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 8;
+  width: min(460px, calc(100% - 48px));
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--overlay-bg);
+  box-shadow: var(--overlay-shadow);
+}
+
+body.no-project .no-project-card {
+  display: flex;
+}
+
+.no-project-title {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.no-project-text,
+.no-project-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.no-project-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+body.no-project .canvas-overlay-top,
+body.no-project .canvas-overlay-bottom,
+body.no-project .canvas-float-topright {
+  display: none;
+}
+
+/* Izgara satırı kaybolmasın diye display:none değil visibility (yoksa tuval çöker). */
+body.no-project .kpi-strip {
+  visibility: hidden;
+}
+
+body.no-project #btn-new-branch,
+body.no-project #btn-prune-gone,
+body.no-project #btn-protect-branch,
+body.no-project #btn-main-ci,
+body.no-project #btn-mcp-connect,
+body.no-project .check-pill,
+body.no-project .legend-bar {
+  display: none;
+}

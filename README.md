@@ -91,7 +91,9 @@ go build -o gitarc .
 | `-team` | `false` | Paylaşılan sunucu koruması |
 | `-mcp` | `false` | stdio MCP sunucusu olarak çalış |
 
-Demo depolar: **GitArc Sandbox** (temel) ve **MegaCorp Platform** (50 geliştirici, 4 ana hat, kurumsal senaryo). Üst çubuktaki depo seçiciden geçiş yapabilirsiniz.
+Başlangıçta GitArc, bulunduğunuz klasörün ait olduğu Git deposunu açar; bir alt klasörden, `git worktree` klasöründen ya da submodule'den başlatsanız da deponun kökünü kendisi bulur. Klasör bir depo değilse ve kayıtlı proje de yoksa **"Henüz proje yok"** paneli çıkar (`➕ Proje Ekle`); sahte veriyle sessizce açılmaz.
+
+Demo verisi yalnızca bilerek istenince açılır: `./gitarc -repo sim`. Demo depolar **GitArc Sandbox** (temel) ve **MegaCorp Platform** (50 geliştirici, 4 ana hat, kurumsal senaryo); açıkken tuvalde belirgin bir **DEMO · sahte veri** şeridi durur ve üst çubuktaki depo seçiciden geçiş yapılabilir.
 
 ## MCP entegrasyonu (AI ajanları)
 

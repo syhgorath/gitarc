@@ -266,6 +266,10 @@ func listTools() []toolDefinition {
 }
 
 func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
+	// Açık bir Git deposu yoksa araçlar sahte (demo) veri döndürmesin: net bir hata.
+	if mgr.NoProject() {
+		return errResult("Açık bir Git deposu yok: `gitarc -mcp -repo <depo-yolu>` ile bir depo klasörü verin")
+	}
 	switch params.Name {
 	case "gitarc_propose_commit":
 		return callProposeCommit(params.Arguments, mgr)
