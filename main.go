@@ -168,6 +168,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/repo/switch", a.guard(a.handleSwitchRepo))
 	mux.HandleFunc("/api/repo/add", a.guard(a.handleAddProject))
 	mux.HandleFunc("/api/repo/remove", a.guard(a.handleRemoveProject))
+	mux.HandleFunc("/api/repo/base-branch", a.guard(a.handleSetBaseBranch))
 	mux.HandleFunc("/api/branch/create", a.guard(a.handleCreateBranch))
 	mux.HandleFunc("/api/branch/checkout", a.guard(a.handleCheckoutBranch))
 	mux.HandleFunc("/api/branch/merge", a.guard(a.handleMergeBranch))
@@ -252,6 +253,21 @@ func (a *App) handleRemoveProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap, err := a.mgr.RemoveProject(req.RepoID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (a *App) handleSetBaseBranch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Branch string `json:"branch"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.SetBaseBranch(req.Branch)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

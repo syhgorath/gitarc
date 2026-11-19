@@ -32,6 +32,75 @@ export function spineCardModel(repo) {
   return { name, sub: p.sub, tone: p.tone, title: repo?.protectionSummary || `${name}: ${p.sub}` };
 }
 
+// Omurga dalı seçici: yalnızca canlı depoda ve birden fazla yerel dal varken gösterilir (simülasyonda gerçek
+// seçenek yoktur). Sabitlenmişse en üstte "Otomatik tespite dön" satırı çıkar.
+export function basePickerModel(repo) {
+  const cands = repo?.baseCandidates || [];
+  const current = repo?.defaultBranch || 'main';
+  const pinned = Boolean(repo?.baseBranchPinned);
+  return {
+    visible: repo?.mode === 'live' && cands.length > 1,
+    pinned,
+    current,
+    items: cands.map((name) => ({ name, current: name === current })),
+  };
+}
+
+export function renderBasePicker(callbacks = {}) {
+  const btn = document.getElementById('btn-base-picker');
+  const pop = document.getElementById('base-popover');
+  const list = document.getElementById('base-list');
+  if (!btn || !pop || !list) return;
+  const m = basePickerModel(state.snapshot?.repo);
+  btn.hidden = !m.visible;
+  if (!m.visible) state.baseOpen = false;
+  pop.hidden = !m.visible || !state.baseOpen;
+  btn.setAttribute('aria-expanded', String(Boolean(m.visible && state.baseOpen)));
+
+  list.innerHTML = '';
+  if (!m.visible) return;
+  const rows = [];
+  if (m.pinned) rows.push({ name: '', title: '↺ Otomatik tespite dön', sub: 'Elle seçimi kaldır', current: false });
+  m.items.forEach((it) => rows.push({ name: it.name, title: truncate(it.name, 34), sub: it.current ? 'şu anki omurga' : 'omurga yap', current: it.current }));
+  rows.forEach((r) => {
+    const item = document.createElement('div');
+    item.className = `ray-item history-item${r.current ? ' current' : ''}`;
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    item.dataset.baseBranch = r.name;
+    item.innerHTML = `<div><div class="ray-item-title">${esc(r.title)}</div><div class="ray-item-sub">${esc(r.sub)}</div></div>`;
+    const choose = () => {
+      state.baseOpen = false;
+      pop.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      if (!r.current && callbacks.onSetBaseBranch) callbacks.onSetBaseBranch(r.name);
+    };
+    item.addEventListener('click', choose);
+    item.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); choose(); }
+    });
+    list.appendChild(item);
+  });
+}
+
+export function setupBasePicker() {
+  const btn = document.getElementById('btn-base-picker');
+  const pop = document.getElementById('base-popover');
+  const setOpen = (open) => {
+    state.baseOpen = Boolean(open);
+    if (pop) pop.hidden = !state.baseOpen;
+    btn?.setAttribute('aria-expanded', String(state.baseOpen));
+  };
+  btn?.addEventListener('click', (ev) => { ev.stopPropagation(); setOpen(!state.baseOpen); });
+  document.getElementById('base-close')?.addEventListener('click', () => setOpen(false));
+  document.addEventListener('click', (ev) => {
+    if (state.baseOpen && !ev.target.closest?.('#base-picker-wrap')) setOpen(false);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && state.baseOpen) setOpen(false);
+  });
+}
+
 export function renderSpineCard(snapshot) {
   const card = document.getElementById('btn-main-lane');
   if (!card || !snapshot) return;
@@ -54,6 +123,7 @@ export function renderRayPopovers(callbacks = {}) {
   if (el.lowerRayCount) el.lowerRayCount.textContent = counts.lower > 0 ? String(counts.lower) : '';
 
   renderSpineCard(snap);
+  renderBasePicker(callbacks);
   renderHistoryCard(callbacks);
   renderLongLivedCard(callbacks);
 }

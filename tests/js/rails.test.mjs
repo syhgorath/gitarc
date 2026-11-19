@@ -70,3 +70,26 @@ test('long-lived branches never offer a delete/clean button and are not counted 
   assert.ok(!/data-act="delete"/.test(mergedPillModel({ ...merged, longLived: true }, false).html));
   assert.equal(cleanableCount([merged, { ...merged, longLived: true }]), 1);
 });
+
+import { basePickerModel } from '../../web/modules/rails.js';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+
+test('base picker only shows for live repos with a real choice', () => {
+  const live = { mode: 'live', defaultBranch: 'develop', baseCandidates: ['develop', 'main', 'feat/x'], baseBranchPinned: true };
+  const m = basePickerModel(live);
+  assert.equal(m.visible, true);
+  assert.equal(m.pinned, true);
+  assert.deepEqual(m.items.map((i) => [i.name, i.current]), [['develop', true], ['main', false], ['feat/x', false]]);
+  assert.equal(basePickerModel({ ...live, mode: 'simulation' }).visible, false);
+  assert.equal(basePickerModel({ ...live, baseCandidates: ['main'] }).visible, false);
+  assert.equal(basePickerModel({ mode: 'live' }).visible, false);
+  assert.equal(basePickerModel(undefined).current, 'main');
+});
+
+test('offline engine refuses to change the base branch like the server does in simulation', () => {
+  const ctx = { window: {}, console };
+  vm.createContext(ctx);
+  vm.runInContext(readFileSync(new URL('../../web/fallback.js', import.meta.url), 'utf8'), ctx);
+  assert.throws(() => ctx.window.LocalFallbackEngine.setBaseBranch('develop'), /Simülasyon/);
+});

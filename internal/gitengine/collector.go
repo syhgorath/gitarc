@@ -286,6 +286,8 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			Name:              repoName,
 			Path:              repoPath,
 			DefaultBranch:     defaultBranch,
+			BaseBranchPinned:  pinnedBaseBranch(ctx, repoPath) != "",
+			BaseCandidates:    baseCandidates(ctx, repoPath, defaultBranch),
 			RemoteName:        remoteName,
 			Ahead:             ahead,
 			Behind:            behind,
@@ -315,6 +317,9 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 // bulunan main/master/develop, (3) geçerli dal. Eskiden yalnızca (2) vardı: `develop` varsayılanlı ama yerelde
 // `main` da bulunan bir depoda yanlış dal omurga seçiliyordu.
 func detectDefaultBranch(ctx context.Context, repoPath string) string {
+	if pinned := pinnedBaseBranch(ctx, repoPath); pinned != "" {
+		return pinned
+	}
 	if out, _, err := runCmd(ctx, repoPath, "git", "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"); err == nil {
 		if name := strings.TrimPrefix(strings.TrimSpace(out), "origin/"); name != "" && name != "HEAD" {
 			if _, _, err := runCmd(ctx, repoPath, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+name); err == nil {
