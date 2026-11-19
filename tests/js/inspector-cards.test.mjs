@@ -236,9 +236,9 @@ test('studioActionsHtml: buttons per branch kind (the working-tree commit button
 });
 
 test('studioDetailHtml / studioBranchTypeLabel', () => {
-  assert.equal(studioBranchTypeLabel(open('a')), '☁️ Üst Ray · PR');
-  assert.equal(studioBranchTypeLabel(open('a', { hemisphere: 'lower' })), '💻 Alt Ray · Yerel');
-  assert.equal(studioBranchTypeLabel(open('local-wip-working-tree', { hemisphere: 'lower' })), '✏️ Alt Ray · Çalışma');
+  assert.equal(studioBranchTypeLabel(open('a')), '☁️ Uzak · PR');
+  assert.equal(studioBranchTypeLabel(open('a', { hemisphere: 'lower' })), '💻 Yerel');
+  assert.equal(studioBranchTypeLabel(open('local-wip-working-tree', { hemisphere: 'lower' })), '✏️ Yerel · Çalışma');
   const html = studioDetailHtml(open('a-very-long-branch-name-that-needs-cutting', { author: EVIL, localSha: 'abcdef1234', pr: pr(1, { state: 'SUCCESS' }) }));
   assert.match(html, /abcdef1/);
   assert.doesNotMatch(html, /<img/);

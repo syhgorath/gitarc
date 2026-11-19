@@ -1,4 +1,4 @@
-// web/modules/kpi.js - Üstteki KPI çipleri (Tümü, Benim Dallarım, Alt Ray, ...) ve "Tümü sayacı" ipucu
+// web/modules/kpi.js - Üstteki KPI çipleri (Tümü, Benim Dallarım, Yerel, ...) ve "Tümü sayacı" ipucu
 //
 // Sayılar filters.js tablosundan gelir (tuvaldeki süzmeyle aynı kaynak). `buildKpiModel` saf bir
 // fonksiyondur ve Node'da test edilir; `renderKPIs` yalnızca DOM'a yazar.
@@ -28,7 +28,7 @@ export function buildKpiModel(snapshot) {
   const defs = [
     { key: 'all', label: 'Tümü', val: branches.length, tone: '', title: allTitle },
     { key: 'mine', label: '👤 Benim Dallarım (@me)', val: mineCount, tone: mineCount ? 'accent' : '', title: 'Giriş yapan kullanıcıya ait açık dallar' },
-    { key: 'lower', label: 'Alt Ray (Local)', val: lowerCount, tone: lowerCount ? 'purple' : '', title: 'PR açılmamış açık yerel dallar' },
+    { key: 'lower', label: 'Yerel (Local)', val: lowerCount, tone: lowerCount ? 'purple' : '', title: 'PR açılmamış açık yerel dallar' },
     { key: 'dirty', label: 'Değişiklik (Dirty)', val: dirtyCount, tone: dirtyCount ? 'warn' : '', title: `Çalışma ağacında ${dirtyCount} adet kaydedilmemiş dosya var.` },
     { key: 'issues', label: 'Çakışma / Cross-PR', val: conflictCount, tone: conflictCount ? 'warn' : '', title: 'Çakışan veya aynı dosyaları değiştiren açık dallar' },
     { key: 'ci_fail', label: 'CI Hatası', val: failCount, tone: failCount ? 'danger' : '', title: 'CI testleri başarısız olan dallar' },
@@ -63,7 +63,7 @@ export function renderKPIs(onFilterChange = null) {
   const prBadge = document.createElement('span');
   prBadge.className = `kpi-pill ${model.upperCount ? 'accent' : ''}`;
   prBadge.title = "GitHub üzerinde açık olan Pull Request'ler";
-  prBadge.innerHTML = `<span>Üst Ray (PR)</span><strong>${model.upperCount}</strong>`;
+  prBadge.innerHTML = `<span>Uzak (PR)</span><strong>${model.upperCount}</strong>`;
   el.kpiPills.appendChild(prBadge);
 
   if (el.dragHint) {

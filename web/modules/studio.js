@@ -112,7 +112,7 @@ export function studioActionsHtml(b) {
 }
 
 export function studioBranchTypeLabel(b) {
-  return b.hemisphere === 'upper' ? '☁️ Üst Ray · PR' : (isWorkingTreeBranch(b) ? '✏️ Alt Ray · Çalışma' : '💻 Alt Ray · Yerel');
+  return b.hemisphere === 'upper' ? '☁️ Uzak · PR' : (isWorkingTreeBranch(b) ? '✏️ Yerel · Çalışma' : '💻 Yerel');
 }
 
 export function studioDetailHtml(b) {

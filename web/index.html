@@ -31,8 +31,8 @@
       </div>
 
       <div class="legend-bar" aria-label="Ray renk açıklamaları">
-        <span class="leg-chip leg-sky"><i class="leg-line sky"></i> Üst Ray: GitHub Remote / PR</span>
-        <span class="leg-chip leg-purple"><i class="leg-line dashed-purple"></i> Alt Ray: Yerel (Local Only)</span>
+        <span class="leg-chip leg-sky"><i class="leg-line sky"></i> Uzak: GitHub Remote / PR</span>
+        <span class="leg-chip leg-purple"><i class="leg-line dashed-purple"></i> Yerel: sadece local</span>
         <span class="leg-chip leg-green"><i class="leg-ring green"></i> Tam Parabol = Merged</span>
       </div>
 
@@ -73,10 +73,10 @@
               <svg id="rail-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parabolik Git Dallanma Grafiği"></svg>
             </div>
 
-            <!-- Sol üst: Üst Ray açıklaması/süzgeci + omurga dalı, Geçmiş ve Uzun Ömürlü çipleri (eski tasarımdaki gibi tuvalin üstünde) -->
+            <!-- Sol üst: Uzak açıklaması/süzgeci + omurga dalı, Geçmiş ve Uzun Ömürlü çipleri (eski tasarımdaki gibi tuvalin üstünde) -->
             <div class="canvas-overlay-top">
-              <button type="button" class="hemi-pill upper-pill" id="btn-upper-ray" title="Üst Ray: GitHub Remote &amp; PR hatlarını odakla / filtrele">
-                ☁ ÜST RAY · REMOTE / PULL REQUEST<span class="ray-pill-count" id="upper-ray-pill-count"></span>
+              <button type="button" class="hemi-pill upper-pill" id="btn-upper-ray" title="Uzak: GitHub Remote &amp; PR hatlarını odakla / filtrele">
+                ☁ UZAK · REMOTE / PULL REQUEST<span class="ray-pill-count" id="upper-ray-pill-count"></span>
               </button>
 
               <div class="history-lane-wrap" id="base-picker-wrap">
@@ -118,10 +118,10 @@
               </div>
             </div>
 
-            <!-- Sol alt: Alt Ray açıklaması/süzgeci -->
+            <!-- Sol alt: Yerel açıklaması/süzgeci -->
             <div class="canvas-overlay-bottom">
-              <button type="button" class="hemi-pill lower-pill" id="btn-lower-ray" title="Alt Ray: Yerel Çalışma &amp; Taslak hatlarını odakla / filtrele">
-                ▫ ALT RAY · LOCAL ONLY (KESİKLİ HER PARABOL)<span class="ray-pill-count" id="lower-ray-pill-count"></span>
+              <button type="button" class="hemi-pill lower-pill" id="btn-lower-ray" title="Yerel: yerel çalışma &amp; taslak hatlarını odakla / filtrele">
+                ▫ YEREL · SADECE LOCAL (KESİKLİ HER PARABOL)<span class="ray-pill-count" id="lower-ray-pill-count"></span>
               </button>
             </div>
 
@@ -250,14 +250,14 @@
                 <input type="radio" name="branch-mode" value="lower" checked>
                 <div>
                   <div class="mode-title purple">Sadece Yerel (Local)</div>
-                  <div class="mode-desc">Alt rayda kesikli mor yarım parabol olarak başlar</div>
+                  <div class="mode-desc">Yerelde kesikli mor yarım parabol olarak başlar</div>
                 </div>
               </label>
               <label class="mode-choice remote-choice">
                 <input type="radio" name="branch-mode" value="upper">
                 <div>
                   <div class="mode-title sky">Push &amp; PR Aç</div>
-                  <div class="mode-desc">Üst rayda GitHub PR &amp; CI aktif açılır</div>
+                  <div class="mode-desc">Uzakta GitHub PR &amp; CI aktif açılır</div>
                 </div>
               </label>
             </div>

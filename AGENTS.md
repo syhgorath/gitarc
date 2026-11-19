@@ -42,6 +42,8 @@ Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme otur
    - **Uydurma Konum Çizme:** Gerçek merge/konum bilgisi bulunamayan birleşmiş dalı sahte bir noktaya sabitleyip parabol çizme; `HistoryOnly` ile işaretle, tuvalin sol üstündeki `🗂 Geçmiş` çipinde listele (`TestMergedBranchOutsideSpineWindowIsHistoryOnly`). Birleşmiş yayların uç genişletmesi `MAX_MERGE_SPREAD` ile sınırlı kalmalıdır.
    - **Görsel Dürüstlük:** Eylemi olmayan öğede gereksiz buton gösterme; yalnızca yerel kalıntısı duran birleşmiş parabollerde `💻 Local` / `HEAD·Local` rozeti, alt ray kalıntı kuyruğu ve `🧹` butonu göster, tamamen temiz yeşil kapsüllerde `🧹` butonunu gizle.
 
+**Terim notu:** Arayüzde kullanıcıya "Üst Ray/Alt Ray" değil **"Uzak" (GitHub/PR) ve "Yerel" (local)** denir. Kod içi adlar (`upper`/`lower`, `btn-upper-ray`) tarihsel olarak aynı kalır; yeni kullanıcı metinleri Yerel/Uzak yazılmalıdır.
+
 ## 3. Mimari ve Dosya Haritası (`v0.9.0`)
 
 - `main.go` / `main_test.go`: HTTP sunucusu, güvenlik middleware (`root`, `guard`), 34 `/api/*` rota kaydı (takma adlar dahil), `-addr`, `-repo`, `-open`, `-mcp`, `-team` bayrakları. Testler: `main_test.go` (CSP & güvenlik akışı), `main_guard_test.go` (oturum, `decodePOST`, Origin), `main_handlers_test.go` (canlı/sim handler akışı, statik başlıklar), `canvas_js_test.go` (JS testlerini `go test` içinden çalıştırır).
