@@ -10,20 +10,81 @@ import {
 } from './utils.js';
 
 export function xOfSpine(idx) {
+  if (state.spinePositions && state.spinePositions[idx] !== undefined) {
+    return state.spinePositions[idx];
+  }
+  if (state.spinePositions && state.spinePositions.length > 0 && idx >= state.spinePositions.length) {
+    const lastIdx = state.spinePositions.length - 1;
+    return state.spinePositions[lastIdx] + (idx - lastIdx) * SPINE_STEP_X;
+  }
   return SPINE_START_X + idx * SPINE_STEP_X;
 }
 
+export function layoutSpinePositions(nodes, branches) {
+  const maxSpineIdx = Math.max(
+    (nodes || []).length - 1,
+    ...(branches || []).map((b) => Math.max(b.startSpineIndex || 0, b.endSpineIndex || 0)),
+    6
+  );
+
+  const positions = new Array(maxSpineIdx + 1);
+  positions[0] = SPINE_START_X;
+
+  // Kaç birleşen dal varsa (örneğin 10 adet), önceki ve sonraki nokta arası ona göre genişlesin:
+  for (let i = 0; i < maxSpineIdx; i++) {
+    let crowd = 0;
+    (branches || []).forEach((b) => {
+      const s = b.startSpineIndex || 0;
+      const e = Math.max(s + 1, b.endSpineIndex || 0);
+      if (s <= i && e >= i + 1) {
+        crowd += 1;
+      } else if (s === i || e === i + 1) {
+        crowd += 0.5;
+      }
+    });
+
+    // Dal kalabalığı arttıkça omurgada önceki ve sonraki düğüm arası mesafe orantılı biçimde açılır
+    const extraStep = Math.round(crowd * 85);
+    const step = SPINE_STEP_X + extraStep;
+    positions[i + 1] = positions[i] + step;
+  }
+
+  return positions;
+}
+
+export function layoutBranchCrowd(branches) {
+  const map = new Map();
+  const merged = (branches || []).filter((b) => b.state === 'merged');
+
+  merged.forEach((b) => {
+    const s1 = b.startSpineIndex || 0;
+    const e1 = Math.max(s1 + 1, b.endSpineIndex || 0);
+    const overlapping = merged.filter((other) => {
+      const s2 = other.startSpineIndex || 0;
+      const e2 = Math.max(s2 + 1, other.endSpineIndex || 0);
+      return Math.max(s1, s2) <= Math.min(e1, e2);
+    });
+    overlapping.sort((a, b) => (a.lane || 1) - (b.lane || 1) || (a.id || '').localeCompare(b.id || ''));
+    const rank = Math.max(0, overlapping.findIndex((o) => o.id === b.id));
+    map.set(b.id, { crowd: overlapping.length, rank });
+  });
+
+  return map;
+}
+
 export function yOfLane(hemisphere, lane, isMerged = false) {
-  const l = Math.min(4, Math.max(1, lane || 1));
-  const offset = isMerged ? (54 + (l - 1) * 32) : (LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y);
+  const l = Math.max(1, lane || 1);
+  const offset = isMerged ? (54 + (l - 1) * 36) : (LANE_BASE_OFFSET + (l - 1) * LANE_STEP_Y);
   return hemisphere === 'lower' ? MAIN_Y + offset : MAIN_Y - offset;
 }
 
-export function layoutOpenApexPositions(branches) {
+export function layoutOpenApexPositions(branches, branchCrowdLayout = null) {
   const map = new Map();
-  const lastMergedEndX = branches
-    .filter((b) => b.state === 'merged')
-    .reduce((acc, b) => Math.max(acc, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex))), 0);
+  const mergedBranches = branches.filter((b) => b.state === 'merged');
+  const lastMergedEndX = mergedBranches.reduce((acc, b) => {
+    const geom = computeBranchGeometry(b, null, null, null, branchCrowdLayout);
+    return Math.max(acc, geom.endX || xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)));
+  }, 0);
 
   ['upper', 'lower'].forEach((hemi) => {
     const openList = branches
@@ -44,23 +105,30 @@ export function layoutOpenApexPositions(branches) {
   return map;
 }
 
-export function computeBranchGeometry(b, tipXOverride = null, tipYOverride = null, apexLayout = null) {
-  const startX = xOfSpine(b.startSpineIndex);
+export function computeBranchGeometry(b, tipXOverride = null, tipYOverride = null, apexLayout = null, branchCrowdLayout = null) {
+  const baseStartX = xOfSpine(b.startSpineIndex);
   const isMerged = b.state === 'merged';
   const laneY = yOfLane(b.hemisphere, b.lane, isMerged);
 
   if (isMerged && tipXOverride === null) {
-    const endX = xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex));
-    const spanX = Math.max(SPINE_STEP_X, endX - startX);
+    const baseEndX = xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex));
+
+    // Dal kalabalığına göre 2 merge noktasının birbirinden uzaklaşması:
+    const lane = Math.max(1, b.lane || 1);
+    const crowdInfo = branchCrowdLayout?.get(b.id) || state.branchCrowdLayout?.get(b.id) || { crowd: 1, rank: 0 };
+    const spreadStep = Math.min(48, 16 + crowdInfo.crowd * 3);
+    const spread = (lane - 1) * spreadStep + (crowdInfo.rank * 8);
+
+    const startX = Math.max(SPINE_START_X - 50, baseStartX - spread);
+    const endX = baseEndX + spread;
+    const spanX = endX - startX;
     const apexX = (startX + endX) / 2;
 
-    // Geniş açılı tepe yüksekliği: Mesafe daraldıkça tepeyi dikleştirmek yerine yatık ve zarif tut
-    const maxApexOffset = Math.min(160, Math.max(45, spanX * 0.40));
-    const baseLaneOffset = 50 + (Math.min(4, b.lane || 1) - 1) * 28;
-    const actualOffset = Math.min(baseLaneOffset, maxApexOffset);
-    const apexY = b.hemisphere === 'lower' ? MAIN_Y + actualOffset : MAIN_Y - actualOffset;
+    // Kat kat fırlasın (lane'e göre katmanlansın), taban genişliğine oranlı zarif kavisini korusun
+    const baseLaneOffset = 52 + (lane - 1) * 36;
+    const apexY = b.hemisphere === 'lower' ? MAIN_Y + baseLaneOffset : MAIN_Y - baseLaneOffset;
 
-    // Geniş açılı yatık Bezier gerilimi (dikey dikilme yerine tatlı yayvan kavis):
+    // Geniş açılı yatık Bezier gerilimi:
     const cp1X = startX + (apexX - startX) * 0.65;
     const cp2X = apexX + (endX - apexX) * 0.35;
     const openD = `M ${startX} ${MAIN_Y} C ${cp1X} ${MAIN_Y}, ${cp1X} ${apexY}, ${apexX} ${apexY}`;
@@ -70,13 +138,13 @@ export function computeBranchGeometry(b, tipXOverride = null, tipYOverride = nul
   }
 
   const laid = apexLayout?.get(b.id);
-  const defaultApexX = laid ? laid.apexX : Math.max(startX + 150, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)) - 10);
+  const defaultApexX = laid ? laid.apexX : Math.max(baseStartX + 150, xOfSpine(Math.max(b.startSpineIndex + 1, b.endSpineIndex)) - 10);
   const defaultApexY = laid ? laid.apexY : laneY;
   const apexX = tipXOverride !== null ? tipXOverride : defaultApexX;
   const apexY = tipYOverride !== null ? tipYOverride : defaultApexY;
-  const cp1X = startX + (apexX - startX) * 0.55;
-  const openD = `M ${startX} ${MAIN_Y} C ${cp1X} ${MAIN_Y}, ${cp1X} ${apexY}, ${apexX} ${apexY}`;
-  return { startX, endX: null, apexX, apexY, openD, closeD: null, areaD: null };
+  const cp1X = baseStartX + (apexX - baseStartX) * 0.55;
+  const openD = `M ${baseStartX} ${MAIN_Y} C ${cp1X} ${MAIN_Y}, ${cp1X} ${apexY}, ${apexX} ${apexY}`;
+  return { startX: baseStartX, endX: null, apexX, apexY, openD, closeD: null, areaD: null };
 }
 
 export function branchToneClass(b) {
@@ -522,23 +590,22 @@ export function renderSVG(callbacks = {}) {
   const nodes = snap.nodes || [];
   const branches = snap.branches || [];
 
-  // Akıllı Katlama: Kalabalık mega-repolarda dikey kuleyi önlemek için en güncel son 8 birleşmiş dalı aç
-  const mergedBranches = branches.filter((b) => b.state === 'merged');
-  const maxMergedArches = 8;
-  const recentMergedIds = new Set(
-    mergedBranches.slice(-maxMergedArches).map((b) => b.id)
-  );
-
+  // Tüm birleşmiş dalları göster (kullanıcı tercihi: dallar silinmez, 2 merge noktası kalabalığa göre açılır)
   const visibleBranches = branches.filter((b) => {
     if (b.state !== 'merged') return true;
-    if (!state.showMergedArches) return false;
-    return recentMergedIds.has(b.id);
+    return state.showMergedArches !== false;
   });
 
-  const apexLayout = layoutOpenApexPositions(visibleBranches);
+  // Dinamik Omurga Yayılımı: Dal kalabalığına göre omurga düğümlerini ve merge mesafesini esnet
+  state.spinePositions = layoutSpinePositions(nodes, visibleBranches);
+
+  const branchCrowdLayout = layoutBranchCrowd(visibleBranches);
+  state.branchCrowdLayout = branchCrowdLayout;
+
+  const apexLayout = layoutOpenApexPositions(visibleBranches, branchCrowdLayout);
   state.apexLayout = apexLayout;
 
-  const maxSpineIdx = Math.max(nodes.length - 1, ...visibleBranches.map((b) => b.endSpineIndex || 0), 6);
+  const maxSpineIdx = Math.max(nodes.length - 1, ...visibleBranches.map((b) => Math.max(b.startSpineIndex || 0, b.endSpineIndex || 0)), 6);
   const maxMergedUpperLane = Math.max(1, ...visibleBranches.filter((b) => b.hemisphere === 'upper' && b.state === 'merged').map((b) => b.lane || 1));
   const maxApexX = Math.max(0, ...Array.from(apexLayout.values()).map((v) => v.apexX));
 
@@ -546,32 +613,29 @@ export function renderSVG(callbacks = {}) {
   const upperBranches = visibleBranches.filter((b) => b.hemisphere === 'upper');
   const lowerBranches = visibleBranches.filter((b) => b.hemisphere === 'lower');
 
-  let calcMinY = MAIN_Y - 80;
+  let calcMinY = MAIN_Y - 90;
   if (upperBranches.length > 0) {
     const highestUpperY = Math.min(...upperBranches.map((b) => {
-      const geom = computeBranchGeometry(b, null, null, apexLayout);
+      const geom = computeBranchGeometry(b, null, null, apexLayout, branchCrowdLayout);
       return geom.apexY;
     }));
-    calcMinY = Math.max(MAIN_Y - 220, Math.min(calcMinY, highestUpperY - 60));
-  } else {
-    calcMinY = MAIN_Y - 90;
+    calcMinY = Math.min(calcMinY, highestUpperY - 70);
   }
 
-  let calcMaxY = MAIN_Y + 80;
+  let calcMaxY = MAIN_Y + 90;
   if (lowerBranches.length > 0) {
     const lowestLowerY = Math.max(...lowerBranches.map((b) => {
-      const geom = computeBranchGeometry(b, null, null, apexLayout);
+      const geom = computeBranchGeometry(b, null, null, apexLayout, branchCrowdLayout);
       return geom.apexY;
     }));
-    calcMaxY = Math.min(MAIN_Y + 220, Math.max(calcMaxY, lowestLowerY + 110));
-  } else {
-    calcMaxY = MAIN_Y + 90;
+    calcMaxY = Math.max(calcMaxY, lowestLowerY + 115);
   }
 
   const minY = calcMinY - 25;
   const maxY = calcMaxY + 30;
-  const sceneW = Math.max(1280, SPINE_START_X + (maxSpineIdx + 2) * SPINE_STEP_X + 140, maxApexX + 200);
-  const sceneH = Math.min(460, Math.max(300, maxY - minY));
+  const lastSpineX = xOfSpine(maxSpineIdx);
+  const sceneW = Math.max(1280, lastSpineX + 240, maxApexX + 200);
+  const sceneH = Math.max(340, maxY - minY);
 
   const viewW = sceneW / state.zoom;
   const viewH = sceneH / state.zoom;
@@ -615,7 +679,7 @@ export function renderSVG(callbacks = {}) {
 
   const ordered = [...visibleBranches].sort((a, b) => (a.state === 'merged' ? 0 : 1) - (b.state === 'merged' ? 0 : 1));
   ordered.forEach((b) => {
-    const geom = computeBranchGeometry(b, null, null, apexLayout);
+    const geom = computeBranchGeometry(b, null, null, apexLayout, branchCrowdLayout);
     const visible = matchesFilter(b);
     const isSelected = state.selectedBranchId === b.id;
     const tone = branchToneClass(b);

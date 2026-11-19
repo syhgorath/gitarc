@@ -147,7 +147,9 @@ func (a *App) root(static http.Handler) http.Handler {
 				})
 			}
 		}
-		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
