@@ -46,7 +46,7 @@ export function initElements() {
     'studio-line-badge', 'studio-mode-badge', 'studio-left-conflict', 'studio-right-preview',
     'studio-error-banner', 'studio-error-text', 'studio-run-vet', 'studio-apply',
     'mcp-connect-modal', 'mcp-config-snippet',
-    'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'btn-update-check',
+    'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'loading-hint', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
     'sec-prot-summary', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
     'sec-update-cmd', 'btn-add-project', 'btn-remove-project', 'add-project-modal',
@@ -143,6 +143,7 @@ export function initElements() {
   el.btnProtectBranch = el['btn-protect-branch'];
   el.btnMainCI = el['btn-main-ci'];
   el.btnNoProjectAdd = el['btn-no-project-add'];
+  el.loadingHint = el['loading-hint'];
   el.btnUpdateCheck = el['btn-update-check'];
   el.lensPathInput = el['lens-path-input'];
   el.perfCacheBadge = el['perf-cache-badge'];

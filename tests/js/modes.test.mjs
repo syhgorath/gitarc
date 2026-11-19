@@ -32,3 +32,24 @@ test('the page ships the welcome card, its add button and the demo banner', () =
   assert.match(html, /id="demo-banner"/);
   assert.match(html, /gitarc -repo sim/, 'the hint tells how to open the demo on purpose');
 });
+
+import { loadingHintView } from '../../web/modules/syncsteps.js';
+
+test('the loading hint shows only while GitHub steps are still pending on a live repo', () => {
+  const live = (steps) => ({ mode: 'live', syncSteps: steps });
+  assert.equal(loadingHintView(live([{ id: 'fetch', state: 'ok' }, { id: 'prs', state: 'ok' }])), null);
+  const h = loadingHintView(live([{ id: 'prs', state: 'pending' }, { id: 'merged', state: 'pending' }, { id: 'protection', state: 'ok' }]));
+  assert.match(h.text, /GitHub verisi yükleniyor/);
+  assert.match(h.title, /PR listesi/);
+  assert.match(h.title, /birleşmiş PR/);
+  assert.doesNotMatch(h.title, /koruma/);
+});
+
+test('the loading hint stays away from stale data, failures, the demo and non-live modes', () => {
+  assert.equal(loadingHintView({ mode: 'live', syncSteps: [{ id: 'prs', state: 'stale' }] }), null, 'stale data is already shown');
+  assert.equal(loadingHintView({ mode: 'live', syncSteps: [{ id: 'prs', state: 'failed' }] }), null, 'failures have their own badge');
+  assert.equal(loadingHintView({ mode: 'simulation', syncSteps: [{ id: 'prs', state: 'pending' }] }), null);
+  assert.equal(loadingHintView({ mode: 'none' }), null);
+  assert.equal(loadingHintView(undefined), null);
+  assert.equal(loadingHintView({ mode: 'live' }), null);
+});
