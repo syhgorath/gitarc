@@ -59,6 +59,8 @@ export function initElements() {
     'canvas-inspector', 'canvas-inspector-close', 'canvas-inspector-title',
     'studio-branch-chip', 'studio-branch-detail', 'studio-mid-status',
     'studio-diff-meta', 'studio-diff-fullscreen', 'studio-diff-content',
+    'diff-viewer-modal', 'diff-modal-close', 'diff-modal-foot-close', 'diff-stats-badge', 'diff-files-count', 'diff-files-list',
+    'diff-target-label', 'diff-viewer-container', 'btn-copy-diff',
     'studio-col-left', 'studio-col-mid', 'studio-col-right'
   ];
 

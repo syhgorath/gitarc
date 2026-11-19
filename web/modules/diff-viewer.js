@@ -5,7 +5,7 @@ import { apiCall } from './api.js';
 
 let currentDiffResult = null;
 
-export async function openDiffViewer(target, type = '') {
+export async function openDiffViewer(target, type = '', focusPath = '') {
   if (!el.diffModal) return;
   el.diffModal.hidden = false;
   currentDiffResult = null;
@@ -30,12 +30,22 @@ export async function openDiffViewer(target, type = '') {
       res = await apiCall(`/api/diff?target=${encodeURIComponent(target || '')}&type=${encodeURIComponent(type || '')}`);
     }
     renderDiffViewer(res);
+    if (focusPath) focusDiffFile(res, focusPath);
   } catch (err) {
     if (el.diffViewerContainer) {
       el.diffViewerContainer.innerHTML = `<div class="diff-empty-msg">⚠️ Diff yüklenirken hata oluştu: ${esc(err.message)}</div>`;
     }
     if (el.diffStatsBadge) el.diffStatsBadge.textContent = 'Hata';
   }
+}
+
+// İstenen dosyayı seç: sol listede işaretle ve diff kartına kaydır (kartın kimliği dosya sırasıyla aynıdır).
+export function focusDiffFile(diffResult, path) {
+  const idx = (diffResult?.files || []).findIndex((f) => f.path === path);
+  if (idx < 0) return false;
+  el.diffFilesList?.querySelectorAll('.diff-file-btn').forEach((b) => b.classList.toggle('active', b.getAttribute('data-file-idx') === String(idx)));
+  document.getElementById(`diff-card-${idx}`)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  return true;
 }
 
 export function closeDiffViewer() {

@@ -28,6 +28,14 @@ func ParseDiffOutput(raw, target, diffType, title string) model.DiffResult {
 	}
 
 	var curFile *model.DiffFileSummary
+	var patch []string
+	flush := func() {
+		if curFile == nil {
+			return
+		}
+		curFile.Patch = joinPatch(patch)
+		res.Files = append(res.Files, *curFile)
+	}
 	scanner := bufio.NewScanner(strings.NewReader(raw))
 	buf := make([]byte, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
@@ -35,20 +43,20 @@ func ParseDiffOutput(raw, target, diffType, title string) model.DiffResult {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if m := diffGitHeaderRe.FindStringSubmatch(line); len(m) == 3 {
-			if curFile != nil {
-				res.Files = append(res.Files, *curFile)
-			}
+			flush()
 			curFile = &model.DiffFileSummary{
 				Path:    m[2],
 				OldPath: m[1],
 				Status:  "M",
 			}
+			patch = []string{line}
 			continue
 		}
 
 		if curFile == nil {
 			continue
 		}
+		patch = append(patch, line)
 
 		if strings.HasPrefix(line, "new file mode") {
 			curFile.Status = "A"
@@ -65,9 +73,7 @@ func ParseDiffOutput(raw, target, diffType, title string) model.DiffResult {
 		}
 	}
 
-	if curFile != nil {
-		res.Files = append(res.Files, *curFile)
-	}
+	flush()
 
 	res.FilesChanged = len(res.Files)
 	return res
@@ -133,7 +139,16 @@ func (m *Manager) getDiffLive(live *repoEntry, target, diffType string) (model.D
 	}
 
 	// Branch or PR
+	if err := validateBranchName(target); err != nil {
+		return model.DiffResult{}, fmt.Errorf("geçersiz diff hedefi: %w", err)
+	}
 	title := "Dal " + target
+	// Yalnızca uzakta olan dalın yerel kopyası yoktur: `origin/<dal>` ile karşılaştırılır (eskiden boş diff dönüyordu).
+	if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+target); err != nil {
+		if _, _, rerr := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/"+target); rerr == nil {
+			target = "origin/" + target
+		}
+	}
 	defBranch := detectDefaultBranch(ctx, live.path)
 	out, _, err := runCmd(ctx, live.path, "git", "diff", "-M", "--color=never", "origin/"+defBranch+"..."+target)
 	if err != nil || strings.TrimSpace(out) == "" {
@@ -193,4 +208,16 @@ func (m *Manager) getMergeDiffLive(ctx context.Context, repoPath, sha string) (m
 		return model.DiffResult{}, fmt.Errorf("merge diff alınamadı (%s): %w", sha, err)
 	}
 	return ParseDiffOutput(out, sha, "merge", title), nil
+}
+
+// maxPatchLines: dosya başına satır içi panelde tutulan en fazla satır (tamamı RawDiff'te durur).
+const maxPatchLines = 600
+
+func joinPatch(lines []string) string {
+	if len(lines) > maxPatchLines {
+		kept := append([]string(nil), lines[:maxPatchLines]...)
+		kept = append(kept, fmt.Sprintf("… (%d satır daha; tamamı için Diff penceresini açın)", len(lines)-maxPatchLines))
+		return strings.Join(kept, "\n")
+	}
+	return strings.Join(lines, "\n")
 }

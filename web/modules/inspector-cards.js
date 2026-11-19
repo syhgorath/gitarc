@@ -533,7 +533,7 @@ export function mergedFilesCardHtml() {
   `;
 }
 
-// Dosya satırları: durum rozeti, yol, +eklenen / -silinen. Tümü kaçışlanır.
+// Dosya satırları: durum rozeti, yol, +eklenen / -silinen (istatistik yoksa gösterilmez). Tümü kaçışlanır.
 export function mergedFilesRowsHtml(files) {
   const list = files || [];
   if (list.length === 0) return '<div class="muted">Bu birleşmede dosya değişikliği bulunamadı.</div>';
@@ -544,7 +544,7 @@ export function mergedFilesRowsHtml(files) {
       <button type="button" class="merged-file-row" data-file-idx="${idx}" title="${esc(f.path)}">
         <span class="chip ${cls} sm mono">${esc(st)}</span>
         <span class="merged-file-path">${esc(f.path)}</span>
-        <span class="merged-file-stat"><span class="diff-stat-add">+${f.additions || 0}</span> <span class="diff-stat-del">-${f.deletions || 0}</span></span>
+        <span class="merged-file-stat">${f.additions === undefined && f.deletions === undefined ? '' : `<span class="diff-stat-add">+${f.additions || 0}</span> <span class="diff-stat-del">-${f.deletions || 0}</span>`}</span>
       </button>
     `;
   }).join('');
