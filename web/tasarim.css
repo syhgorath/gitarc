@@ -69,6 +69,10 @@
   --shadow-2: 0 10px 24px -6px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
   --shadow-3: 0 20px 48px -8px rgba(0, 0, 0, 0.72);
   --focus: 0 0 0 3px rgba(99, 102, 241, 0.35);
+
+  /* Çakışma stüdyosu / alt çekmece terminal ve diff sütunları */
+  --terminal-bg: #070a11;
+  --diff-bg: #090d16;
 }
 
 :root[data-theme="light"] {
@@ -132,6 +136,9 @@
   --shadow-2: 0 10px 24px -6px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
   --shadow-3: 0 24px 48px -12px rgba(15, 23, 42, 0.16);
   --focus: 0 0 0 3px rgba(79, 70, 229, 0.28);
+
+  --terminal-bg: #eef1f6;
+  --diff-bg: #f8f9fc;
 }
 
   --shadow-2: 0 12px 26px -6px rgba(15, 23, 42, 0.14);
@@ -1662,14 +1669,14 @@ body {
 .studio-col-mid {
   flex: 0 0 36%;
   max-width: 40%;
-  background: #070a11;
+  background: var(--terminal-bg);
 }
 
 .studio-col-right {
   flex: 1;
   min-width: 0;
   border-right: none;
-  background: #090d16;
+  background: var(--diff-bg);
 }
 
 .studio-col-head {
@@ -1753,12 +1760,12 @@ body {
 
 .studio-col-scrollable.terminal-bg {
   padding: 0;
-  background: #070a11;
+  background: var(--terminal-bg);
 }
 
 .studio-col-scrollable.diff-bg {
   padding: 4px 6px;
-  background: #090d16;
+  background: var(--diff-bg);
   font-family: var(--mono);
   font-size: 10px;
 }

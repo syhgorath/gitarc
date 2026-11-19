@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.8.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **95 üst düzey Go testi + 27 JS testi geçti** (`gitarc`: 19 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 73 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **95 üst düzey Go testi + 36 JS testi geçti** (`gitarc`: 19 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 73 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -78,7 +78,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 - **`web/fallback.js`:**
   - `LocalFallbackEngine`: Backend sunucusu olmadan (`file://` veya bağlantı kesintisinde) kokpiti bağımsız çalıştıran tarayıcı motoru (`deleteBranch` ve `pruneGone` dâhil yeşil yayları korur, simüle CI extraction, çakışma ve pipeline yönetimini barındırır). `app.js`'den önce yüklenir (`window.LocalFallbackEngine`).
 - **`web/modules/*.js` (ES modülleri, `app.js` bunları içe aktarır):** `state.js` (reaktif durum + DOM kayıt defteri), `constants.js` (`MAIN_Y`, `SPINE_STEP_X`, `LANE_*` geometri sabitleri), `utils.js` (`esc`, `svgEl`, durum yardımcıları), `api.js`, `theme.js` (koyu/açık tema: `<html data-theme>` + `localStorage` anahtarı `gitarc_theme`; renkler `tasarim.css` içindeki `:root` / `:root[data-theme="light"]` değişken bloklarındadır), `canvas.js` (SVG parabol geometrisi ve kapsüller), `inspector.js`, `dock.js`, `modals.js`.
-  - **`canvas.js` yerleşim mantığı:** `layoutSpinePositions` (omurga düğümleri dal kalabalığına göre açılır, hep artan sıra), `layoutBranchCrowd` (birleşmiş dallar için `{crowd, rank}`), `yOfLane` (şerit sınırı yok), `computeBranchGeometry` (birleşmiş yaylarda dış şeritler daha yüksek ve geniş olur, sol marj `SPINE_START_X - 50`), `layoutOpenApexPositions` (açık kapsüller arası en az `OPEN_CAPSULE_MIN_GAP_X`). Tüm birleşmiş dallar gösterilir (eski "son 8 yay" katlaması kaldırıldı); sahne yüksekliği/genişliği sabit üst sınıra takılmaz.
+  - **`canvas.js` yerleşim mantığı:** `layoutSpinePositions` (omurga düğümleri dal kalabalığına göre açılır, hep artan sıra; **yalnızca birleşmiş yaylar kalabalığa sayılır**, açık dalların kapsülleri `layoutOpenApexPositions` ile ayrı yerleşir. Açık dallar da sayıldığında enterprise demosunda adımlar 1000 px'e şişiyordu), `layoutBranchCrowd` (birleşmiş dallar için `{crowd, rank}`), `yOfLane` (şerit sınırı yok), `computeBranchGeometry` (birleşmiş yaylarda dış şeritler daha yüksek ve geniş olur, sol marj `SPINE_START_X - 50`), `layoutOpenApexPositions` (açık kapsüller arası en az `OPEN_CAPSULE_MIN_GAP_X`). **`computeView` (saf fonksiyon):** görünür `viewBox`'ı hesaplar. Sahne ekrana sığdırılınca ölçek `MIN_READABLE_SCALE` (0,5 px/birim) altına düşecekse tamamı sığdırılmaz; bu ölçekte çizilir, ilk açılışta ve depo değişince en güncel (sağ) bölgeye yaslanır (`state.anchorEnd`), geri kalanı sürükleyerek gezilir. Kaydırma `state.unitsPerPx` ile piksel → sahne birimi çevrilir ve sahne sınırlarına kırpılır; `#zoom-reset` en güncel bölgeye döner. Tüm birleşmiş dallar gösterilir (eski "son 8 yay" katlaması kaldırıldı); sahne yüksekliği/genişliği sabit üst sınıra takılmaz.
 - **`web/app.js`:**
   - Ana kokpit orkestratörü, yaşam döngüsü ve olay dinleyicileri.
   - `apiCall(path, method, body)`: Tüm POST isteklerine `X-Requested-With: gitarc` başlığı ekler.
@@ -150,7 +150,9 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
    - `NewManager`, `recordLog` ve `AddProject` `$HOME/.gitarc/{logs,projects}.json` dosyalarına yazar. Her test paketinde (`gitarc`, `internal/gitengine`, `internal/mcp`) `TestMain` `HOME`/`USERPROFILE`'ı geçici dizine alır. Yeni bir test paketi eklersen aynı `TestMain`'i ekle, yoksa testler geliştiricinin gerçek loglarını ve proje listesini kirletir/siler.
 9. **Şerit sınırı yok:**
    - Yeni kod `MaxHemisphereLanes`/`lane <= 4` gibi bir üst sınır varsaymamalı (`yOfLane`, `computeBranchGeometry`, `AssignLanes`, `fallback.js`). Mega-repo demosunda sahne dikeyde uzar; bu bilinçli bir tercihtir (`TestAssignLanesNoLaneCap`, canvas testleri korur).
-10. **`go test` kapsamı ve node:**
+10. **Açık tema ve koyu bloklar:**
+    - Alt çekmece/stüdyo sütunlarının zeminleri `--terminal-bg` / `--diff-bg` değişkenleridir (koyu: `#070a11`/`#090d16`, açık: `#eef1f6`/`#f8f9fc`); sabit renk kodu yazma, yoksa açık temada siyah şerit çıkar. Log/CI kutuları (`--log-bg`, `.terminal-box`) açık temada bilinçli olarak koyu kalır (IDE terminali görünümü).
+11. **`go test` kapsamı ve node:**
     - `canvas_js_test.go` `node --test tests/js/` komutunu çalıştırır; node yoksa test atlanır (CI `ubuntu-latest` üzerinde node hazırdır). `tests/js/` `web/` dışındadır, bu yüzden ikiliye gömülmez ve CSP testine takılmaz.
 
 ---

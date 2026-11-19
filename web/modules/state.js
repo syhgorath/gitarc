@@ -13,6 +13,9 @@ export const state = {
   zoom: 1,
   panX: 0,
   panY: 0,
+  anchorEnd: true,      // ilk çizimde en güncel (sağ) bölgeye yaslan
+  anchoredRepoId: null,
+  unitsPerPx: 0,
   panning: null,
   drag: null,
   localRunOutput: {},
