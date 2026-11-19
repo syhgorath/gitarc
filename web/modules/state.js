@@ -35,17 +35,17 @@ export const el = {};
 export function initElements() {
   const ids = [
     'rail-svg', 'svg-viewport', 'repo-select', 'mode-badge', 'kpi-pills',
-    'radar-list', 'radar-count', 'bottom-dock', 'dock-tab-radar', 'dock-tab-logs',
+    'radar-list', 'bottom-dock', 'dock-tab-radar', 'dock-tab-logs',
     'dock-tab-actions', 'dock-radar-count', 'dock-log-count', 'dock-action-count',
     'dock-toggle-btn', 'dock-clear-btn', 'dock-pane-radar', 'dock-pane-logs',
     'dock-pane-actions', 'dock-logs-stream', 'dock-actions-stream', 'inspector-detail',
-    'prune-count', 'drag-hint', 'engineStatus', 'zoom-reset',
+    'prune-count', 'drag-hint', 'zoom-reset',
     'toggle-merged-arches', 'create-branch-modal', 'new-branch-form', 'new-branch-name',
     'new-branch-base', 'toast-stack', 'conflict-studio-modal', 'studio-branch-badge',
     'studio-file-tabs', 'studio-guide-box', 'studio-guide-text', 'studio-strategy-bar',
     'studio-line-badge', 'studio-mode-badge', 'studio-left-conflict', 'studio-right-preview',
     'studio-error-banner', 'studio-error-text', 'studio-run-vet', 'studio-apply',
-    'mcp-connect-modal', 'mcp-config-snippet', 'btn-logs-modal', 'log-count',
+    'mcp-connect-modal', 'mcp-config-snippet',
     'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
     'sec-prot-summary', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
@@ -81,7 +81,6 @@ export function initElements() {
   el.modeBadge = el['mode-badge'];
   el.kpiPills = el['kpi-pills'];
   el.radarList = el['radar-list'];
-  el.radarCount = el['radar-count'];
   el.dock = el['bottom-dock'];
   el.dockTabRadar = el['dock-tab-radar'];
   el.dockTabLogs = el['dock-tab-logs'];
@@ -106,7 +105,7 @@ export function initElements() {
   el.btnCanvasSync = el['btn-canvas-sync'];
   el.canvasSyncDot = el['canvas-sync-dot'];
   el.canvasSyncText = el['canvas-sync-text'];
-  el.engineStatus = document.getElementById('engine-status') || el['engineStatus'];
+  el.engineStatus = document.getElementById('engine-status');
   el.zoomReset = el['zoom-reset'];
   el.toggleMerged = el['toggle-merged-arches'];
   el.modal = el['create-branch-modal'];
@@ -139,8 +138,6 @@ export function initElements() {
   el.diffTargetLabel = el['diff-target-label'];
   el.diffViewerContainer = el['diff-viewer-container'];
   el.btnCopyDiff = el['btn-copy-diff'];
-  el.btnLogsModal = el['btn-logs-modal'];
-  el.logCount = el['log-count'];
   el.logsModal = el['logs-modal'];
   el.logsList = el['logs-list'];
   el.btnProtectBranch = el['btn-protect-branch'];
