@@ -1,38 +1,8 @@
-// Zero-dependency tests for the left-rail spine card (web/modules/rails.js). Run: node --test tests/js
+// Zero-dependency tests for the canvas label/chip helpers (web/modules/rails.js). Run: node --test tests/js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { spineCardModel } from '../../web/modules/rails.js';
 import { protectionView } from '../../web/modules/syncsteps.js';
-
-test('spine card name follows the default branch (master/develop), main only as fallback', () => {
-  assert.equal(spineCardModel({ defaultBranch: 'master' }).name, 'master');
-  assert.equal(spineCardModel({ defaultBranch: 'develop' }).name, 'develop');
-  assert.equal(spineCardModel({}).name, 'main');
-  assert.equal(spineCardModel(undefined).name, 'main');
-});
-
-test('spine card never claims "Korunan" unless protection is really active', () => {
-  assert.match(spineCardModel({ protectionState: 'active' }).sub, /Korunan/);
-  assert.equal(spineCardModel({ protectionState: 'active' }).tone, 'prot-active');
-  const none = spineCardModel({ protectionState: 'none' });
-  assert.match(none.sub, /Korumasız/);
-  assert.equal(none.tone, 'prot-none');
-  const unknown = spineCardModel({ protectionState: 'unknown' });
-  assert.match(unknown.sub, /okunamadı/);
-  assert.ok(!/Korunan/.test(unknown.sub));
-  assert.equal(unknown.tone, 'prot-unknown');
-});
-
-test('spine card stays compatible with servers that only send branchProtected', () => {
-  assert.equal(spineCardModel({ branchProtected: true }).tone, 'prot-active');
-  assert.equal(spineCardModel({ branchProtected: false }).tone, 'prot-none');
-});
-
-test('spine card tooltip prefers the server summary', () => {
-  assert.equal(spineCardModel({ protectionSummary: 'Ruleset: 2 kural' }).title, 'Ruleset: 2 kural');
-  assert.match(spineCardModel({ defaultBranch: 'master', protectionState: 'none' }).title, /^master:/);
-});
 
 test('top bar protection button names the real default branch too', () => {
   assert.equal(protectionView({ protectionState: 'active', defaultBranch: 'master' }).button, '🛡️ master Korumalı');
@@ -92,4 +62,30 @@ test('offline engine refuses to change the base branch like the server does in s
   vm.createContext(ctx);
   vm.runInContext(readFileSync(new URL('../../web/fallback.js', import.meta.url), 'utf8'), ctx);
   assert.throws(() => ctx.window.LocalFallbackEngine.setBaseBranch('develop'), /Simülasyon/);
+});
+
+test('base picker button shows the current spine branch and says whether it was chosen by hand', () => {
+  const auto = basePickerModel({ mode: 'live', defaultBranch: 'develop', baseCandidates: ['develop', 'main'] });
+  assert.equal(auto.label, '⚙ develop');
+  assert.match(auto.title, /otomatik tespit/);
+  const pinned = basePickerModel({ mode: 'live', defaultBranch: 'main', baseCandidates: ['develop', 'main'], baseBranchPinned: true });
+  assert.match(pinned.title, /elle seçildi/);
+  assert.equal(basePickerModel({ mode: 'live', defaultBranch: 'x'.repeat(40), baseCandidates: ['a', 'b'] }).label.length <= 26, true);
+});
+
+import { closeChipPopovers } from '../../web/modules/rails.js';
+import { state } from '../../web/modules/state.js';
+
+test('opening one chip popover closes the others (they now sit side by side)', () => {
+  const nodes = {};
+  globalThis.document = { getElementById: (id) => (nodes[id] ||= { hidden: false, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } }) };
+  state.baseOpen = true; state.historyOpen = true; state.longLivedOpen = true;
+  closeChipPopovers('history');
+  assert.equal(state.historyOpen, true, 'the one being opened is left alone');
+  assert.equal(state.baseOpen, false);
+  assert.equal(state.longLivedOpen, false);
+  assert.equal(nodes['base-popover'].hidden, true);
+  assert.equal(nodes['btn-longlived-lane'].attrs['aria-expanded'], 'false');
+  closeChipPopovers();
+  assert.equal(state.historyOpen, false);
 });

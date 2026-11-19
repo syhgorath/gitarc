@@ -1,4 +1,5 @@
-// web/modules/rails.js - Sol raylar: "Üst Ray" / "Alt Ray" sayaçları ve "Geçmiş" çipi (merge noktası bilinmeyen dallar)
+// web/modules/rails.js - Tuval üstü etiketler ve çipler: "Üst Ray" / "Alt Ray" sayaçları, omurga dalı seçici,
+// "Geçmiş" (merge noktası bilinmeyen dallar) ve "Uzun Ömürlü" çipleri (eski tasarımdaki gibi tuvalin köşelerinde)
 //
 // Sayaç kuralı tek yerde (`rayCounts`): Daha önce renderSVG ve renderRayPopovers aynı iki rozeti farklı
 // kurallarla yazıyordu (biri kirli çalışma ağacını sayıyordu, diğeri saymıyordu); kaydırma/yakınlaştırma
@@ -16,20 +17,22 @@ export function rayCounts(snapshot) {
   return { upper, lower: lowerBranches + (dirty > 0 ? 1 : 0) };
 }
 
-// Omurga kartı (sol ray): ad varsayılan daldan, alt yazı koruma durumundan gelir. Eskiden kart sabit
-// "main · Production · Korunan" yazıyordu: `master` varsayılanlı depoda yanlış ad, korumasız/okunamayan
-// depoda yanlış "Korunan" iddiası gösteriyordu.
-const SPINE_PROTECTION = {
-  active: { sub: 'Omurga · Korunan', tone: 'prot-active' },
-  none: { sub: 'Omurga · Korumasız', tone: 'prot-none' },
-  unknown: { sub: 'Omurga · Koruma okunamadı', tone: 'prot-unknown' },
+// Üç çip (omurga dalı, Geçmiş, Uzun Ömürlü) artık yan yana duruyor: biri açılınca diğerleri kapanmalı, yoksa
+// açılır listeler üst üste biner.
+const CHIP_POPOVERS = {
+  base: { flag: 'baseOpen', btn: 'btn-base-picker', pop: 'base-popover' },
+  history: { flag: 'historyOpen', btn: 'btn-history-lane', pop: 'history-popover' },
+  longlived: { flag: 'longLivedOpen', btn: 'btn-longlived-lane', pop: 'longlived-popover' },
 };
 
-export function spineCardModel(repo) {
-  const name = repo?.defaultBranch || 'main';
-  const state = repo?.protectionState || (repo?.branchProtected ? 'active' : 'none');
-  const p = SPINE_PROTECTION[state] || SPINE_PROTECTION.none;
-  return { name, sub: p.sub, tone: p.tone, title: repo?.protectionSummary || `${name}: ${p.sub}` };
+export function closeChipPopovers(except = '') {
+  Object.entries(CHIP_POPOVERS).forEach(([key, c]) => {
+    if (key === except) return;
+    state[c.flag] = false;
+    const pop = document.getElementById(c.pop);
+    if (pop) pop.hidden = true;
+    document.getElementById(c.btn)?.setAttribute('aria-expanded', 'false');
+  });
 }
 
 // Omurga dalı seçici: yalnızca canlı depoda ve birden fazla yerel dal varken gösterilir (simülasyonda gerçek
@@ -42,6 +45,8 @@ export function basePickerModel(repo) {
     visible: repo?.mode === 'live' && cands.length > 1,
     pinned,
     current,
+    label: `⚙ ${truncate(current, 24)}`,
+    title: pinned ? `Omurga dalı: ${current} (elle seçildi) — değiştir` : `Omurga dalı: ${current} (otomatik tespit) — değiştir`,
     items: cands.map((name) => ({ name, current: name === current })),
   };
 }
@@ -53,6 +58,8 @@ export function renderBasePicker(callbacks = {}) {
   if (!btn || !pop || !list) return;
   const m = basePickerModel(state.snapshot?.repo);
   btn.hidden = !m.visible;
+  btn.textContent = m.label;
+  btn.setAttribute('title', m.title);
   if (!m.visible) state.baseOpen = false;
   pop.hidden = !m.visible || !state.baseOpen;
   btn.setAttribute('aria-expanded', String(Boolean(m.visible && state.baseOpen)));
@@ -87,6 +94,7 @@ export function setupBasePicker() {
   const btn = document.getElementById('btn-base-picker');
   const pop = document.getElementById('base-popover');
   const setOpen = (open) => {
+    if (open) closeChipPopovers('base');
     state.baseOpen = Boolean(open);
     if (pop) pop.hidden = !state.baseOpen;
     btn?.setAttribute('aria-expanded', String(state.baseOpen));
@@ -101,19 +109,6 @@ export function setupBasePicker() {
   });
 }
 
-export function renderSpineCard(snapshot) {
-  const card = document.getElementById('btn-main-lane');
-  if (!card || !snapshot) return;
-  const m = spineCardModel(snapshot.repo);
-  const nameEl = document.getElementById('spine-lane-name');
-  const subEl = document.getElementById('spine-lane-sub');
-  if (nameEl) nameEl.textContent = m.name;
-  if (subEl) subEl.textContent = m.sub;
-  card.classList.remove('prot-active', 'prot-none', 'prot-unknown');
-  card.classList.add(m.tone);
-  card.setAttribute('title', m.title);
-}
-
 export function renderRayPopovers(callbacks = {}) {
   const snap = state.snapshot;
   if (!snap) return;
@@ -122,7 +117,6 @@ export function renderRayPopovers(callbacks = {}) {
   if (el.upperRayCount) el.upperRayCount.textContent = counts.upper > 0 ? String(counts.upper) : '';
   if (el.lowerRayCount) el.lowerRayCount.textContent = counts.lower > 0 ? String(counts.lower) : '';
 
-  renderSpineCard(snap);
   renderBasePicker(callbacks);
   renderHistoryCard(callbacks);
   renderLongLivedCard(callbacks);
@@ -233,6 +227,7 @@ export function setupLongLivedChip() {
   const btn = document.getElementById('btn-longlived-lane');
   const pop = document.getElementById('longlived-popover');
   const setOpen = (open) => {
+    if (open) closeChipPopovers('longlived');
     state.longLivedOpen = Boolean(open);
     if (pop) pop.hidden = !state.longLivedOpen;
     btn?.setAttribute('aria-expanded', String(state.longLivedOpen));
@@ -252,6 +247,7 @@ export function setupHistoryChip() {
   const histBtn = document.getElementById('btn-history-lane');
   const histPop = document.getElementById('history-popover');
   const setHistoryOpen = (open) => {
+    if (open) closeChipPopovers('history');
     state.historyOpen = Boolean(open);
     if (histPop) histPop.hidden = !state.historyOpen;
     histBtn?.setAttribute('aria-expanded', String(state.historyOpen));

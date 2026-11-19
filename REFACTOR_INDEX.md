@@ -16,7 +16,7 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 | **Web Frontend** | `web/modules/diff-viewer.js` | ~155 | Diff görüntüleyici | ✅ `modals.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/scene.js` | ~330 | `renderSVG`: sahne sınırları (saf), yaylar, omurga, düğümler | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/interactions.js` | ~140 | Kaydırma, yakınlaştırma, ray süzgeçleri (saf kurallar + olaylar) | ✅ `canvas.js`'ten ayrıldı |
-| **Web Frontend** | `web/modules/rails.js` | ~100 | Sol raylar: `rayCounts` (tek sayaç kuralı) ve Geçmiş çipi | ✅ `canvas.js`'ten ayrıldı |
+| **Web Frontend** | `web/modules/rails.js` | ~100 | Tuval üstü etiketler/çipler: `rayCounts` (tek sayaç kuralı), omurga seçici, Geçmiş ve Uzun Ömürlü çipleri | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/capsule.js` | ~345 | Kapsül modelleri (saf) + DOM yazıcıları | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/kpi.js` | ~70 | KPI çipleri (`buildKpiModel` saf + `renderKPIs`) | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/topbar.js` | ~125 | Üst çubuk ve senkron rozeti (saf modeller + `renderTopbar`) | ✅ `canvas.js`'ten ayrıldı |
