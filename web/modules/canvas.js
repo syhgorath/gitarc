@@ -3,10 +3,9 @@ import { state, el } from './state.js';
 import {
   XHTML_NS, MAIN_Y, LANE_BASE_OFFSET, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H
 } from './constants.js';
-import {
-  esc, truncate, svgEl, isMergedOrGone, isOpenPR, isLocalOpen, isMyBranch
-} from './utils.js';
+import { esc, truncate, svgEl } from './utils.js';
 import { summarizeSync, protectionView } from './syncsteps.js';
+import { filterContext, matchesBranchFilter, countMatching, dirtyFileCount } from './filters.js';
 import {
   xOfSpine, layoutSpinePositions, layoutBranchCrowd, layoutOpenApexPositions,
   computeBranchGeometry, computeView, splitHistory
@@ -30,29 +29,13 @@ export function branchStrokeColor(b) {
   return b.hemisphere === 'lower' ? '#bc8cff' : '#58a6ff';
 }
 
+// Tuvaldeki süzme: koşullar filters.js tablosundan gelir (KPI çipleriyle aynı kaynak).
 export function matchesFilter(b) {
-  const q = (state.pathLens || '').trim().toLowerCase();
-  if (q) {
-    const nameHit = (b.name || '').toLowerCase().includes(q);
-    const fileHit = (b.changedFiles || []).some((f) => f.toLowerCase().includes(q));
-    if (!nameHit && !fileHit) return false;
-  }
-  switch (state.filter) {
-    case 'mine':
-      return Boolean(b.state === 'open' && !isMergedOrGone(b) && isMyBranch(b, state.snapshot?.repo?.currentUser));
-    case 'lower':
-      return isLocalOpen(b);
-    case 'dirty':
-      return Boolean(b.isHead && ((b.uncommittedCount || 0) > 0 || (state.snapshot?.repo?.dirtyCount || 0) > 0));
-    case 'issues':
-      return Boolean(b.state === 'open' && !isMergedOrGone(b) && ((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length)));
-    case 'ci_fail':
-      return Boolean(b.state === 'open' && b.pr?.ci?.state === 'FAILURE');
-    case 'gone':
-      return isMergedOrGone(b);
-    default:
-      return true;
-  }
+  return matchesBranchFilter(b, {
+    filter: state.filter,
+    pathLens: state.pathLens,
+    ctx: filterContext(state.snapshot),
+  });
 }
 
 export function renderKPIs(onFilterChange = null) {
@@ -60,14 +43,16 @@ export function renderKPIs(onFilterChange = null) {
   const localBranches = branches.filter((b) => b.hasLocal && !b.id.startsWith('gh-merged-') && b.id !== 'local-wip-working-tree');
   const localCount = localBranches.length;
   const mergedPRCount = branches.filter((b) => b.id.startsWith('gh-merged-') || (b.state === 'merged' && !b.hasLocal)).length;
-  const dirtyCount = state.snapshot?.repo?.dirtyCount || branches.find((b) => b.isHead)?.uncommittedCount || 0;
+  const dirtyCount = dirtyFileCount(state.snapshot);
 
-  const upperCount = branches.filter(isOpenPR).length;
-  const lowerCount = branches.filter(isLocalOpen).length;
-  const mineCount = branches.filter((b) => b.state === 'open' && !isMergedOrGone(b) && isMyBranch(b, state.snapshot?.repo?.currentUser)).length;
-  const conflictCount = branches.filter((b) => b.state === 'open' && !isMergedOrGone(b) && ((b.conflict?.hasConflict && !b.conflict.resolved) || (b.crossPr && b.crossPr.length > 0))).length;
-  const failCount = branches.filter((b) => b.state === 'open' && b.pr?.ci?.state === 'FAILURE').length;
-  const goneCount = branches.filter(isMergedOrGone).length;
+  // Çip sayıları, süzmeyle aynı koşul tablosundan (filters.js) hesaplanır: sayı ile süzme sapamaz.
+  const ctx = filterContext(state.snapshot);
+  const upperCount = countMatching('upper', branches, ctx);
+  const lowerCount = countMatching('lower', branches, ctx);
+  const mineCount = countMatching('mine', branches, ctx);
+  const conflictCount = countMatching('issues', branches, ctx);
+  const failCount = countMatching('ci_fail', branches, ctx);
+  const goneCount = countMatching('gone', branches, ctx);
 
   const allTitle = `Tümü (${branches.length} düğüm):\n• ${localCount} yerel dal (klasik 'git branch' sayısı)\n• ${mergedPRCount} GitHub birleşmiş PR parabolü\n• ${branches.length - localCount - mergedPRCount} diğer uzak/sanal dal.`;
 
