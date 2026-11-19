@@ -16,6 +16,35 @@ export function rayCounts(snapshot) {
   return { upper, lower: lowerBranches + (dirty > 0 ? 1 : 0) };
 }
 
+// Omurga kartı (sol ray): ad varsayılan daldan, alt yazı koruma durumundan gelir. Eskiden kart sabit
+// "main · Production · Korunan" yazıyordu: `master` varsayılanlı depoda yanlış ad, korumasız/okunamayan
+// depoda yanlış "Korunan" iddiası gösteriyordu.
+const SPINE_PROTECTION = {
+  active: { sub: 'Omurga · Korunan', tone: 'prot-active' },
+  none: { sub: 'Omurga · Korumasız', tone: 'prot-none' },
+  unknown: { sub: 'Omurga · Koruma okunamadı', tone: 'prot-unknown' },
+};
+
+export function spineCardModel(repo) {
+  const name = repo?.defaultBranch || 'main';
+  const state = repo?.protectionState || (repo?.branchProtected ? 'active' : 'none');
+  const p = SPINE_PROTECTION[state] || SPINE_PROTECTION.none;
+  return { name, sub: p.sub, tone: p.tone, title: repo?.protectionSummary || `${name}: ${p.sub}` };
+}
+
+export function renderSpineCard(snapshot) {
+  const card = document.getElementById('btn-main-lane');
+  if (!card || !snapshot) return;
+  const m = spineCardModel(snapshot.repo);
+  const nameEl = document.getElementById('spine-lane-name');
+  const subEl = document.getElementById('spine-lane-sub');
+  if (nameEl) nameEl.textContent = m.name;
+  if (subEl) subEl.textContent = m.sub;
+  card.classList.remove('prot-active', 'prot-none', 'prot-unknown');
+  card.classList.add(m.tone);
+  card.setAttribute('title', m.title);
+}
+
 export function renderRayPopovers(callbacks = {}) {
   const snap = state.snapshot;
   if (!snap) return;
@@ -24,6 +53,7 @@ export function renderRayPopovers(callbacks = {}) {
   if (el.upperRayCount) el.upperRayCount.textContent = counts.upper > 0 ? String(counts.upper) : '';
   if (el.lowerRayCount) el.lowerRayCount.textContent = counts.lower > 0 ? String(counts.lower) : '';
 
+  renderSpineCard(snap);
   renderHistoryCard(callbacks);
 }
 

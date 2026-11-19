@@ -653,6 +653,17 @@ body {
   transform: none;
 }
 
+/* Omurga kartı koruma durumuna göre renk değiştirir: yeşil yalnızca gerçekten korunan dalda */
+.lane-label-card.spine.prot-none {
+  background: var(--warn-weak);
+  border-color: var(--warn-border);
+}
+
+.lane-label-card.spine.prot-unknown {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
 .lane-label-card.upper {
   border-color: rgba(88, 166, 255, 0.25);
   background: rgba(88, 166, 255, 0.06);

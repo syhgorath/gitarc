@@ -72,7 +72,8 @@ export function summarizeSync(steps, now = Date.now()) {
 // Koruma durumu: "Bilinmiyor", "Korumasız"tan ayrı gösterilir (yönetici olmayan kullanıcıya GitHub 404 verir).
 export function protectionView(repo) {
   const state = repo?.protectionState || (repo?.branchProtected ? 'active' : 'none');
-  if (state === 'active') return { state, button: '🛡️ main Korumalı', btnClass: 'ok', badge: '🛡️ Aktif Korumalı', chip: 'ok', canEnable: false };
+  const def = repo?.defaultBranch || 'main';
+  if (state === 'active') return { state, button: `🛡️ ${def} Korumalı`, btnClass: 'ok', badge: '🛡️ Aktif Korumalı', chip: 'ok', canEnable: false };
   if (state === 'unknown') return { state, button: '❔ Koruma ?', btnClass: 'ghost', badge: '❔ Bilinmiyor', chip: '', canEnable: false };
   return { state: 'none', button: '🔓 Korumasız', btnClass: 'warn', badge: '🔓 Korumasız', chip: 'warn', canEnable: true };
 }
