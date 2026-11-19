@@ -20,8 +20,13 @@ const ghCacheTTL = 10 * time.Second
 // `gh pr list --json statusCheckRollup` ~5 sn sürer) arka planda, bol süreyle çalışır;
 // anlık snapshot yalnızca ghWait / fetchWait kadar bekler ve eldeki (bayat) veriyi gösterir.
 var (
-	ghWait         = 2 * time.Second  // snapshot'ın gh sonucunu en fazla ne kadar bekleyeceği
-	fetchWait      = 1 * time.Second  // snapshot'ın git fetch sonucunu en fazla ne kadar bekleyeceği
+	ghWait         = 2 * time.Second  // snapshot'ın gh sonucunu en fazla ne kadar bekleyeceği (ilk veri / bir mutasyondan sonra)
+	fetchWait      = 1 * time.Second  // snapshot'ın git fetch sonucunu en fazla ne kadar bekleyeceği (ilk fetch / mutasyondan sonra)
+	// Eldeki veri yalnızca süresi dolduğu için bayatsa (kimse bir şeyi değiştirmedi) çok kısa beklenir: bayat veri
+	// hemen gösterilir, yenisi arka planda gelince imza (bgVersion) değişir ve arayüz kendiliğinden yeniler. Eskiden
+	// her 10 sn'lik süre dolumunda bir sonraki anlık görüntü boşuna ~3 sn (2 + 1) bekliyordu.
+	ghWaitPassive    = 300 * time.Millisecond
+	fetchWaitPassive = 200 * time.Millisecond
 	fetchTTL       = 10 * time.Second // aynı depoda iki git fetch arası en az süre
 	ghRefreshLimit = 90 * time.Second // arka plan yenilemesinin toplam üst sınırı
 	ghPRTimeout    = 60 * time.Second
@@ -51,6 +56,10 @@ type repoBG struct {
 	ghAt     time.Time // son gh yenilemesinin bittiği an (sıfır = süresi dolmuş)
 	ghBusy   bool
 	ghDone   chan struct{}
+
+	// forceFresh: bir mutasyon (merge, push, PR...) önbelleği geçersiz kıldı; sonraki anlık görüntü yeni sonucu tam
+	// süreyle bekler, böylece işlemin sonucu ekranda eski PR/CI durumuyla görünmez. Yenileme bitince temizlenir.
+	forceFresh bool
 
 	fetchAt   time.Time
 	fetchBusy bool
@@ -85,6 +94,7 @@ func InvalidateGHCache(repoPath string) {
 	st.mu.Lock()
 	st.ghAt = time.Time{}
 	st.fetchAt = time.Time{}
+	st.forceFresh = true
 	st.mu.Unlock()
 	// Bir mutasyondan (merge, push, PR) sonra "birleşmiş PR yok" yanıtları bayatlamış olabilir: olumsuzları sil.
 	prefix := filepath.Clean(repoPath) + "|"
@@ -255,10 +265,14 @@ func fetchGHMetadataCached(ctx context.Context, repoPath, remoteName, defaultBra
 		go st.refreshGH(repoPath, defaultBranch, nodesCopy, idxCopy, existingCopy, spineKey)
 	}
 	busy, done := st.ghBusy, st.ghDone
+	wait := ghWait
+	if st.haveData && !st.forceFresh && ghWaitPassive < wait {
+		wait = ghWaitPassive // yalnızca süre dolumu: bayat veriyi hemen göster
+	}
 	st.mu.Unlock()
 
 	if !fresh && busy {
-		timer := time.NewTimer(ghWait)
+		timer := time.NewTimer(wait)
 		select {
 		case <-done:
 		case <-timer.C:
@@ -388,6 +402,7 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 
 	st.ghAt = now
 	st.ghBusy = false
+	st.forceFresh = false
 	st.version++
 	close(st.ghDone)
 }
@@ -412,10 +427,14 @@ func fetchRemoteCached(ctx context.Context, repoPath, remoteName string) {
 		go st.doFetch(repoPath, remoteName)
 	}
 	busy, done := st.fetchBusy, st.fetchDone
+	wait := fetchWait
+	if !st.fetchAt.IsZero() && fetchWaitPassive < wait {
+		wait = fetchWaitPassive // daha önce başarıyla çekildi, yalnızca süre doldu
+	}
 	st.mu.Unlock()
 
 	if !fresh && busy {
-		timer := time.NewTimer(fetchWait)
+		timer := time.NewTimer(wait)
 		select {
 		case <-done:
 		case <-timer.C:

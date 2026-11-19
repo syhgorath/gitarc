@@ -548,6 +548,7 @@ async function bootstrap() {
   // Diskte .git/HEAD veya .git/index mtime değişmedikçe ağır snapshot çağrılmaz, sıfır zıplama!
   let lastGitSig = '';
   let lastFullAt = Date.now();
+  let lastBg = null;
   setInterval(async () => {
     if (state.offlineMode || state.drag || state.panning) return;
     if (el.modal && !el.modal.hidden) return;
@@ -557,15 +558,21 @@ async function bootstrap() {
 
     try {
       let pingChanged = false;
+      let bgChanged = false;
       const ping = await apiCall('/api/system/git-status-ping', 'GET');
       if (ping && ping.sig) {
         if (lastGitSig && ping.sig !== lastGitSig) pingChanged = true;
         lastGitSig = ping.sig;
       }
+      if (ping && typeof ping.bg === 'number') {
+        if (lastBg !== null && ping.bg !== lastBg) bgChanged = true;
+        lastBg = ping.bg;
+      }
 
       // Karar tek yerde (polling.js): git değişikliği VEYA CI koşuyorsa aralıklı yenileme (seçili olsa bile).
       const decision = pollDecision({
         pingChanged,
+        bgChanged,
         snap: state.snapshot,
         now: Date.now(),
         lastFullAt,

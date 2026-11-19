@@ -45,3 +45,8 @@ test('main CI running after a merge keeps the loop refreshing until it finishes'
   assert.equal(hasPendingCI({ repo: { mainCI: { state: 'SUCCESS' } }, branches: [] }), false);
   assert.equal(hasPendingCI({ repo: { mainCI: { state: 'FAILURE' } }, branches: [] }), false);
 });
+
+test('fresh background data fetches even while a branch is selected (server shows stale data first now)', () => {
+  assert.equal(pollDecision({ bgChanged: true, selectionActive: true, snap: { branches: [] }, now: 1, lastFullAt: 1 }), 'fetch');
+  assert.equal(pollDecision({ bgChanged: false, pingChanged: false, selectionActive: true, snap: { branches: [] }, now: 1, lastFullAt: 1 }), 'skip');
+});

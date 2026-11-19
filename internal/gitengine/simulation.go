@@ -250,6 +250,16 @@ func (m *Manager) QuickRepoSignature() string {
 	return fmt.Sprintf("%s:%d:%d:%d", live.id, headMod, indexMod, bgVersion(live.path))
 }
 
+// BackgroundVersion: etkin canlı deponun arka plan sonuçlarının (gh, fetch) sürümü; simülasyonda 0. Yoklama bunu ayrı
+// raporlar: disk değişmese de yeni GitHub verisi gelince arayüz, bir öğe seçiliyken bile, yenilenebilsin.
+func (m *Manager) BackgroundVersion() uint64 {
+	live, ok := m.activeLiveRepo()
+	if !ok {
+		return 0
+	}
+	return bgVersion(live.path)
+}
+
 // Snapshot returns the current CockpitSnapshot for the active repository.
 func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 	m.mu.RLock()

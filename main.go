@@ -332,8 +332,9 @@ func (a *App) handleGitStatusPing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sig := a.mgr.QuickRepoSignature()
-	writeJSON(w, http.StatusOK, map[string]string{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"sig": sig,
+		"bg":  a.mgr.BackgroundVersion(),
 	})
 }
 

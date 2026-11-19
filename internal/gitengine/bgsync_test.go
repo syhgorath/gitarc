@@ -329,3 +329,63 @@ func TestSyncStepJSONContract(t *testing.T) {
 		t.Fatalf("empty optional fields must be omitted: %s", raw)
 	}
 }
+
+func setPassiveWaits(t *testing.T, gp, fp time.Duration) {
+	t.Helper()
+	oldG, oldF := ghWaitPassive, fetchWaitPassive
+	ghWaitPassive, fetchWaitPassive = gp, fp
+	t.Cleanup(func() { ghWaitPassive, fetchWaitPassive = oldG, oldF })
+}
+
+// Süre dolumu yüzünden bayatlayan veri hemen gösterilir (eskiden her dolumda ~3 sn bekleniyordu); bir mutasyon
+// önbelleği geçersiz kıldıysa yeni sonuç tam süreyle beklenir. Yeni veri gelince BackgroundVersion artar.
+func TestExpiredCacheShowsStaleDataFastButMutationsWaitForFresh(t *testing.T) {
+	gh := newGHStub(t)
+	dir, run := newGitHubLikeRepo(t)
+	addFeatureBranch(t, dir, run, "feat/green")
+	run("push", "-u", "origin", "feat/green")
+	gh.set("pr_list_open", openPRsJSON, 0)
+	setWaits(t, 1200*time.Millisecond, 300*time.Millisecond)
+	setPassiveWaits(t, 100*time.Millisecond, 50*time.Millisecond)
+
+	mgr := switchLive(t, dir)
+	// 1) Veriyi topla (hızlı gh).
+	if _, err := CollectLiveRepo("live-x", "x", dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, "first data", func() bool { return prsOn(mustSnap(t, dir), "feat/green") != nil })
+	v0 := mgr.BackgroundVersion()
+
+	// 2) Yalnızca süre doldu, gh artık yavaş: bayat veri hemen gelir.
+	gh.slow("pr_list_open", "1.5")
+	st := bgFor(dir)
+	st.mu.Lock()
+	st.ghAt = time.Time{}
+	st.mu.Unlock()
+	t0 := time.Now()
+	snap := mustSnap(t, dir)
+	if d := time.Since(t0); d > 700*time.Millisecond {
+		t.Fatalf("expiry-only refresh must not wait for the slow gh query, took %v", d)
+	}
+	if prsOn(snap, "feat/green") == nil {
+		t.Fatal("stale PR data must still be shown")
+	}
+	waitFor(t, 10*time.Second, "background refresh to bump the version", func() bool { return mgr.BackgroundVersion() > v0 })
+
+	// 3) Bir mutasyon geçersiz kıldı: yeni sonuç tam süre (burada 1,2 sn) beklenir.
+	InvalidateGHCache(dir)
+	t1 := time.Now()
+	mustSnap(t, dir)
+	if d := time.Since(t1); d < 900*time.Millisecond {
+		t.Fatalf("after a mutation the snapshot must wait for fresh data, returned in %v", d)
+	}
+}
+
+func mustSnap(t *testing.T, dir string) model.CockpitSnapshot {
+	t.Helper()
+	snap, err := CollectLiveRepo("live-x", "x", dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snap
+}
