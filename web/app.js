@@ -10,6 +10,7 @@ import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
 import { renderRayPopovers } from './modules/rails.js';
 import { pollDecision } from './modules/polling.js';
+import { detectPushes, playPushTraces } from './modules/trace.js';
 import { renderKPIs } from './modules/kpi.js';
 import { renderTopbar } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
@@ -271,6 +272,9 @@ async function handleAmendCommit(branchId, message) {
 
 // Master Snapshot Applicator
 export function applySnapshot(snap) {
+  // "Uzağa gidiyor" izi için önceki görüntü ve önceki yerleşim (alt ray konumu) saklanır.
+  const prevSnap = state.snapshot;
+  const prevApex = state.apexLayout ? new Map(state.apexLayout) : null;
   state.snapshot = snap;
   state.lastSig = snapshotSignature(snap);
 
@@ -308,6 +312,8 @@ export function applySnapshot(snap) {
   renderInspector(callbacks);
   renderRayPopovers(callbacks);
   populateBaseCommitOptions();
+
+  playPushTraces(detectPushes(prevSnap, snap), prevApex, state.apexLayout);
 }
 
 function populateBaseCommitOptions() {
