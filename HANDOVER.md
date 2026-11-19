@@ -1,8 +1,8 @@
 # GitArc Teknik Devir Teslim ve Mühendislik Rehberi (`HANDOVER.md`)
 
-> **Mevcut Sürüm:** `0.8.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
+> **Mevcut Sürüm:** `0.9.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **95 üst düzey Go testi + 36 JS testi geçti** (`gitarc`: 19 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 73 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **96 üst düzey Go testi + 36 JS testi geçti** (`gitarc`: 20 (JS sarmalayıcı dahil; `main()` ve OS araçları dahil kapsam **%74**), `internal/gitengine`: 73 · kapsam **%82**, `internal/mcp`: 3, `internal/model`: test dosyası yok), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -18,7 +18,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 
 ---
 
-## 2. Sürüm Kronolojisi (`v0.1.0` → `v0.8.0`)
+## 2. Sürüm Kronolojisi (`v0.1.0` → `v0.9.0`)
 
 | Sürüm | Öne Çıkan Özellikler |
 | :--- | :--- |
@@ -29,6 +29,7 @@ GitArc, standart düz `git log` ağaçları yerine Git ve GitHub yaşam döngüs
 | **v0.6.0** | Kalıcı `📜 Loglar` modalı (`CockpitSnapshot.Logs` + `/api/logs/clear`), stüdyo içi kalıcı kopyalanabilir hata kutusu (`#studio-error-banner`), dosya türüne göre `★ ÖNERİLEN` strateji danışmanı. |
 | **v0.7.0** | **Mega-Repo (10K Geliştirici) Ölçekleme:** SHA-bazlı `evalCache` (`CacheHits`), `--sort=-committerdate --count=40` dal penceresi, $O(N \cdot F)$ ters indeks Cross-PR motoru, `👤 Benim Dallarım (@me)` ve `📂 Klasör/Dosya Merceği`, `-team` ekip sunucusu modu, Windows `rundll32` tarayıcı açılışı, Branch Protection (`/api/repo/protect`) ve Update Checker (`/api/system/update-check`). |
 | **v0.8.0** | **PocketUI Alt Çekmece (Bottom Dock)** (Radar/Loglar/İşlemler), **Tam Genişlik Hata & Uyarı Kartları** (dosya etiketleri, CI hata logu snippet'i, kopyalanabilir komut satırı), **Taze Dal Ayrımı** (`🌱 Yeni Yerel Dal` · `aheadMain == 0` dalların yanlışlıkla `origin: gone` sayılmasını engelleme), **Mükerrer Dal Açma Kalkanı**, **Konsolsuz Commit & PR Stüdyosu** (`/api/working-tree/commit`, yerel `git checkout -b` akışı), **Push Öncesi PR Başlık & Açıklama** (`PromoteBranchWithMeta`), **`CI: RUNNING` Nabız Efekti** (`.running-pulse`), polling tabanlı **Otomatik Merge Kuyruğu**, **Alt Ray Yerel Kalıntı Kuyruğu** + `💻 Local` rozeti, otomatik `HEAD → main` geçişli `DeleteBranch`/`PruneGone`. |
+| **v0.9.0** | **Koyu/Açık Tema Düğmesi** (`theme.js`), **okunabilir ölçek + sağ uca yaslanma** (`computeView`, enterprise demosu okunur), omurga genişliğinde yalnızca birleşmiş yayların sayılması, sınırsız şerit ve dinamik omurga yerleşimi, `main()`/`openBrowser`/klasör seçici dahil geniş test altyapısı (sahte `gh` stub'ı, JS testleri, `HOME` izolasyonu, `version_test.go`), diff görüntüleyici, AI teklif kartı, `.gitarc` güvenlik yapılandırması, README ekran görüntüleri. |
 
 ---
 
@@ -143,7 +144,7 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
 5. **Kaynak Kodda `union` Çakışma Çözümü Riski:**
    - `CHANGELOG.md` veya lock dosyalarında `union` (ikisini alt alta koru) güvenli ve önerilir (`★ ÖNERİLEN`), fakat `.go` / kaynak kod dosyalarında iki tarafın aynı satırdaki değişken tanımını (`:=`) alt alta yapıştırarak `no new variables on left side of :=` derleme hatası üretebilir. Bu yüzden `conflict_studio.go` kaynak kod dosyalarında `ours` önerir ve her çözümde `go vet ./...` kapısından geçirir.
 6. **Sürüm Numarası Eşliği:**
-   - Yeni sürüm kesildiğinde **`VERSION`**, **`internal/gitengine/collector.go` (`AppVersion`)** ve **`CHANGELOG.md`** mutlaka güncellenmelidir; `TestMegaRepoCacheTeamModeAndProtection` içindeki `CheckForUpdates` testi `AppVersion` eşitliğini doğrular.
+   - Yeni sürüm kesildiğinde **`VERSION`**, **`internal/gitengine/collector.go` (`AppVersion`)**, **`web/index.html`** (`#btn-update-check` ve `#sec-update-status` metinleri), **`web/modules/canvas.js`** ve **`web/fallback.js`** içindeki `appVersion || '...'` yedekleri ve **`CHANGELOG.md`** başlığı birlikte güncellenmelidir. `TestVersionConsistency` (`version_test.go`) bunların tutarlılığını denetler; biri unutulursa `go test` kırılır. `TestMegaRepoCacheTeamModeAndProtection` içindeki `CheckForUpdates` testi `AppVersion` eşitliğini doğrular.
 7. **Önbellek ve sürüm sorgusu:**
    - `web/index.html` içine `tasarim.css?v=0.8.0` gibi elle yazılı sürüm sorgusu **ekleme**: sunucu zaten her statik dosyaya `no-store` verir, ES modülleri (`modules/*.js`) sorguyu hiç almaz ve sürüm yükselince unutulur. `TestStaticAssetsAreNeverCachedAndHaveNoHardcodedVersionQuery` bunu denetler.
 8. **Testler gerçek `~/.gitarc` dizinine yazmamalı:**

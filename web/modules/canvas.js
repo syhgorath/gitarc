@@ -314,7 +314,7 @@ export function renderTopbar(callbacks = {}) {
     el.btnProtectBranch.className = `btn ${isProtected ? 'ok' : 'warn'}`;
   }
 
-  const verTxt = `v${snap.repo.appVersion || '0.8.0'}`;
+  const verTxt = `v${snap.repo.appVersion || '0.9.0'}`;
   const teamTag = snap.repo.teamMode ? ' · TEAM' : '';
   const updTag = snap.repo.updateAvailable ? ' ⬆ Güncelle' : '';
   if (el.btnUpdateCheck) {
