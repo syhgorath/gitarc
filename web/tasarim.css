@@ -609,106 +609,15 @@ body {
   overflow: hidden;
 }
 
-/* Sol Yapışkan Kulvar Şeridi (Sticky Lane Sidebar) */
-.canvas-left-rail {
-  width: 160px;
-  flex-shrink: 0;
-  background: var(--surface-glass);
-  backdrop-filter: blur(14px);
-  border-right: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 14px 10px;
-  z-index: 5;
-  user-select: none;
-}
-
-.lane-label-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: all 0.14s ease;
-  text-align: left;
-}
-
-.lane-label-card:hover {
-  background: var(--surface-3);
-  border-color: var(--accent);
-  transform: translateX(2px);
-}
-
-.lane-label-card.spine {
-  cursor: default;
-  background: rgba(63, 185, 80, 0.08);
-  border-color: rgba(63, 185, 80, 0.25);
-}
-
-.lane-label-card.spine:hover {
-  transform: none;
-}
-
-/* Omurga kartı koruma durumuna göre renk değiştirir: yeşil yalnızca gerçekten korunan dalda */
-.lane-label-card.spine.prot-none {
-  background: var(--warn-weak);
-  border-color: var(--warn-border);
-}
-
-.lane-label-card.spine.prot-unknown {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-}
-
-.lane-label-card.upper {
-  border-color: rgba(88, 166, 255, 0.25);
-  background: rgba(88, 166, 255, 0.06);
-}
-
-.lane-spine-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+/* Tuval üstü etiketler ve çipler (sol üst / sol alt). Üst Ray / Alt Ray etiketleri süzgeç düğmesidir. */
 .history-lane-wrap {
   position: relative;
+  pointer-events: auto;
 }
 
-.lane-label-card.history {
-  width: 100%;
+.hemi-pill.chip-pill {
   border-color: var(--border-strong);
-  background: var(--surface-2);
-}
-
-.lane-dot.history {
-  background: var(--muted);
-}
-
-.base-picker-btn {
-  margin-left: auto;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm, 6px);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
-  padding: 2px 4px;
-}
-
-.base-picker-btn:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.history-popover.base-popover {
-  top: 0;
-  bottom: auto;
+  color: var(--text-2);
 }
 
 .ray-item.current .ray-item-title::after {
@@ -716,14 +625,10 @@ body {
   color: var(--emerald);
 }
 
-.lane-dot.longlived {
-  background: var(--accent);
-}
-
 .history-popover {
   position: absolute;
-  bottom: 0;
-  left: calc(100% + 18px);
+  top: calc(100% + 6px);
+  left: 0;
   width: 320px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
@@ -742,54 +647,6 @@ body {
 
 .history-popover .ray-popover-body {
   max-height: clamp(120px, 30vh, 260px);
-}
-
-.lane-label-card.lower {
-  border-color: rgba(188, 140, 255, 0.25);
-  background: rgba(188, 140, 255, 0.06);
-}
-
-.lane-label-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.lane-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-.lane-dot.upper {
-  background: var(--sky);
-  box-shadow: 0 0 6px var(--sky);
-}
-
-.lane-dot.spine {
-  background: var(--emerald);
-  box-shadow: 0 0 6px var(--emerald);
-}
-
-.lane-dot.lower {
-  background: var(--purple);
-  box-shadow: 0 0 6px var(--purple);
-}
-
-.lane-name {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text);
-  flex: 1;
-}
-
-.lane-sub {
-  font-size: 9.5px;
-  color: var(--muted);
-  margin-top: 3px;
-  padding-left: 14px;
 }
 
 /* Sağ Üst & Sağ Alt Kayan Rozetler */
@@ -824,9 +681,16 @@ body {
   right: 14px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
   pointer-events: none;
-  z-index: 4;
+  z-index: 6;
+}
+
+.canvas-overlay-top {
+  right: auto;
+  max-width: calc(100% - 28px - min(430px, 45%));
 }
 
 .canvas-overlay-top { top: 8px; }
