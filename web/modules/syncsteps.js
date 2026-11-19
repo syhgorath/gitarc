@@ -69,6 +69,18 @@ export function summarizeSync(steps, now = Date.now()) {
   return { tone, items, allOk: items.length > 0 && tone === 'ok', title: items.map((i) => i.title).join('\n') };
 }
 
+// Merge sonrası omurga testleri (main CI). Çalıştırma yoksa/okunamıyorsa null: "yeşil" asla varsayılmaz.
+export function mainCIView(repo) {
+  const ci = repo?.mainCI;
+  if (!ci || !ci.state) return null;
+  const def = ci.branch || repo?.defaultBranch || 'main';
+  const detail = [ci.workflow, ci.sha, ci.title].filter(Boolean).join(' · ');
+  const safeUrl = typeof ci.url === 'string' && ci.url.startsWith('https://') ? ci.url : '';
+  if (ci.state === 'FAILURE') return { state: 'FAILURE', text: `❌ ${def} CI kırık`, btnClass: 'danger', title: `${def} testleri BAŞARISIZ · ${detail}`, url: safeUrl };
+  if (ci.state === 'RUNNING') return { state: 'RUNNING', text: `⏳ ${def} testleri koşuyor`, btnClass: 'warn running-pulse', title: `Merge sonrası ${def} testleri sürüyor · ${detail}`, url: safeUrl };
+  return { state: 'SUCCESS', text: `✓ ${def} CI`, btnClass: 'ok', title: `${def} testleri başarılı · ${detail}`, url: safeUrl };
+}
+
 // Koruma durumu: "Bilinmiyor", "Korumasız"tan ayrı gösterilir (yönetici olmayan kullanıcıya GitHub 404 verir).
 export function protectionView(repo) {
   const state = repo?.protectionState || (repo?.branchProtected ? 'active' : 'none');

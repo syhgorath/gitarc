@@ -617,6 +617,11 @@ func (m *Manager) MergeBranch(branchID, strategy string) (model.CockpitSnapshot,
 	b.IsHEAD = false
 	b.UncommittedCount = 0
 	m.simRepo.repo.Ahead++
+	// Merge sonrası omurgada testler başlar (gerçek GitHub gibi): arayüz "main testleri koşuyor" göstermeli.
+	m.simRepo.repo.MainCI = &model.MainCIStatus{
+		State: "RUNNING", Workflow: "CI", Branch: m.simRepo.repo.DefaultBranch, SHA: mergeShort,
+		Title: subject, UpdatedAt: time.Now().Format(time.RFC3339),
+	}
 	m.recordLogLocked("ok", "Merge ("+strategy+")", b.Name, fmt.Sprintf("%s birleştirildi", b.Name), "")
 
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
@@ -1063,6 +1068,7 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 	copy(nodes, m.simRepo.nodes)
 
 	repoMeta := m.simRepo.repo
+	repoMeta.MainCI = simMainCI(repoMeta, nodes)
 	repoMeta.TeamMode = m.teamMode
 	repoMeta.AppVersion = AppVersion
 	repoMeta.LatestVersion = m.latestVer
@@ -1517,4 +1523,25 @@ func changedFilesOrDefault(files []string) []string {
 		return []string{"CHANGELOG.md"}
 	}
 	return append([]string(nil), files...)
+}
+
+// simMainCI: demo omurga CI durumu. Merge'ten sonra RUNNING başlar ve kısa süre sonra SUCCESS olur
+// (zamana bağlı, anlık görüntü başına hesaplanır); hiç ayarlanmamışsa son commit için yeşil demo durumu verir.
+const simMainCIRunSeconds = 6
+
+func simMainCI(meta model.RepoMeta, nodes []model.CommitNode) *model.MainCIStatus {
+	if meta.MainCI == nil {
+		sha, title := "", ""
+		if n := len(nodes); n > 0 {
+			sha, title = nodes[n-1].ShortSHA, nodes[n-1].Subject
+		}
+		return &model.MainCIStatus{State: "SUCCESS", Workflow: "CI", Branch: meta.DefaultBranch, SHA: sha, Title: title}
+	}
+	cp := *meta.MainCI
+	if cp.State == "RUNNING" {
+		if t, err := time.Parse(time.RFC3339, cp.UpdatedAt); err == nil && time.Since(t) > simMainCIRunSeconds*time.Second {
+			cp.State = "SUCCESS"
+		}
+	}
+	return &cp
 }

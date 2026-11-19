@@ -270,6 +270,9 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	ComputeCrossPRCollisions(branches)
 	AssignLanes(branches)
 	diags := BuildDiagnostics(branches)
+	if mc := mainCIFor(repoPath); mc != nil && mc.State == "FAILURE" {
+		diags = append([]model.DiagnosticItem{mainCIFailureDiag(mc, defaultBranch)}, diags...)
+	}
 
 	versionTag := ""
 	for i := len(nodes) - 1; i >= 0; i-- {
@@ -299,6 +302,7 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			BranchProtected:   protectionState == "active",
 			ProtectionState:   protectionState,
 			ProtectionSummary: protectionSummary,
+			MainCI:            mainCIFor(repoPath),
 			SyncSteps:         syncStepsFor(repoPath),
 			AppVersion:        AppVersion,
 			CacheHits:         cacheHits,

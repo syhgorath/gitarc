@@ -3,7 +3,7 @@
 // `renderTopbar` yalnızca bunları DOM'a yazar.
 import { state, el } from './state.js';
 import { esc } from './utils.js';
-import { summarizeSync, protectionView } from './syncsteps.js';
+import { summarizeSync, protectionView, mainCIView } from './syncsteps.js';
 
 export function modeLabel(repo, offline) {
   if (offline) return 'Offline Simülasyon';
@@ -105,6 +105,17 @@ export function renderTopbar(callbacks = {}) {
   if (btnPrune) btnPrune.disabled = cleanable === 0 && snap.repo.mode !== 'live';
   const btnSync = document.getElementById('btn-sync-spine');
   if (btnSync) btnSync.disabled = snap.repo.mode !== 'live' && snap.repo.ahead === 0 && snap.repo.behind === 0;
+
+  const mainCI = mainCIView(snap.repo);
+  if (el.btnMainCI) {
+    el.btnMainCI.hidden = !mainCI;
+    if (mainCI) {
+      el.btnMainCI.textContent = mainCI.text;
+      el.btnMainCI.className = `btn ${mainCI.btnClass}`;
+      el.btnMainCI.title = mainCI.title;
+      el.btnMainCI.dataset.url = mainCI.url;
+    }
+  }
 
   const prot = protectionView(snap.repo);
   if (el.btnProtectBranch) {

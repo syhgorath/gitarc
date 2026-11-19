@@ -39,6 +39,7 @@ type ghData struct {
 	spineKey          string // arch indeksleri hangi omurgaya göre hesaplandı
 	protectionState   string
 	protectionSummary string
+	mainCI            *model.MainCIStatus
 }
 
 // repoBG, bir deponun arka plan veri toplama durumudur (tek uçuş / single-flight).
@@ -109,6 +110,7 @@ var syncStepOrder = []struct{ id, label string }{
 	{"prs", "PR listesi"},
 	{"merged", "Birleşmiş PR"},
 	{"protection", "Koruma"},
+	{"mainci", "main CI"},
 }
 
 // syncStepsFor, bilinen adımları sabit sırada döndürür.
@@ -304,8 +306,11 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 		prErr, mErr       error
 		protState, protSm string
 		dPR, dMerged, dPr time.Duration
+		mainCI            *model.MainCIStatus
+		mainErr           error
+		dMain             time.Duration
 	)
-	wg.Add(3)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		t0 := time.Now()
@@ -323,6 +328,12 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 		t0 := time.Now()
 		protState, protSm = fetchGHBranchProtection(ctx, repoPath, defaultBranch)
 		dPr = time.Since(t0)
+	}()
+	go func() {
+		defer wg.Done()
+		t0 := time.Now()
+		mainCI, mainErr = fetchMainCI(ctx, repoPath, defaultBranch)
+		dMain = time.Since(t0)
 	}()
 	wg.Wait()
 
@@ -359,6 +370,10 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 		st.data.mergedPRs = merged
 		st.data.mergedArches = arches
 		st.data.spineKey = spineKey
+		st.haveData = true
+	}
+	if apply("mainci", mainErr, dMain, 0) {
+		st.data.mainCI = mainCI // nil = çalıştırma yok; yeşil varsayılmaz
 		st.haveData = true
 	}
 	st.data.protectionState, st.data.protectionSummary = protState, protSm
@@ -645,7 +660,8 @@ func fetchGHMergedPRs(ctx context.Context, repoPath string, nodes []model.Commit
 			Author:      it.Author.Login,
 			URL:         it.URL,
 			ReviewState: "MERGED",
-			CI:          &model.CIStatus{State: "SUCCESS", Workflow: "ci.yml", Duration: "—"},
+			// CI bilerek boş: eskiden sabit "SUCCESS" yazılıyordu, yani birleşen her PR gerçek sonuçtan bağımsız yeşil
+			// görünüyordu. Merge sonrası gerçek sonuç RepoMeta.MainCI'dadır.
 		}
 		if it.HeadRefName != "" {
 			if _, exists := mergedMap[it.HeadRefName]; !exists {
@@ -680,4 +696,85 @@ func fetchGHMergedPRs(ctx context.Context, repoPath string, nodes []model.Commit
 		})
 	}
 	return mergedMap, arches, nil
+}
+
+// mainCIFor, arka planda toplanan son omurga CI sonucunu döndürür (yoksa nil).
+func mainCIFor(repoPath string) *model.MainCIStatus {
+	st := bgFor(repoPath)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.data.mainCI == nil {
+		return nil
+	}
+	cp := *st.data.mainCI
+	return &cp
+}
+
+type ghRunItem struct {
+	Status       string `json:"status"`
+	Conclusion   string `json:"conclusion"`
+	HeadSHA      string `json:"headSha"`
+	WorkflowName string `json:"workflowName"`
+	URL          string `json:"url"`
+	DisplayTitle string `json:"displayTitle"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
+// fetchMainCI: omurga dalındaki en son commit'in CI çalıştırmalarını okur (merge sonrası testler). Aynı commit için
+// birden çok iş akışı olabilir (CI, CodeQL...): biri başarısızsa FAILURE, biri sürüyorsa RUNNING, yoksa SUCCESS.
+// Çalıştırma yoksa (nil, nil): arayüz yeşil göstermez.
+func fetchMainCI(ctx context.Context, repoPath, defaultBranch string) (*model.MainCIStatus, error) {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return nil, errGHMissing
+	}
+	if defaultBranch == "" {
+		return nil, nil
+	}
+	rCtx, cancel := context.WithTimeout(ctx, ghProtTimeout)
+	defer cancel()
+	out, _, err := runCmd(rCtx, repoPath, "gh", "run", "list", "--branch", defaultBranch, "--event", "push", "--limit", "8",
+		"--json", "status,conclusion,headSha,workflowName,url,displayTitle,updatedAt")
+	if err != nil {
+		return nil, fmt.Errorf("gh run list: %s", shortErr(out, err))
+	}
+	if strings.TrimSpace(out) == "" {
+		return nil, nil
+	}
+	var runs []ghRunItem
+	if err := json.Unmarshal([]byte(out), &runs); err != nil {
+		return nil, fmt.Errorf("gh run list çıktısı çözümlenemedi: %v", err)
+	}
+	if len(runs) == 0 {
+		return nil, nil
+	}
+	head := runs[0].HeadSHA // gh en yeniyi başa koyar
+	res := &model.MainCIStatus{State: "SUCCESS", Branch: defaultBranch, Title: runs[0].DisplayTitle, UpdatedAt: runs[0].UpdatedAt, Workflow: runs[0].WorkflowName, URL: runs[0].URL}
+	if len(head) >= 7 {
+		res.SHA = head[:7]
+	}
+	counted := 0
+	for _, r := range runs {
+		if r.HeadSHA != head {
+			continue
+		}
+		st := strings.ToLower(r.Status)
+		conc := strings.ToLower(r.Conclusion)
+		switch {
+		case st != "" && st != "completed":
+			if res.State != "FAILURE" {
+				res.State = "RUNNING"
+				res.Workflow, res.URL = r.WorkflowName, r.URL
+			}
+		case conc == "failure" || conc == "timed_out" || conc == "cancelled" || conc == "startup_failure":
+			res.State = "FAILURE"
+			res.Workflow, res.URL = r.WorkflowName, r.URL
+		}
+		if conc != "skipped" && conc != "neutral" {
+			counted++
+		}
+	}
+	if counted == 0 {
+		return nil, nil // yalnızca atlanmış çalıştırmalar: sonuç yok
+	}
+	return res, nil
 }

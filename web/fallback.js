@@ -304,6 +304,12 @@
       const openPrs = branches.filter((b) => b.state === 'open' && b.pr?.number).length;
       const mergedPrs = branches.filter((b) => b.state === 'merged' && b.pr?.number).length;
       sim.repo.protectionState = sim.repo.branchProtected ? 'active' : 'none';
+      if (!sim.repo.mainCI) {
+        const tip = sim.nodes[sim.nodes.length - 1];
+        sim.repo.mainCI = { state: 'SUCCESS', workflow: 'CI', branch: sim.repo.defaultBranch || 'main', sha: tip ? String(tip.shortSha).slice(0, 7) : '', title: tip ? tip.subject : '' };
+      } else if (sim.repo.mainCI.state === 'RUNNING' && Date.now() - Date.parse(sim.repo.mainCI.updatedAt) > 6000) {
+        sim.repo.mainCI.state = 'SUCCESS';
+      }
       sim.repo.syncSteps = [
         { id: 'fetch', label: 'git fetch', state: 'ok', at: nowIso, durationMs: 410 },
         { id: 'prs', label: 'PR listesi', state: 'ok', at: nowIso, durationMs: 1200, count: openPrs },
@@ -392,6 +398,8 @@
         b.uncommittedCount = 0;
         if (b.pr) { b.pr.reviewState = 'MERGED'; if (b.pr.ci) b.pr.ci.state = 'SUCCESS'; }
         sim.repo.ahead++;
+        // Merge sonrası omurgada testler başlar (sunucu simülasyonundaki simMainCI ile aynı): önce RUNNING, ~6 sn sonra SUCCESS.
+        sim.repo.mainCI = { state: 'RUNNING', workflow: 'CI', branch: sim.repo.defaultBranch || 'main', sha: sha.slice(0, 7), title: sim.nodes[idx].subject, updatedAt: new Date().toISOString() };
         return recompute();
       },
       fixCI(branchId) {

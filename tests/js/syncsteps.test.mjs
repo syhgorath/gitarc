@@ -112,3 +112,13 @@ test('snapshotSignature reacts to sync step / protection changes but not to time
   assert.equal(snapshotSignature(ok), snapshotSignature(okLater), 'a new timestamp alone must not re-render');
   assert.notEqual(snapshotSignature(ok), snapshotSignature(base([{ id: 'prs', state: 'ok', count: 20 }], 'active')), 'protection change must re-render');
 });
+
+test('snapshotSignature reacts to the main CI result (regression: the chip never changed after the first load)', () => {
+  const mk = (mainCI) => ({ repo: { id: 'r', mainCI }, branches: [], nodes: [], logs: [] });
+  const running = snapshotSignature(mk({ state: 'RUNNING', sha: 'abc' }));
+  const failed = snapshotSignature(mk({ state: 'FAILURE', sha: 'abc' }));
+  const newCommit = snapshotSignature(mk({ state: 'RUNNING', sha: 'def' }));
+  assert.notEqual(running, failed);
+  assert.notEqual(running, newCommit);
+  assert.notEqual(running, snapshotSignature(mk(undefined)));
+});

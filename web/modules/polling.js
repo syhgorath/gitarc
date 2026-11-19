@@ -8,6 +8,7 @@
 export const CI_REFRESH_MS = 8000;
 
 export function hasPendingCI(snap) {
+  if (snap?.repo?.mainCI?.state === 'RUNNING') return true; // merge sonrası omurga testleri de bitince görünmeli
   return (snap?.branches || []).some((b) => b.state === 'open' && b.pr?.ci?.state === 'RUNNING');
 }
 

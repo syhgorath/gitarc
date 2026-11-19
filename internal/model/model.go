@@ -55,6 +55,8 @@ type RepoMeta struct {
 	DefaultBranch     string `json:"defaultBranch"`
 	// BaseBranchPinned: omurga dalı kullanıcı tarafından elle seçildi (false = otomatik tespit).
 	BaseBranchPinned bool `json:"baseBranchPinned,omitempty"`
+	// MainCI: omurga dalının son CI çalıştırması (merge sonrası testler). Okunamıyorsa/yoksa nil: "yeşil" varsayılmaz.
+	MainCI *MainCIStatus `json:"mainCI,omitempty"`
 	// BaseCandidates: omurga olarak seçilebilecek yerel dallar (yalnızca canlı depoda dolu).
 	BaseCandidates []string `json:"baseCandidates,omitempty"`
 	RemoteName        string `json:"remoteName"`
@@ -196,6 +198,17 @@ type CIStatus struct {
 	Checks     []CICheckStep   `json:"checks,omitempty"`
 }
 
+// MainCIStatus: varsayılan (omurga) dalın son CI çalıştırması, yani merge SONRASI testlerin sonucu.
+type MainCIStatus struct {
+	State     string `json:"state"` // "SUCCESS" | "FAILURE" | "RUNNING"
+	Workflow  string `json:"workflow,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+	SHA       string `json:"sha,omitempty"` // kısa
+	Title     string `json:"title,omitempty"`
+	URL       string `json:"url,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
+}
+
 // CICheckStep models an individual GitHub Actions status check or job.
 type CICheckStep struct {
 	Name       string `json:"name"`
@@ -237,13 +250,14 @@ type CrossPRWarning struct {
 type DiagnosticItem struct {
 	ID         string   `json:"id"`
 	Severity   string   `json:"severity"` // "critical" | "warning" | "info"
-	Kind       string   `json:"kind"`     // "ci_failure" | "conflict" | "cross_pr" | "prune_candidate"
+	Kind       string   `json:"kind"`     // "ci_failure" | "conflict" | "cross_pr" | "prune_candidate" | "main_ci_failure"
 	BranchID   string   `json:"branchId"`
 	BranchName string   `json:"branchName"`
 	Title      string   `json:"title"`
 	Detail     string   `json:"detail"`
 	ActionHint string   `json:"actionHint,omitempty"`
 	Files      []string `json:"files,omitempty"`
+	URL        string   `json:"url,omitempty"` // ilgili bağlantı (örn. kırık main CI çalıştırması)
 }
 
 // ConflictFileDiff holds the 3-way conflict hunk window and the 3 automatic resolution previews.
