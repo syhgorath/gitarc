@@ -1200,9 +1200,10 @@ func TestRealWorldSquashCrossPRAndProtectionAccuracy(t *testing.T) {
 	}
 
 	notHeadBranch := model.BranchArc{
-		Name:   "belgeler-2",
-		State:  "merged",
-		IsHEAD: false,
+		Name:     "belgeler-2",
+		State:    "merged",
+		IsHEAD:   false,
+		HasLocal: true, // yerel kopyası olan kalıntı dal (olmayan dalı silmeyi önermeyiz)
 	}
 	cmdNotHead := BuildSuggestedCommand(notHeadBranch, "main")
 	if strings.Contains(cmdNotHead, "git switch") || !strings.HasPrefix(cmdNotHead, "git branch -D belgeler-2") {

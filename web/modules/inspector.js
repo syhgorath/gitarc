@@ -3,7 +3,8 @@
 // Kararlar inspector-model.js'te, HTML kartları inspector-cards.js'te, alt stüdyo panelleri studio.js'te,
 // AI öneri olayları proposal.js'te. Burada yalnızca hangi kartların hangi sırayla basılacağı ve olay bağlama var.
 import { state, el } from './state.js';
-import { isSecretFile, showToast } from './utils.js';
+import { esc, isSecretFile, showToast, diffArgsFor, mergeCommitOf } from './utils.js';
+import { apiCall } from './api.js';
 import {
   branchViewModel, isMergedRemnant, workingTreeDefaults, promoteDefaults,
 } from './inspector-model.js';
@@ -11,6 +12,7 @@ import {
   nodeInspectorHtml, nodeStudioHtml, proposalCardHtml, branchHeaderHtml, layersHtml, conflictCardHtml,
   crossPrCardHtml, ciCardHtml, mergedRemnantCardHtml, commitStudioCardHtml, promoteCardHtml, syncedCardHtml,
   changedFilesCardHtml, prEditCardHtml, prDetailCardHtml, amendCardHtml, suggestedCmdCardHtml,
+  mergedFilesCardHtml, mergedFilesRowsHtml,
 } from './inspector-cards.js';
 import { renderStudioInlineDiff, updateStudioPanels } from './studio.js';
 import { wireProposalActions } from './proposal.js';
@@ -94,15 +96,13 @@ function wireBranchControls(b, v, callbacks) {
   });
   document.getElementById('act-branch-diff')?.addEventListener('click', () => {
     if (onOpenDiff) {
-      if (isVirtualWip) onOpenDiff('working-tree', 'working-tree');
-      else onOpenDiff(b.name, 'branch');
+      onOpenDiff(...diffArgsFor(b, state.snapshot));
     }
   });
   el.detail.querySelectorAll('.file-tag').forEach((tag) => {
     tag.addEventListener('click', () => {
       if (onOpenDiff) {
-        if (isVirtualWip) onOpenDiff('working-tree', 'working-tree');
-        else onOpenDiff(b.name, 'branch');
+        onOpenDiff(...diffArgsFor(b, state.snapshot));
       }
     });
   });
@@ -280,7 +280,10 @@ export function renderInspector(callbacks = {}) {
     html += syncedCardHtml(b);
   }
 
-  if (b.changedFiles?.length) {
+  const mergeCommit = mergeCommitOf(b, snap);
+  if (mergeCommit && !isVirtualWip) {
+    html += mergedFilesCardHtml();
+  } else if (b.changedFiles?.length) {
     html += changedFilesCardHtml(b);
   }
 
@@ -305,4 +308,35 @@ export function renderInspector(callbacks = {}) {
   }
 
   wireBranchControls(b, v, callbacks);
+  if (mergeCommit && !isVirtualWip) loadMergedFiles(b, mergeCommit, callbacks);
+}
+
+// Birleşmiş dalın dosya listesi: birleşme commit'inin diff'inden (dosya dosya +/-) yüklenir; satıra tıklayınca tam diff açılır.
+async function loadMergedFiles(b, mergeCommit, callbacks) {
+  const sha = mergeCommit.sha || mergeCommit.shortSha;
+  try {
+    let res;
+    if (state.offlineMode || window.location.protocol === 'file:') {
+      res = window.LocalFallbackEngine?.getDiff ? window.LocalFallbackEngine.getDiff(sha, 'merge') : { files: [] };
+    } else {
+      res = await apiCall(`/api/diff?target=${encodeURIComponent(sha)}&type=merge`);
+    }
+    if (state.selectedBranchId !== b.id) return; // kullanıcı başka bir öğeye geçti
+    const list = document.getElementById('merged-files-list');
+    const count = document.getElementById('merged-files-count');
+    if (!list) return;
+    const files = res?.files || [];
+    list.innerHTML = mergedFilesRowsHtml(files);
+    if (count) count.textContent = `${files.length} dosya · +${res?.totalAdds || 0} / -${res?.totalDels || 0}`;
+    list.querySelectorAll('.merged-file-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        if (callbacks.onOpenDiff) callbacks.onOpenDiff(sha, 'merge');
+      });
+    });
+  } catch (err) {
+    const count = document.getElementById('merged-files-count');
+    if (count) count.textContent = 'okunamadı';
+    const list = document.getElementById('merged-files-list');
+    if (list) list.innerHTML = `<div class="muted">Dosyalar alınamadı: ${esc(err.message)}</div>`;
+  }
 }

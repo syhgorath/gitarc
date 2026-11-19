@@ -6,7 +6,7 @@
 // boşluk düzeni etkiler).
 import { state } from './state.js';
 import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H } from './constants.js';
-import { esc, truncate, svgEl, isWorkingTreeBranch } from './utils.js';
+import { esc, truncate, svgEl, isWorkingTreeBranch, diffArgsFor } from './utils.js';
 
 export function capsulePositionForApex(b, apexX, apexY) {
   if (b.state === 'merged') {
@@ -241,7 +241,7 @@ export function dispatchCardAction(act, btn, b, isWorkingTreeWip, cb) {
   const { onSelectBranch, onCheckoutBranch, onMergeBranch, onPromoteBranch, onDeleteBranch, onOpenConflictStudio, onOpenDiff } = cb;
   if (act === 'diff' && onOpenDiff) {
     if (isWorkingTreeWip) onOpenDiff('working-tree', 'working-tree');
-    else onOpenDiff(b.name, 'branch');
+    else onOpenDiff(...diffArgsFor(b, state.snapshot));
   }
   else if (act === 'inspect' && onSelectBranch) onSelectBranch(b.id);
   else if (act === 'checkout' && onCheckoutBranch) onCheckoutBranch(b.id, btn);
@@ -265,7 +265,7 @@ function buildMergedPill(b, isSelected, callbacks) {
   pill.querySelector('button[data-act="diff"]')?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
   pill.querySelector('button[data-act="diff"]')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    if (onOpenDiff) onOpenDiff(b.name || (b.pr ? `refs/pull/${b.pr.number}/head` : b.localSha), 'branch');
+    if (onOpenDiff) onOpenDiff(...diffArgsFor(b, state.snapshot));
   });
   pill.querySelector('button[data-act="delete"]')?.addEventListener('pointerdown', (ev) => ev.stopPropagation());
   pill.querySelector('button[data-act="delete"]')?.addEventListener('click', (ev) => {

@@ -522,3 +522,30 @@ export function suggestedCmdCardHtml(b) {
       </div>
     `;
 }
+
+// Birleşmiş dalın "Değişen Dosyalar" kartı: dosyalar sunucudan (birleşme commit'inin diff'i) yüklenince doldurulur.
+export function mergedFilesCardHtml() {
+  return `
+    <div class="diag-card" id="merged-files-card">
+      <h4><span>📂 Değişen Dosyalar</span><span class="muted mono" id="merged-files-count">yükleniyor…</span></h4>
+      <div class="merged-files-list" id="merged-files-list"></div>
+    </div>
+  `;
+}
+
+// Dosya satırları: durum rozeti, yol, +eklenen / -silinen. Tümü kaçışlanır.
+export function mergedFilesRowsHtml(files) {
+  const list = files || [];
+  if (list.length === 0) return '<div class="muted">Bu birleşmede dosya değişikliği bulunamadı.</div>';
+  return list.map((f, idx) => {
+    const st = f.status || 'M';
+    const cls = st === 'A' ? 'emerald' : (st === 'D' ? 'danger' : 'accent');
+    return `
+      <button type="button" class="merged-file-row" data-file-idx="${idx}" title="${esc(f.path)}">
+        <span class="chip ${cls} sm mono">${esc(st)}</span>
+        <span class="merged-file-path">${esc(f.path)}</span>
+        <span class="merged-file-stat"><span class="diff-stat-add">+${f.additions || 0}</span> <span class="diff-stat-del">-${f.deletions || 0}</span></span>
+      </button>
+    `;
+  }).join('');
+}

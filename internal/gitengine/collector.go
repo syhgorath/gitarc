@@ -252,6 +252,7 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 		var ghMergedArches []model.BranchArc
 		ghPRs, mergedPRs, ghMergedArches, protectionState, protectionSummary = fetchGHMetadataCached(ctx, repoPath, remoteName, defaultBranch, nodes, shaToIdx, mergedArches)
 		mergedArches = append(mergedArches, ghMergedArches...)
+		enrichMergedArches(mergedArches, mergedPRs)
 	}
 	branches, localHits := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser, nodes, shaToIdx, dirtyCount, dirtyFiles, ghPRs, mergedPRs, mergedArches)
 	remoteBranches, remoteHits := collectRemoteOnlyBranches(ctx, repoPath, remoteName, defaultBranch, baseRef, baseTipSHA, nodes, shaToIdx, branches, ghPRs, mergedPRs, mergedArches)
@@ -460,6 +461,44 @@ func extractMergedArchesFromSpine(ctx context.Context, repoPath, defaultBranch s
 	return arches
 }
 
+// enrichMergedArches: birleşmiş dalın PR bilgisini (gerçek başlık, açıklama, yazar, bağlantı) GitHub verisinden doldurur.
+// Merge commit'inden türetilen yaylar yalnızca commit konusunu (`Merge pull request #83 from ...`) biliyordu ve
+// `gh pr list --state merged` verisi, aynı merge noktasına zaten bir yay olduğu için yok sayılıyordu: bu yüzden
+// birleşmiş PR'ların açıklaması hep "boş" görünüyordu. Eşleşme PR numarasıyla yapılır.
+func enrichMergedArches(arches []model.BranchArc, mergedPRs map[string]model.PRStatus) {
+	if len(mergedPRs) == 0 {
+		return
+	}
+	byNumber := make(map[int]model.PRStatus, len(mergedPRs))
+	for _, p := range mergedPRs {
+		if p.Number > 0 {
+			byNumber[p.Number] = p
+		}
+	}
+	for i := range arches {
+		a := &arches[i]
+		if a.State != "merged" || a.PR == nil || a.PR.Number <= 0 {
+			continue
+		}
+		gh, ok := byNumber[a.PR.Number]
+		if !ok {
+			continue
+		}
+		pr := *a.PR
+		if gh.Title != "" {
+			pr.Title = gh.Title
+		}
+		pr.Body = gh.Body
+		if gh.Author != "" {
+			pr.Author = gh.Author
+		}
+		if gh.URL != "" {
+			pr.URL = gh.URL
+		}
+		a.PR = &pr
+	}
+}
+
 // BuildSuggestedCommand produces a ready-to-copy git/gh CLI chain for the branch's current state.
 func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 	if defBranch == "" {
@@ -478,6 +517,11 @@ func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 		return fmt.Sprintf("git push origin --delete %s", b.Name)
 	}
 	if b.State == "merged" || b.OriginGone || b.State == "gone" {
+		if !b.HasLocal && !b.HasRemote && !b.IsHEAD { // aktif dal (HEAD) her zaman yerelde vardır
+			// Ne yerel ne uzak kopya kalmış: temizlenecek bir şey yok, komut önerme (eskiden olmayan dalı silen
+			// `git branch -D` öneriliyordu).
+			return ""
+		}
 		if b.IsHEAD {
 			if b.UncommittedCount > 0 {
 				return fmt.Sprintf("# ⚠️ DİKKAT: Aktif dalda (%s) kaydedilmemiş %d dosya var! Silmeden önce commit veya stash yapın.\ngit switch %s && git branch -D %s && git fetch --prune origin", b.Name, b.UncommittedCount, defBranch, b.Name)
