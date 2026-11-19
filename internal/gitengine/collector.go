@@ -708,6 +708,46 @@ func buildSuggestedCommitAndPR(repoPath, branchHint string, files []string) (com
 	return commitMsg, prTitle, prBody
 }
 
+// Dal başına "birleşmiş PR var mı" sorgusu ~1 sn'lik bir `gh` ağ çağrısıdır ve her anlık görüntüde her dal için
+// tekrarlanıyordu (bir depoda 20 çağrı ≈ 20 sn). Birleşmiş bir PR hep birleşmiş kalır: olumlu sonuç süresiz,
+// olumsuz sonuç kısa süre saklanır; böylece yeni birleşen PR en geç negTTL sonra görülür.
+const ghMergedNegTTL = 2 * time.Minute
+
+type ghMergedEntry struct {
+	merged bool
+	at     time.Time
+}
+
+var (
+	ghMergedMu    sync.Mutex
+	ghMergedCache = map[string]ghMergedEntry{}
+)
+
+func ghHasMergedPR(ctx context.Context, repoPath, branchName string) bool {
+	key := filepath.Clean(repoPath) + "|" + branchName
+	ghMergedMu.Lock()
+	e, ok := ghMergedCache[key]
+	ghMergedMu.Unlock()
+	if ok && (e.merged || time.Since(e.at) < ghMergedNegTTL) {
+		return e.merged
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		return false
+	}
+	qCtx, qCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer qCancel()
+	ghOut, _, err := runCmd(qCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--head", branchName, "--limit", "1", "--json", "number")
+	if err != nil {
+		return false // zaman aşımı/hata sonucu önbelleğe yazma: "bilinmiyor" ile "yok" aynı şey değildir
+	}
+	trimmed := strings.TrimSpace(ghOut)
+	merged := trimmed != "" && trimmed != "[]"
+	ghMergedMu.Lock()
+	ghMergedCache[key] = ghMergedEntry{merged: merged, at: time.Now()}
+	ghMergedMu.Unlock()
+	return merged
+}
+
 // isSquashMerged checks if a branch was merged into main via squash merge (Madde 1).
 func isSquashMerged(ctx context.Context, repoPath, branchName, defaultBranch, baseRef string) bool {
 	// 1. git cherry: Eğer daldaki commit'ler ana hatta zaten varsa (- ile işaretlenir)
@@ -725,16 +765,9 @@ func isSquashMerged(ctx context.Context, repoPath, branchName, defaultBranch, ba
 		}
 	}
 
-	// 2. gh pr list --state merged --head <branchName>
-	if _, err := exec.LookPath("gh"); err == nil {
-		qCtx, qCancel := context.WithTimeout(ctx, 2*time.Second)
-		defer qCancel()
-		if ghOut, _, err := runCmd(qCtx, repoPath, "gh", "pr", "list", "--state", "merged", "--head", branchName, "--limit", "1", "--json", "number"); err == nil {
-			trimmed := strings.TrimSpace(ghOut)
-			if trimmed != "" && trimmed != "[]" {
-				return true
-			}
-		}
+	// 2. gh pr list --state merged --head <branchName> (dal başına bir ağ çağrısı: sonuç önbelleğe alınır)
+	if ghHasMergedPR(ctx, repoPath, branchName) {
+		return true
 	}
 
 	// 3. main logunda dal adı veya squash PR izi
@@ -834,7 +867,9 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 		// çakışma, Cross-PR ve uyarı hesaplarına katma; yalnız temizleme adayı göster.
 		mergedPR, isGHMerged := mergedPRs[name]
 		isAncest := isAncestor(ctx, repoPath, name, defaultBranch)
-		isActuallyMerged := isGHMerged || (isAncest && aheadMain == 0) || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)) || (originGone && aheadMain == 0)
+		// Ucuz koşullar önce: `isSquashMerged` ağ çağrısı (gh) yapabilir; sonucu değişmeyen saf bir VEYA olduğundan
+		// sıra performans içindir, anlam aynıdır.
+		isActuallyMerged := isGHMerged || (isAncest && aheadMain == 0) || (originGone && aheadMain == 0) || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef))
 		if prPtr == nil && isActuallyMerged {
 			if archIdx, exists := mergedArchByName[name]; exists {
 				mergedArches[archIdx].HasLocal = true
@@ -1086,7 +1121,12 @@ func collectRemoteOnlyBranches(ctx context.Context, repoPath, remoteName, defaul
 				}
 			}
 			mergedPR, isGHMerged := mergedPRs[name]
-			isSquash := isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)
+			// Yalnızca sonucu değiştirebiliyorsa hesapla (aşağıdaki koşul `isGHMerged || isSquash || aheadMain == 0`):
+			// her uzak dal için bir `gh` ağ çağrısı yapmak anlık görüntüyü saniyelerce yavaşlatıyordu.
+			isSquash := false
+			if prPtr == nil && !isGHMerged && aheadMain != 0 {
+				isSquash = isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef)
+			}
 
 			// Kural A: Merge edilmiş uzak kalıntı dal (Madde 1 & 6)
 			if (prPtr == nil && (isGHMerged || isSquash || aheadMain == 0)) || (prPtr != nil && prPtr.ReviewState == "MERGED") {

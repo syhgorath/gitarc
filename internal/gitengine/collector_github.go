@@ -85,6 +85,15 @@ func InvalidateGHCache(repoPath string) {
 	st.ghAt = time.Time{}
 	st.fetchAt = time.Time{}
 	st.mu.Unlock()
+	// Bir mutasyondan (merge, push, PR) sonra "birleşmiş PR yok" yanıtları bayatlamış olabilir: olumsuzları sil.
+	prefix := filepath.Clean(repoPath) + "|"
+	ghMergedMu.Lock()
+	for k, e := range ghMergedCache {
+		if !e.merged && strings.HasPrefix(k, prefix) {
+			delete(ghMergedCache, k)
+		}
+	}
+	ghMergedMu.Unlock()
 }
 
 // bgVersion, arka plan sonuçlarının sürümüdür; değişince arayüz yeni snapshot ister.
