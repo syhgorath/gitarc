@@ -32,7 +32,10 @@ func TestFetchGHPRsParsesCIStatesAndFailureLog(t *testing.T) {
 	gh.set("pr_list_open", openPRsJSON, 0)
 	gh.set("run_view", failedRunLog, 0)
 
-	prs := fetchGHPRs(context.Background(), t.TempDir())
+	prs, err := fetchGHPRs(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("fetchGHPRs: %v", err)
+	}
 	if len(prs) != 5 {
 		t.Fatalf("expected 5 PRs, got %d", len(prs))
 	}
@@ -72,13 +75,13 @@ func TestFetchGHPRsFailsSoft(t *testing.T) {
 	gh := newGHStub(t)
 
 	gh.set("pr_list_open", "", 1)
-	if got := fetchGHPRs(context.Background(), t.TempDir()); len(got) != 0 {
-		t.Fatalf("gh error must yield empty map, got %v", got)
+	if got, err := fetchGHPRs(context.Background(), t.TempDir()); len(got) != 0 || err == nil {
+		t.Fatalf("gh error must yield an empty map AND an error (never a silent empty result), got %v %v", got, err)
 	}
 	gh.set("pr_list_open", "{not json", 0)
 	_ = removeStubKey(gh, "pr_list_open.exit")
-	if got := fetchGHPRs(context.Background(), t.TempDir()); len(got) != 0 {
-		t.Fatalf("malformed JSON must yield empty map, got %v", got)
+	if got, err := fetchGHPRs(context.Background(), t.TempDir()); len(got) != 0 || err == nil {
+		t.Fatalf("malformed JSON must yield an empty map and an error, got %v %v", got, err)
 	}
 }
 
@@ -99,7 +102,10 @@ func TestFetchGHMergedPRsBuildsArches(t *testing.T) {
 	  {"number":6,"headRefName":"feat/nomerge","title":"N","body":"","url":"u6","author":{"login":"b"},"mergeCommit":null}
 	]`, 0)
 
-	merged, arches := fetchGHMergedPRs(context.Background(), t.TempDir(), nodes, shaToIdx, nil)
+	merged, arches, err := fetchGHMergedPRs(context.Background(), t.TempDir(), nodes, shaToIdx, nil)
+	if err != nil {
+		t.Fatalf("fetchGHMergedPRs: %v", err)
+	}
 	if len(merged) != 6 {
 		t.Fatalf("all heads must be in the merged map, got %d", len(merged))
 	}
@@ -120,7 +126,7 @@ func TestFetchGHMergedPRsBuildsArches(t *testing.T) {
 	}
 
 	// An already-drawn merge index is not duplicated.
-	_, arches = fetchGHMergedPRs(context.Background(), t.TempDir(), nodes, shaToIdx, []model.BranchArc{{EndSpineIndex: 1}})
+	_, arches, _ = fetchGHMergedPRs(context.Background(), t.TempDir(), nodes, shaToIdx, []model.BranchArc{{EndSpineIndex: 1}})
 	if len(arches) != 1 || arches[0].ID != "gh-merged-2" {
 		t.Fatalf("existing arch index must be skipped, got %+v", arches)
 	}
@@ -131,25 +137,39 @@ func TestFetchGHBranchProtectionVariants(t *testing.T) {
 	ctx := context.Background()
 
 	gh.set("api_protection_get", "true", 0)
-	if ok, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); !ok || !strings.Contains(sum, "strict checks: true") {
-		t.Fatalf("classic protection: %v %q", ok, sum)
+	if st, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); st != "active" || !strings.Contains(sum, "strict checks: true") {
+		t.Fatalf("classic protection: %q %q", st, sum)
 	}
 
-	gh.set("api_protection_get", "Branch not protected", 1)
+	gh.set("api_protection_get", `{"message":"Branch not protected"}`, 1)
 	gh.set("api_rulesets", `[{"id":1,"name":"main-guard","target":"branch","enforcement":"active"}]`, 0)
-	if ok, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); !ok || !strings.Contains(sum, "main-guard") {
-		t.Fatalf("ruleset protection: %v %q", ok, sum)
+	if st, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); st != "active" || !strings.Contains(sum, "main-guard") {
+		t.Fatalf("ruleset protection: %q %q", st, sum)
 	}
 
 	gh.set("api_rulesets", `[{"id":1,"name":"off","target":"branch","enforcement":"disabled"}]`, 0)
-	if ok, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); ok || !strings.Contains(sum, "Korumasız") {
-		t.Fatalf("disabled ruleset must not count: %v %q", ok, sum)
+	if st, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); st != "none" || !strings.Contains(sum, "Korumasız") {
+		t.Fatalf("explicit 'Branch not protected' must be none: %q %q", st, sum)
 	}
 
 	gh.set("api_protection_get", "Upgrade to GitHub Pro or make this repository public", 1)
 	gh.set("api_rulesets", "[]", 0)
-	if ok, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); ok || !strings.Contains(sum, "GitHub Free") {
-		t.Fatalf("free-plan message expected: %v %q", ok, sum)
+	if st, sum := fetchGHBranchProtection(ctx, t.TempDir(), "main"); st != "none" || !strings.Contains(sum, "GitHub Free") {
+		t.Fatalf("free-plan message expected: %q %q", st, sum)
+	}
+}
+
+// Prometheus regression: a non-admin gets 404 "Not Found" for branch protection. That is NOT "unprotected".
+func TestFetchGHBranchProtectionNotFoundIsUnknownNotUnprotected(t *testing.T) {
+	gh := newGHStub(t)
+	gh.set("api_protection_get", `{"message":"Not Found","status":"404"}`, 1)
+	gh.set("api_rulesets", "[]", 0)
+	st, sum := fetchGHBranchProtection(context.Background(), t.TempDir(), "main")
+	if st != "unknown" {
+		t.Fatalf("404 Not Found (no admin rights) must be 'unknown', got %q (%s)", st, sum)
+	}
+	if strings.Contains(sum, "Korumasız") || !strings.Contains(sum, "yetki") {
+		t.Fatalf("summary must explain missing permission, got %q", sum)
 	}
 }
 

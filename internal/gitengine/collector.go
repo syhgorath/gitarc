@@ -160,7 +160,9 @@ func buildConflictPreview(files []string, rawOutput, strategy string) string {
 // CollectLiveRepo inspects an actual local git repository (read-only) and optionally
 // enriches open branches using `gh` CLI when available.
 func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption) (model.CockpitSnapshot, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	// Yavaş ağ işleri (git fetch, gh sorguları) arka planda çalışır ve burada yalnızca kısa süre
+	// beklenir; bu bütçe yerel git komutları içindir.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	if _, _, err := runCmd(ctx, repoPath, "git", "rev-parse", "--is-inside-work-tree"); err != nil {
@@ -240,16 +242,15 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	mergedArches := extractMergedArchesFromSpine(ctx, repoPath, spineRef, nodes, shaToIdx)
 	ghPRs := map[string]model.PRStatus{}
 	mergedPRs := map[string]model.PRStatus{}
-	branchProtected := false
+	protectionState := "unknown"
 	protectionSummary := "Yerel depo (koruma yok)"
 	if remoteName != "" {
-		// Madde 6: Uzak dal listesini git fetch --prune sonrası güncel tut
-		fetchCtx, fCancel := context.WithTimeout(ctx, 3*time.Second)
-		_, _, _ = runCmd(fetchCtx, repoPath, "git", "fetch", "--prune", remoteName)
-		fCancel()
+		// Madde 6: Uzak dal listesini git fetch --prune ile güncel tut. Fetch arka planda çalışır;
+		// büyük depolarda snapshot'ı bloklamaz, durumu SyncSteps'te görünür.
+		fetchRemoteCached(ctx, repoPath, remoteName)
 
 		var ghMergedArches []model.BranchArc
-		ghPRs, mergedPRs, ghMergedArches, branchProtected, protectionSummary = fetchGHMetadataCached(ctx, repoPath, remoteName, defaultBranch, nodes, shaToIdx, mergedArches)
+		ghPRs, mergedPRs, ghMergedArches, protectionState, protectionSummary = fetchGHMetadataCached(ctx, repoPath, remoteName, defaultBranch, nodes, shaToIdx, mergedArches)
 		mergedArches = append(mergedArches, ghMergedArches...)
 	}
 	branches, localHits := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser, nodes, shaToIdx, dirtyCount, dirtyFiles, ghPRs, mergedPRs, mergedArches)
@@ -291,8 +292,10 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			Mode:              "live",
 			VersionTag:        versionTag,
 			CurrentUser:       currentUser,
-			BranchProtected:   branchProtected,
+			BranchProtected:   protectionState == "active",
+			ProtectionState:   protectionState,
 			ProtectionSummary: protectionSummary,
+			SyncSteps:         syncStepsFor(repoPath),
 			AppVersion:        AppVersion,
 			CacheHits:         cacheHits,
 			SecretPatterns:    cfg.SecretPatterns,

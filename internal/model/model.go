@@ -63,6 +63,11 @@ type RepoMeta struct {
 	TeamMode          bool   `json:"teamMode,omitempty"`
 	BranchProtected   bool   `json:"branchProtected"`
 	ProtectionSummary string `json:"protectionSummary,omitempty"`
+	// ProtectionState: "active" | "none" | "unknown". "unknown" = durum okunamadı (yetki yok, zaman aşımı,
+	// gh yok, GitHub dışı uzak depo); "Korumasız" ile karıştırılmamalıdır.
+	ProtectionState string `json:"protectionState,omitempty"`
+	// SyncSteps: veri toplama adımlarının (git fetch, PR listesi, koruma...) son durumu.
+	SyncSteps []SyncStep `json:"syncSteps,omitempty"`
 	AppVersion        string `json:"appVersion,omitempty"`
 	LatestVersion     string `json:"latestVersion,omitempty"`
 	UpdateAvailable   bool   `json:"updateAvailable,omitempty"`
@@ -274,4 +279,17 @@ type ActionLogEntry struct {
 	Branch    string `json:"branch,omitempty"`
 	Message   string `json:"message"`
 	Detail    string `json:"detail,omitempty"`
+}
+
+// SyncStep, bir veri toplama adımının (git fetch, gh PR listesi, koruma sorgusu) son durumudur.
+// Arayüz bunu "main ↔ origin/main (Synced)" rozetinin altında gösterir; böylece "Synced" yazarken
+// aslında hangi verinin eski/eksik olduğu görünür.
+type SyncStep struct {
+	ID         string `json:"id"`                   // "fetch" | "prs" | "merged" | "protection"
+	Label      string `json:"label"`                // kullanıcıya gösterilen kısa ad
+	State      string `json:"state"`                // "ok" | "pending" | "stale" | "failed" | "unknown" | "skipped"
+	At         string `json:"at,omitempty"`         // son tamamlanma, RFC3339
+	DurationMs int64  `json:"durationMs,omitempty"` // son denemenin süresi
+	Count      int    `json:"count,omitempty"`      // örn. bulunan PR sayısı
+	Detail     string `json:"detail,omitempty"`     // hata / açıklama
 }

@@ -275,6 +275,17 @@
         }
       });
       sim.diagnostics = diags;
+      // Demo veri toplama adımları (canlı motordaki SyncSteps ile aynı şekil)
+      const nowIso = new Date().toISOString();
+      const openPrs = branches.filter((b) => b.state === 'open' && b.pr?.number).length;
+      const mergedPrs = branches.filter((b) => b.state === 'merged' && b.pr?.number).length;
+      sim.repo.protectionState = sim.repo.branchProtected ? 'active' : 'none';
+      sim.repo.syncSteps = [
+        { id: 'fetch', label: 'git fetch', state: 'ok', at: nowIso, durationMs: 410 },
+        { id: 'prs', label: 'PR listesi', state: 'ok', at: nowIso, durationMs: 1200, count: openPrs },
+        { id: 'merged', label: 'Birleşmiş PR', state: 'ok', at: nowIso, durationMs: 800, count: mergedPrs },
+        { id: 'protection', label: 'Koruma', state: 'ok', at: nowIso, durationMs: 300 },
+      ];
       return JSON.parse(JSON.stringify(sim));
     }
 
