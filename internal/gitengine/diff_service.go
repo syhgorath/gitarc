@@ -130,9 +130,10 @@ func (m *Manager) getDiffLive(live *repoEntry, target, diffType string) (model.D
 
 	// Branch or PR
 	title := "Dal " + target
-	out, _, err := runCmd(ctx, live.path, "git", "diff", "-M", "--color=never", "origin/main..."+target)
+	defBranch := detectDefaultBranch(ctx, live.path)
+	out, _, err := runCmd(ctx, live.path, "git", "diff", "-M", "--color=never", "origin/"+defBranch+"..."+target)
 	if err != nil || strings.TrimSpace(out) == "" {
-		out, _, err = runCmd(ctx, live.path, "git", "diff", "-M", "--color=never", "main..."+target)
+		out, _, err = runCmd(ctx, live.path, "git", "diff", "-M", "--color=never", defBranch+"..."+target)
 	}
 	if err != nil || strings.TrimSpace(out) == "" {
 		out, _, _ = runCmd(ctx, live.path, "git", "show", "--color=never", "-M", target)
