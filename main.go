@@ -88,6 +88,18 @@ func (a *App) sessionValid(tok string) bool {
 	return true
 }
 
+// noProjectAllowed: "proje yok" durumunda da çalışan uçlar.
+var noProjectAllowed = map[string]bool{
+	"/api/snapshot":               true,
+	"/api/repo/add":               true,
+	"/api/repo/switch":            true,
+	"/api/repo/remove":            true,
+	"/api/system/choose-folder":   true,
+	"/api/system/update-check":    true,
+	"/api/system/git-status-ping": true,
+	"/api/logs/clear":             true,
+}
+
 func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// DNS rebinding guard
@@ -110,6 +122,12 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 				writeJSONError(w, http.StatusForbidden, "yasak Origin")
 				return
 			}
+		}
+		// Açık proje yokken yalnızca proje ekleme/seçme ve salt okunur uçlar çalışır; diğerleri sahte bir depoya
+		// işlem yapmasın diye reddedilir.
+		if !noProjectAllowed[r.URL.Path] && a.mgr.NoProject() {
+			writeJSONError(w, http.StatusConflict, "Önce bir proje ekleyin: açık bir Git deposu yok")
+			return
 		}
 		next(w, r)
 	}

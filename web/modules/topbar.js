@@ -7,7 +7,18 @@ import { summarizeSync, protectionView, mainCIView } from './syncsteps.js';
 
 export function modeLabel(repo, offline) {
   if (offline) return 'Offline Simülasyon';
+  if (repo.mode === 'none') return 'Proje yok';
   return repo.mode === 'live' ? 'Canlı Git · Aktif' : 'Simülasyon · Etkileşimli';
+}
+
+// Kokpitin kipi: "proje yok" (karşılama paneli) ve "demo" (sahte veri şeridi). Demo yalnızca bilerek istenince
+// (`gitarc -repo sim`) ya da sunucusuz açılışta görünür; gerçek bir depoyla karıştırılmasın diye belirgin işaretlenir.
+export function modeView(repo, offline = false) {
+  const mode = repo?.mode || 'live';
+  return {
+    noProject: mode === 'none' && !offline,
+    demo: mode === 'simulation' || (offline && mode !== 'live'),
+  };
 }
 
 export function versionView(repo) {
@@ -57,6 +68,13 @@ function renderRepoSelect(snap) {
       if (r.id === snap.repo.id) opt.selected = true;
       el.repoSelect.appendChild(opt);
     });
+    if ((snap.repos || []).length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Proje yok — Proje Ekle ile başlayın';
+      opt.selected = true;
+      el.repoSelect.appendChild(opt);
+    }
   } else {
     el.repoSelect.value = currentVal;
   }
@@ -92,8 +110,12 @@ export function renderTopbar(callbacks = {}) {
   const snap = state.snapshot;
   if (!snap) return;
 
+  const view = modeView(snap.repo, state.offlineMode);
+  document.body.classList.toggle('no-project', view.noProject);
+  document.body.classList.toggle('demo-mode', view.demo);
+
   if (el.modeBadge) el.modeBadge.textContent = `${snap.repo.name} · ${modeLabel(snap.repo, state.offlineMode)}`;
-  if (el.engineStatus) el.engineStatus.textContent = snap.repo.mode === 'live' ? '● Canlı Repo Bağlı' : '● Simülasyon Hazır';
+  if (el.engineStatus) el.engineStatus.textContent = snap.repo.mode === 'live' ? '● Canlı Repo Bağlı' : (snap.repo.mode === 'none' ? '● Proje yok' : '● Simülasyon Hazır');
 
   renderRepoSelect(snap);
 

@@ -125,6 +125,17 @@
               </button>
             </div>
 
+            <!-- Demo kipi: sahte veri olduğu açıkça belli olsun -->
+            <div class="demo-banner" id="demo-banner" role="status">DEMO · sahte veri — gerçek bir depo değil</div>
+
+            <!-- Proje yok: karşılama paneli -->
+            <div class="no-project-card" id="no-project-card" role="region" aria-label="Henüz proje yok">
+              <h2 class="no-project-title">Henüz proje yok</h2>
+              <p class="no-project-text">GitArc açık bir Git deposu bulamadı. Başlamak için bir proje ekleyin: seçtiğiniz klasör bir deponun alt klasörü ya da <code>git worktree</code> olsa bile kökü kendisi bulur.</p>
+              <button type="button" class="btn emerald" id="btn-no-project-add">➕ Proje Ekle</button>
+              <p class="no-project-hint">İpucu: <code>gitarc</code> komutunu bir depo klasöründe çalıştırırsanız o depo doğrudan açılır. Demo verisiyle denemek için <code>gitarc -repo sim</code>.</p>
+            </div>
+
             <!-- Sağ Üst Kayan main Sync Rozeti -->
             <div class="canvas-float-topright">
               <button type="button" class="spine-sync-badge interactive" id="btn-canvas-sync" title="main ↔ origin/main · Eşitlemek için tıklayın">

@@ -255,3 +255,44 @@ func TestBaseBranchEndpoint(t *testing.T) {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestNoProjectStateAPI(t *testing.T) {
+	// Çalışma klasörü ve verilen yol depo değil: "proje yok" durumu (demo YOK).
+	old, _ := os.Getwd()
+	empty := t.TempDir()
+	if err := os.Chdir(empty); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	c := newAPIClient(t, gitengine.NewManager(empty))
+	rec := c.do(http.MethodGet, "/api/snapshot", ``)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"mode":"none"`) {
+		t.Fatalf("snapshot must report mode none: %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), "sim-sandbox") {
+		t.Fatal("no demo repo may be offered")
+	}
+	// Sahte bir depoya işlem yapılmasın: mutasyonlar 409.
+	for _, p := range []string{"/api/branch/create", "/api/branch/merge", "/api/spine/sync", "/api/branch/prune"} {
+		if rec := c.do(http.MethodPost, p, `{}`); rec.Code != http.StatusConflict {
+			t.Errorf("%s must be refused with 409 while there is no project, got %d", p, rec.Code)
+		}
+	}
+	// Proje ekleme ve demo isteme çalışır / reddedilir.
+	if rec := c.do(http.MethodPost, "/api/repo/switch", `{"repoId":"sim-sandbox"}`); rec.Code == http.StatusOK {
+		t.Fatal("the demo must not be switchable by default")
+	}
+	repo := tempRepo(t)
+	sub := filepath.Join(repo, "pkg")
+	if err := os.MkdirAll(sub, 0755); err != nil {
+		t.Fatal(err)
+	}
+	rec = c.do(http.MethodPost, "/api/repo/add", `{"path":"`+sub+`"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"mode":"live"`) {
+		t.Fatalf("adding a project (even from a subfolder) must open it: %d %s", rec.Code, rec.Body)
+	}
+	if rec := c.do(http.MethodPost, "/api/spine/sync", `{}`); rec.Code == http.StatusConflict {
+		t.Fatal("once a project is open the mutation guard must step aside")
+	}
+}

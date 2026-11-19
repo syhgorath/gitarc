@@ -310,6 +310,10 @@ function renderNodes(nodes, onSelectNode) {
 export function renderSVG(callbacks = {}) {
   const snap = state.snapshot;
   if (!snap || !el.svg) return;
+  if (snap.repo?.mode === 'none') { // proje yok: tuval boş, karşılama paneli gösterilir
+    el.svg.innerHTML = '';
+    return;
+  }
 
   const nodes = snap.nodes || [];
   const visibleBranches = selectVisibleBranches(snap.branches || [], state.showMergedArches);

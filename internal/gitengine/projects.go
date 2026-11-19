@@ -69,8 +69,9 @@ func (m *Manager) AddProject(repoPath, customName string) (model.CockpitSnapshot
 	if err != nil {
 		return model.CockpitSnapshot{}, fmt.Errorf("geçersiz dizin yolu: %v", err)
 	}
-	if !isGitDir(abs) {
-		return model.CockpitSnapshot{}, fmt.Errorf("belirtilen yolda geçerli bir .git deposu bulunamadı: %s", abs)
+	// Alt klasör, worktree ve submodule verilse de deponun köküne çözülür.
+	if abs = repoRootFor(abs); abs == "" {
+		return model.CockpitSnapshot{}, fmt.Errorf("belirtilen yolda geçerli bir git deposu bulunamadı: %s", strings.TrimSpace(repoPath))
 	}
 
 	name := strings.TrimSpace(customName)
@@ -170,10 +171,13 @@ func (m *Manager) RemoveProject(repoID string) (model.CockpitSnapshot, error) {
 	}
 
 	if m.activeRepoID == repoID {
-		if len(m.liveRepos) > 0 {
+		switch {
+		case len(m.liveRepos) > 0:
 			m.activeRepoID = m.liveRepos[0].id
-		} else {
+		case m.demoAllowed:
 			m.activeRepoID = "sim-sandbox"
+		default:
+			m.activeRepoID = "" // son proje kaldırıldı: sessizce demoya dönme, "proje yok" durumu
 		}
 	}
 
@@ -184,6 +188,9 @@ func (m *Manager) RemoveProject(repoID string) (model.CockpitSnapshot, error) {
 			live = &m.liveRepos[i]
 			break
 		}
+	}
+	if m.activeRepoID == "" {
+		return m.noProjectSnapshotLocked(opts), nil
 	}
 	if live == nil {
 		return m.buildSimSnapshotLocked(opts), nil
