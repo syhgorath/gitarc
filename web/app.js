@@ -12,14 +12,14 @@ import { renderRayPopovers } from './modules/rails.js';
 import { renderKPIs } from './modules/kpi.js';
 import { renderTopbar } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
+import { openConflictStudio, closeConflictStudio, applyConflictStudio } from './modules/conflict-studio.js';
 import {
-  openConflictStudio, closeConflictStudio, applyConflictStudio,
   openAddProjectModal, closeAddProjectModal, handleAddProjectSubmit, handleRemoveCurrentProject,
-  handleBrowseFolderClick, handleFallbackFolderPicker,
-  startCockpitTour, closeTour, nextTourStep, prevTourStep,
-  openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText,
-  openDiffViewer, closeDiffViewer, initDiffViewerListeners
-} from './modules/modals.js';
+  handleBrowseFolderClick, handleFallbackFolderPicker
+} from './modules/project-modals.js';
+import { startCockpitTour, closeTour, nextTourStep, prevTourStep } from './modules/tour.js';
+import { openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText } from './modules/mcp-modal.js';
+import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modules/diff-viewer.js';
 
 // Central Branch Selection
 export function selectBranch(branchId) {
