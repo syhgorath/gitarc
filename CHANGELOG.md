@@ -4,6 +4,9 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ## [Yayımlanmamış]
 
+### Eklenenler
+- **Kapsülde "Uzak / Yerel" satırı (`capsule.js`: `whereModel`, `whereHtmlOf`):** Her açık dal kapsülünün başlığının altına iki küçük çip eklendi: solda dalın GitHub'daki durumu (`☁ PR #83` / `☁ Uzak: var` / `☁ Uzakta yok` / `☁ Uzakta silinmiş`), sağda kendi bilgisayarındaki durumu (`💻 Yerelde yok` / `💻 eşit` / `💻 ↑3 · 2 dirty` / `· HEAD`). Çipler tek bakışta "uzakta mı, yerelde mi" sorusunu yanıtlar; ayrıntı dal penceresindedir. Kapsül yüksekliği 114 → 130 px, sahne dikey sınırları buna göre ayarlandı. Yalnızca arayüz (üç motor aynı anlık görüntüyü kullanır). Testler: `capsule.test.mjs`. README görüntüleri yeni kapsüllerle yeniden alındı.
+
 ## [0.10.0] - 2026-11-19
 
 Bu sürümün ana temaları: **kokpitin dürüstlüğü** (uydurma CI verileri kalktı, merge sonrası `main` testleri görünür), **büyük depolarda hız ve doğruluk** (anlık görüntü ~13 sn → ~3 sn, Temizle yavaş bağlantıda artık hepsini siler), **birleşmiş PR'ın tam detayı ve dosya dosya diff'i**, **sol şeridin kalkması ve Yerel/Uzak adları**, **omurga dalı seçici ve uzun ömürlü dallar**, açık tema düzeltmeleri.

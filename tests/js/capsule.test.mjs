@@ -184,3 +184,35 @@ test('dispatchCardAction routes each data-act to the right callback with the rig
   ]);
   assert.doesNotThrow(() => dispatchCardAction('merge', btn, b, false, {}), 'missing callbacks are ignored');
 });
+
+import { whereModel, whereHtmlOf } from '../../web/modules/capsule.js';
+
+const ob = (extra = {}) => ({ id: 'b', name: 'feat/x', state: 'open', hemisphere: 'upper', hasLocal: true, hasRemote: true, aheadMain: 0, uncommittedCount: 0, ...extra });
+
+test('whereModel: remote chip says PR / exists / not pushed / deleted', () => {
+  assert.equal(whereModel(ob({ pr: { number: 83 } })).remote.text, '☁ PR #83');
+  assert.equal(whereModel(ob()).remote.text, '☁ Uzak: var');
+  assert.equal(whereModel(ob({ hasRemote: false, hemisphere: 'lower' })).remote.text, '☁ Uzakta yok');
+  const gone = whereModel(ob({ originGone: true }));
+  assert.equal(gone.remote.text, '☁ Uzakta silinmiş');
+  assert.equal(gone.remote.tone, 'warn');
+});
+
+test('whereModel: local chip says missing / equal / ahead and dirty / HEAD', () => {
+  assert.equal(whereModel(ob({ hasLocal: false })).local.text, '💻 Yerelde yok');
+  assert.equal(whereModel(ob()).local.text, '💻 eşit');
+  assert.equal(whereModel(ob({ aheadMain: 3, uncommittedCount: 2 })).local.text, '💻 ↑3 · 2 dirty');
+  assert.equal(whereModel(ob({ aheadMain: 1, isHead: true })).local.text, '💻 ↑1 · HEAD');
+  const wip = whereModel({ id: 'local-wip-working-tree', name: 'wip', state: 'open', hemisphere: 'lower', hasLocal: true, uncommittedCount: 4 });
+  assert.equal(wip.remote.text, '☁ Uzakta yok');
+  assert.equal(wip.local.text, '💻 4 dosya');
+});
+
+test('the open card carries the Uzak / Yerel row and escapes hostile data', () => {
+  const html = openCardModel(ob({ pr: { number: 5, reviewState: 'OPEN' } }), { tone: 'sky', isSelected: false }).html;
+  assert.match(html, /class="cap-where"/);
+  assert.match(html, /cap-loc remote sky/);
+  assert.match(html, /cap-loc local purple/);
+  const evil = whereHtmlOf(ob({ pr: { number: '<img src=x onerror=1>' } }));
+  assert.doesNotMatch(evil, /<img/);
+});
