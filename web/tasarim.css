@@ -4049,3 +4049,30 @@ body.no-project .check-pill,
 body.no-project .legend-bar {
   display: none;
 }
+
+/* İlk açılışta GitHub verisi gelene kadar küçük ipucu */
+.loading-hint {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  padding: 3px 14px;
+  border: 1px solid var(--sky-border);
+  border-radius: var(--radius-pill);
+  background: var(--sky-weak);
+  color: var(--sky);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  pointer-events: auto;
+}
+
+.loading-hint[hidden] {
+  display: none;
+}
+
+body.demo-mode .loading-hint,
+body.no-project .loading-hint {
+  display: none;
+}

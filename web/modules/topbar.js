@@ -3,7 +3,7 @@
 // `renderTopbar` yalnızca bunları DOM'a yazar.
 import { state, el } from './state.js';
 import { esc } from './utils.js';
-import { summarizeSync, protectionView, mainCIView } from './syncsteps.js';
+import { summarizeSync, protectionView, mainCIView, loadingHintView } from './syncsteps.js';
 
 export function modeLabel(repo, offline) {
   if (offline) return 'Offline Simülasyon';
@@ -109,6 +109,15 @@ function renderSyncBadge(snap) {
 export function renderTopbar(callbacks = {}) {
   const snap = state.snapshot;
   if (!snap) return;
+
+  const hint = loadingHintView(snap.repo);
+  if (el.loadingHint) {
+    el.loadingHint.hidden = !hint;
+    if (hint) {
+      el.loadingHint.textContent = hint.text;
+      el.loadingHint.setAttribute('title', hint.title);
+    }
+  }
 
   const view = modeView(snap.repo, state.offlineMode);
   document.body.classList.toggle('no-project', view.noProject);

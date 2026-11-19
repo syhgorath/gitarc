@@ -69,6 +69,17 @@ export function summarizeSync(steps, now = Date.now()) {
   return { tone, items, allOk: items.length > 0 && tone === 'ok', title: items.map((i) => i.title).join('\n') };
 }
 
+// İlk açılışta GitHub verisi (PR listesi, birleşmiş PR, koruma) arka planda toplanırken tuvalde PR görünmez; kullanıcı
+// "bu depoda PR yok" sanmasın diye kısa bir ipucu. Veri bir kez gelince (adımlar `ok`/`stale`) ipucu kalkar.
+export function loadingHintView(repo) {
+  if (!repo || repo.mode !== 'live') return null;
+  const steps = repo.syncSteps || [];
+  const waiting = steps.filter((s) => ['prs', 'merged', 'protection'].includes(s.id) && s.state === 'pending');
+  if (waiting.length === 0) return null;
+  const labels = waiting.map((s) => ({ prs: 'PR listesi', merged: 'birleşmiş PR\'lar', protection: 'koruma' }[s.id])).join(', ');
+  return { text: '⏳ GitHub verisi yükleniyor…', title: `Henüz gelmeyen: ${labels}. Büyük depolarda birkaç saniye sürebilir; gelince ekran kendiliğinden güncellenir.` };
+}
+
 // Merge sonrası omurga testleri (main CI). Çalıştırma yoksa/okunamıyorsa null: "yeşil" asla varsayılmaz.
 export function mainCIView(repo) {
   const ci = repo?.mainCI;
