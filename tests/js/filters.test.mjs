@@ -6,7 +6,7 @@ import { state, el } from '../../web/modules/state.js';
 import {
   FILTERS, filterContext, filterTest, matchesPathLens, matchesBranchFilter, countMatching, dirtyFileCount,
 } from '../../web/modules/filters.js';
-import { matchesFilter } from '../../web/modules/canvas.js';
+import { matchesFilter } from '../../web/modules/scene.js';
 import { renderKPIs } from '../../web/modules/kpi.js';
 
 // ---- fixtures ----

@@ -9,7 +9,9 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 | Katman | Dosya | Satır | Sorumluluk | Durum / Hedef |
 |---|---|---|---|---|
 | **Web Frontend** | `web/app.js` | 494 | Ana orkestratör ve yaşam döngüsü | ✅ 3.470 satırdan 494 satıra düşürüldü |
-| **Web Frontend** | `web/modules/canvas.js` | ~500 | `renderSVG`, etkileşimler, geçmiş çipi | 🔄 Sırada (3b-2): `scene`, `interactions` |
+| **Web Frontend** | `web/modules/scene.js` | ~330 | `renderSVG`: sahne sınırları (saf), yaylar, omurga, düğümler | ✅ `canvas.js`'ten ayrıldı |
+| **Web Frontend** | `web/modules/interactions.js` | ~140 | Kaydırma, yakınlaştırma, ray süzgeçleri (saf kurallar + olaylar) | ✅ `canvas.js`'ten ayrıldı |
+| **Web Frontend** | `web/modules/rails.js` | ~100 | Sol raylar: `rayCounts` (tek sayaç kuralı) ve Geçmiş çipi | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/capsule.js` | ~345 | Kapsül modelleri (saf) + DOM yazıcıları | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/kpi.js` | ~70 | KPI çipleri (`buildKpiModel` saf + `renderKPIs`) | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/topbar.js` | ~125 | Üst çubuk ve senkron rozeti (saf modeller + `renderTopbar`) | ✅ `canvas.js`'ten ayrıldı |
