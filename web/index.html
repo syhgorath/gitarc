@@ -107,6 +107,26 @@
                     <div class="ray-popover-body" id="history-list"></div>
                   </div>
                 </div>
+
+                <!-- Uzun ömürlü dallar: develop / release/* / 1.x (özellik dalı gibi silinmez) -->
+                <div class="history-lane-wrap" id="longlived-lane-wrap" hidden>
+                  <button type="button" class="lane-label-card history" id="btn-longlived-lane" aria-expanded="false" aria-controls="longlived-popover" title="develop, release/* gibi uzun ömürlü dallar">
+                    <div class="lane-label-head">
+                      <span class="lane-dot longlived"></span>
+                      <span class="lane-name">Uzun Ömürlü</span>
+                      <span class="ray-pill-count" id="longlived-count"></span>
+                    </div>
+                    <div class="lane-sub">develop · release</div>
+                  </button>
+                  <div class="history-popover" id="longlived-popover" role="dialog" aria-label="Uzun ömürlü dallar" hidden>
+                    <div class="ray-popover-head">
+                      <span class="ray-popover-title">⏳ Uzun ömürlü dallar</span>
+                      <button type="button" class="ray-popover-close" id="longlived-close" aria-label="Kapat">✕</button>
+                    </div>
+                    <div class="history-hint">Bu dallar özellik dalı gibi birleşince silinmez; kalıntı temizliği ve silme onları atlar.</div>
+                    <div class="ray-popover-body" id="longlived-list"></div>
+                  </div>
+                </div>
               </div>
 
               <!-- Kulvar 3: Alt Ray (Yerel & Taslak) -->

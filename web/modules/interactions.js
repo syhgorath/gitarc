@@ -3,7 +3,7 @@
 // Sayısal kurallar (yakınlaştırma sınırları, kaydırma hesabı, süzgeç değiştirme) saf fonksiyonlardadır.
 import { state, el } from './state.js';
 import { renderKPIs } from './kpi.js';
-import { setupHistoryChip } from './rails.js';
+import { setupHistoryChip, setupLongLivedChip } from './rails.js';
 
 export const ZOOM_MIN = 0.4;
 export const ZOOM_MAX = 2.5;
@@ -134,6 +134,7 @@ export function setupCanvasInteractions(onRenderSVG = null) {
 
   setupPanAndZoom(onRenderSVG);
   setupHistoryChip();
+  setupLongLivedChip();
   setupFilters(onRenderSVG);
 
   // Clicking empty canvas deselects active branch and closes canvas inspector

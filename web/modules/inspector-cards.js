@@ -166,7 +166,7 @@ export function branchHeaderHtml(v) {
           ` : ''}
         ` : ''}
         ${hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">⚡ Çakışma Stüdyosunu Aç</button>` : ''}
-        ${!isVirtualWip && (b.state !== 'merged' || b.hasLocal || b.originGone || b.hasRemote) ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
+        ${!isVirtualWip && !b.longLived && (b.state !== 'merged' || b.hasLocal || b.originGone || b.hasRemote) ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
       </div>
     </div>
   `;
@@ -442,7 +442,7 @@ export function syncedCardHtml(b) {
         </div>
         <div class="det-actions">
           ${b.isHead ? '<button type="button" class="btn primary sm" id="act-checkout-main-synced">🎯 main Omurgasına Geç</button>' : ''}
-          <button type="button" class="btn warn sm" id="act-delete-synced">🧹 Kalıntı Dalı Temizle</button>
+          ${b.longLived ? '' : '<button type="button" class="btn warn sm" id="act-delete-synced">🧹 Kalıntı Dalı Temizle</button>'}
         </div>
       </div>
     `;

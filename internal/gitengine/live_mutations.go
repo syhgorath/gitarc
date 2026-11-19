@@ -417,7 +417,7 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 
 	removed := 0
 	for _, b := range snapBefore.Branches {
-		if !b.HasLocal || b.Name == currentBranch || b.Name == defBranch {
+		if !b.HasLocal || b.Name == currentBranch || b.Name == defBranch || b.LongLived {
 			continue
 		}
 		if b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
@@ -444,7 +444,7 @@ func (m *Manager) pruneGoneLive(live *repoEntry) (model.CockpitSnapshot, int, er
 		remoteName = "origin"
 	}
 	for _, b := range snapBefore.Branches {
-		if b.HasLocal || !b.HasRemote || b.Name == currentBranch || b.Name == defBranch {
+		if b.HasLocal || !b.HasRemote || b.Name == currentBranch || b.Name == defBranch || b.LongLived {
 			continue
 		}
 		if (b.State != "merged" && !b.OriginGone) || b.AheadMain != 0 {
@@ -509,6 +509,9 @@ func (m *Manager) deleteBranchLive(live *repoEntry, branchID string) (model.Cock
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
+	if b.LongLived {
+		return model.CockpitSnapshot{}, fmt.Errorf("%s uzun ömürlü bir dal (develop/release); GitArc bunu silmez, gerekiyorsa git ile elle silin", b.Name)
+	}
 	if b.Name == snap.Repo.DefaultBranch {
 		return model.CockpitSnapshot{}, fmt.Errorf("aktif çalışma dalı (%s) silinemez; önce başka dala geçin", b.Name)
 	}

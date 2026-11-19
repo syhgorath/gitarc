@@ -17,7 +17,7 @@ export function versionView(repo) {
 
 // Temizlenebilir (silinmiş/birleşmiş kalıntı) dal sayısı.
 export function cleanableCount(branches) {
-  return (branches || []).filter((b) => b.originGone || b.state === 'gone' || (b.state === 'merged' && b.hasLocal)).length;
+  return (branches || []).filter((b) => !b.longLived && (b.originGone || b.state === 'gone' || (b.state === 'merged' && b.hasLocal))).length;
 }
 
 // Senkron rozetinin metni, sağlık durumu ve ipucu (DOM yok).

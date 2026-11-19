@@ -33,7 +33,7 @@ export function mergedPillModel(b, isSelected) {
     ? `<span class="cap-merged-local-tag" title="Yerelde dal kopyası duruyor">${b.isHead ? 'HEAD·Local' : '💻 Local'}</span>`
     : '';
   const diffBtnHtml = '<button type="button" class="cap-merged-del cap-btn-diff" data-act="diff" title="Birleşen Kod Değişikliklerini Gör (Diff)">🔍</button>';
-  const delBtnHtml = hasLocalLeftover
+  const delBtnHtml = hasLocalLeftover && !b.longLived
     ? '<button type="button" class="cap-merged-del" data-act="delete" title="Kalıntı yerel dalı temizle">🧹</button>'
     : '';
   const html = `
@@ -206,6 +206,10 @@ export function actionRowHtmlOf(b, ctx = {}) {
       ${checkoutBtn}
       <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
     `;
+  }
+  if (b.longLived) {
+    // Uzun ömürlü dal silinmez: sunucu da reddeder; boş eylem göstermemek için düğmeleri çıkar.
+    actionRowHtml = actionRowHtml.replace(/\s*<button[^>]*data-act="delete"[^>]*>[^<]*<\/button>/g, '');
   }
   return actionRowHtml;
 }
