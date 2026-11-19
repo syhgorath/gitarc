@@ -34,11 +34,28 @@ export function recordClientLog(level, action, message, detail = '', onRenderMod
   renderLogBadge(onRenderModal);
 }
 
+// "Sistem Logları" sekmesindeki sayı: toplam günlük sayısı; en az bir hata varsa kırmızı ve ipucunda hata sayısı.
+export function logBadgeModel(logs) {
+  const list = logs || [];
+  const errors = list.filter((l) => l.level === 'error').length;
+  return {
+    count: list.length,
+    errors,
+    tone: errors > 0 ? 'danger' : '',
+    title: errors > 0 ? `${errors} hata içeriyor` : 'Hata yok',
+  };
+}
+
 export function renderDockStreams() {
   const logs = getMergedLogs();
   const actionLogs = state.snapshot?.actionLogs || [];
 
-  if (el.dockLogCount) el.dockLogCount.textContent = logs.length;
+  if (el.dockLogCount) {
+    const badge = logBadgeModel(logs);
+    el.dockLogCount.textContent = String(badge.count);
+    el.dockLogCount.classList.toggle('danger', badge.errors > 0);
+    el.dockLogCount.setAttribute('title', badge.title);
+  }
   if (el.dockActionCount) el.dockActionCount.textContent = actionLogs.length;
 
   if (el.dockLogsStream) {
