@@ -185,7 +185,7 @@ export function layersHtml(v) {
           ${b.pr ? `
             <div class="layer-line">PR #${b.pr.number} · ${esc(b.pr.reviewState)}</div>
             <div class="layer-line">${esc(truncate(b.pr.title, 56))}</div>
-            <div class="layer-line">CI: ${esc(b.pr.ci?.workflow || 'CI')} (${esc(b.pr.ci?.duration || '—')})</div>
+            ${b.pr.ci ? `<div class="layer-line">CI: ${esc(b.pr.ci.workflow || 'CI')} (${esc(b.pr.ci.duration || '—')})</div>` : ''}
           ` : `
             <div class="layer-line">${isRemoteOnly ? `Remote aktif: origin/${esc(b.name)}` : (b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok')}</div>
             <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Alt rayda yerel çalışma'}</div>
