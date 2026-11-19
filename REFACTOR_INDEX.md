@@ -17,7 +17,11 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 | **Web Frontend** | `web/modules/topbar.js` | ~125 | Üst çubuk ve senkron rozeti (saf modeller + `renderTopbar`) | ✅ `canvas.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/filters.js` | ~60 | Süzgeç koşulları ve KPI sayıları için tek tablo (`FILTERS`) | ✅ `canvas.js`'ten ayrıldı, `upper` süzgeci düzeltildi |
 | **Web Frontend** | `web/modules/layout.js` | ~200 | Saf yerleşim matematiği (omurga, şerit, yay geometrisi, `computeView`) | ✅ `canvas.js`'ten ayrıldı, tekrarlar birleşti |
-| **Web Frontend** | `web/modules/inspector.js` | 708 | Sağ detay paneli, formlar ve PR açıklama kartları | ✅ Modüler ayrıldı |
+| **Web Frontend** | `web/modules/inspector.js` | ~310 | Sağ panel orkestratörü + olay bağlama (`renderInspector`) | ✅ 1.103 satırdan indi |
+| **Web Frontend** | `web/modules/inspector-model.js` | ~170 | Saf kararlar (`branchViewModel`, `classifyCheck`, varsayılanlar, öneri doğrulama) | ✅ `inspector.js`'ten ayrıldı |
+| **Web Frontend** | `web/modules/inspector-cards.js` | ~525 | Saf HTML kartları (17 kart) | ✅ `inspector.js`'ten ayrıldı |
+| **Web Frontend** | `web/modules/studio.js` | ~250 | Alt Teşhis Stüdyosu panelleri ve satır içi diff | ✅ `inspector.js`'ten ayrıldı |
+| **Web Frontend** | `web/modules/proposal.js` | ~80 | AI öneri kartı olayları | ✅ `inspector.js`'ten ayrıldı |
 | **Web Frontend** | `web/modules/modals.js` | 327 | Çakışma stüdyosu, proje yöneticisi ve kokpit turu | ✅ Modüler ayrıldı |
 | **Web Frontend** | `web/modules/dock.js` | 261 | PocketUI alt çekmece, radar ve log akışı | ✅ Modüler ayrıldı |
 | **Web Frontend** | `web/modules/utils.js` | 215 | `esc`, `truncate`, zaman ve güvenlik yardımcıları | ✅ Modüler ayrıldı |
