@@ -403,21 +403,42 @@ func simRawConflictSample(path, branchName string) string {
 	return fmt.Sprintf("<<<<<<< origin/main\n// origin/main üzerindeki güncel uygulama\nreturn nil\n=======\n// %s dalındaki yeni özellik mantığı\nreturn applyFeature()\n>>>>>>> %s\n", branchName, branchName)
 }
 
+// freshConflict: dalın taban dalla GÜNCEL (önbelleksiz) merge-tree sonucu. Hata/zaman aşımı "çakışma yok" sayılmaz (nil
+// döner ama çağıran bunu "belirsiz" olarak ele almalıdır); yalnızca çıkış kodu 1 (çakışma) ya da 0 (temiz) güvenilirdir.
+func freshConflict(ctx context.Context, repoPath, baseRef, branchRef string) *model.ConflictDetail {
+	out, code, _ := runCmd(ctx, repoPath, "git", "merge-tree", "--write-tree", baseRef, branchRef)
+	if ctx.Err() != nil || (code != 0 && code != 1) {
+		return nil
+	}
+	return ParseMergeTreeOutput(code, out)
+}
+
 func (m *Manager) inspectConflictStudioLive(live *repoEntry, branchID string) (model.ConflictStudioPayload, error) {
 	b, snap, err := m.findLiveBranch(live, branchID)
 	if err != nil {
 		return model.ConflictStudioPayload{}, err
 	}
-	if b.Conflict == nil || !b.Conflict.HasConflict || len(b.Conflict.Files) == 0 {
-		return model.ConflictStudioPayload{}, fmt.Errorf("%s dalında aktif merge çakışması bulunamadı", b.Name)
-	}
+	notFound := fmt.Errorf("%s dalında aktif merge çakışması bulunamadı", b.Name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	baseRef, branchRef, mbSHA, err := resolveConflictRefs(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, b)
-	if err != nil {
-		return model.ConflictStudioPayload{}, err
+	baseRef, branchRef, mbSHA, refsErr := resolveConflictRefs(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, b)
+
+	// Anlık görüntüdeki çakışma bayrağı önbellekten/bayat olabilir: kokpit çakışma gösterirken Stüdyo "yok" demesin diye
+	// bayrak yoksa dal güncel merge-tree ile bir kez daha denetlenir.
+	if b.Conflict == nil || !b.Conflict.HasConflict || len(b.Conflict.Files) == 0 {
+		if refsErr != nil {
+			return model.ConflictStudioPayload{}, notFound
+		}
+		c := freshConflict(ctx, live.path, baseRef, branchRef)
+		if c == nil || !c.HasConflict || len(c.Files) == 0 {
+			return model.ConflictStudioPayload{}, notFound
+		}
+		b.Conflict = c
+	}
+	if refsErr != nil {
+		return model.ConflictStudioPayload{}, refsErr
 	}
 
 	tmpDir, err := os.MkdirTemp("", "gitarc-studio-*")
