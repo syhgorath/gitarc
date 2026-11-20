@@ -6,6 +6,7 @@
 import { state, el } from './state.js';
 import { XHTML_NS, MAIN_Y, LANE_BASE_OFFSET } from './constants.js';
 import { esc, truncate, svgEl } from './utils.js';
+import { mainCIBadge } from './syncsteps.js';
 import { filterContext, matchesBranchFilter } from './filters.js';
 import { buildCapsuleForeignObject } from './capsule.js';
 import {
@@ -266,7 +267,7 @@ function renderSpineRail(sceneW, defBranch) {
 }
 
 // Omurgadaki commit düğümleri
-function renderNodes(nodes, onSelectNode) {
+function renderNodes(nodes, onSelectNode, ciBadge = null) {
   const nodeLayer = svgEl('g', { id: 'node-layer' });
   nodes.forEach((n, idx) => {
     const cx = xOfSpine(n.spineIndex);
@@ -297,6 +298,24 @@ function renderNodes(nodes, onSelectNode) {
       y: MAIN_Y + 23,
       class: 'svg-node-label',
     }, truncate(n.subject, 19)));
+
+    if (ciBadge && ciBadge.sha === n.shortSha) {
+      // Merge sonrası main testleri: yalnızca SHA'sı eşleşen düğümün altında (eski düğümlerde "yeşil" iddia edilmez).
+      const bw = Math.round(ciBadge.text.length * 6.4 + 18);
+      const g = svgEl('g', { class: `svg-mainci-badge ${ciBadge.tone}`, role: 'button', tabindex: 0, 'aria-label': `${ciBadge.text}: ayrıntı için tıklayın` });
+      g.appendChild(svgEl('title', {}, ciBadge.detail || ciBadge.text));
+      g.appendChild(svgEl('rect', { x: cx - bw / 2, y: MAIN_Y + 34, width: bw, height: 20, rx: 6, class: 'svg-mainci-bg' }));
+      g.appendChild(svgEl('text', { x: cx, y: MAIN_Y + 48, class: 'svg-mainci-txt' }, ciBadge.text));
+      const open = (ev) => {
+        ev.stopPropagation();
+        state.selectedNodeSha = n.shortSha;
+        state.selectedBranchId = null;
+        if (onSelectNode) onSelectNode(n.shortSha);
+      };
+      g.addEventListener('click', open);
+      g.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(ev); } });
+      nodeLayer.appendChild(g);
+    }
 
     if (n.tag) {
       const tw = n.tag.length * 6.8 + 14;
@@ -359,7 +378,7 @@ export function renderSVG(callbacks = {}) {
 
   renderSpineRail(sceneW, snap.repo?.defaultBranch || 'main');
 
-  el.svg.appendChild(renderNodes(nodes, callbacks.onSelectNode));
+  el.svg.appendChild(renderNodes(nodes, callbacks.onSelectNode, mainCIBadge(snap)));
   el.svg.appendChild(capsuleLayer);
   el.svg.appendChild(svgEl('path', { id: 'drag-preview-path', class: 'svg-drag-preview', d: '' }));
 }

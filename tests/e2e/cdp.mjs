@@ -73,6 +73,14 @@ export async function launch({ width = 1500, height = 950 } = {}) {
       if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
       return r.result?.result?.value;
     },
+    // GERÇEK fare tıklaması (pointerdown/up dahil): e.click() işaretçi olaylarını üretmez ve kaydırma/yakalama hatalarını kaçırır.
+    async realClick(selector) {
+      const pt = await api.eval(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+      if (!pt) throw new Error(`bulunamadı: ${selector}`);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pt.x, y: pt.y });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+    },
     // koşul doğru olana kadar bekler (en fazla timeout ms)
     async waitFor(expr, timeout = 15000) {
       const t0 = Date.now();

@@ -5,7 +5,21 @@
 import { esc, truncate, isSecretFile, prHeadline } from './utils.js';
 import { CHECK_INSPECTOR_VIEW, checkConclusion, classifyCheck } from './inspector-model.js';
 
-export function nodeInspectorHtml(node) {
+/** Merge düğümünde "main CI" kartı (mainCICardModel çıktısı). Kullanıcı verisi esc() ile basılır; bağlantı düğmesi yalnızca https. */
+export function mainCICardHtml(m) {
+  if (!m) return '';
+  const rows = m.rows.map(([k, v]) => `<div class="layer-line"><strong>${esc(k)}:</strong> ${esc(v)}</div>`).join('');
+  const open = m.url ? `<button type="button" class="btn ghost sm" id="act-mainci-open" data-url="${esc(m.url)}">↗ GitHub'da koşuyu aç</button>` : '';
+  return `
+        <div class="diag-card mainci-card ${esc(m.tone)}">
+          <h4>main CI · <span class="chip ${m.tone === 'ok' ? 'ok' : (m.tone === 'fail' ? 'danger' : 'warn')}">${esc(m.text)}</span></h4>
+          ${rows}
+          <div class="layer-line">${esc(m.note || '')}</div>
+          ${open}
+        </div>`;
+}
+
+export function nodeInspectorHtml(node, mainCI = null) {
       return `
         <div class="det-header">
           <div class="det-title-row">
@@ -25,6 +39,7 @@ export function nodeInspectorHtml(node) {
           <h4>Commit Mesajı</h4>
           <div class="layer-line">${esc(node.subject)}</div>
         </div>
+        ${mainCICardHtml(mainCI)}
         <div class="lock-note">🔒 <strong>main</strong> omurgasındaki commit mesajları tarihçe güvenliği için kilitlidir.</div>
       `;
 }

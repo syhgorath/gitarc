@@ -92,6 +92,39 @@ export function mainCIView(repo) {
   return { state: 'SUCCESS', text: `✓ ${def} CI`, btnClass: 'ok', title: `${def} testleri başarılı · ${detail}`, url: safeUrl };
 }
 
+// Tuvaldeki merge düğümü rozeti: main CI'ı YALNIZCA SHA'sı CI koşusunun SHA'sıyla eşleşen omurga düğümüne bağlar.
+// mainCI yalnızca omurganın SON koşusudur; eşleşme yoksa (eski merge düğümleri, SHA okunamadı) rozet YOKTUR ve
+// asla "yeşil" varsayılmaz. Dönen nesne: { sha, state, text, tone, detail } ya da null.
+export function mainCIBadge(snap) {
+  const ci = snap?.repo?.mainCI;
+  const sha = typeof ci?.sha === 'string' ? ci.sha.trim() : '';
+  if (!ci || !ci.state || sha.length < 7) return null;
+  const node = (snap.nodes || []).find((n) => typeof n.shortSha === 'string' && n.shortSha.length >= 7
+    && (n.shortSha.startsWith(sha.slice(0, 7)) || sha.startsWith(n.shortSha.slice(0, 7))));
+  if (!node) return null;
+  const view = mainCIView(snap.repo);
+  if (!view) return null;
+  const text = { RUNNING: '⏳ testler koşuyor', FAILURE: '❌ main CI kırık', SUCCESS: '✓ main CI' }[ci.state] || null;
+  if (!text) return null;
+  const tone = { RUNNING: 'running', FAILURE: 'fail', SUCCESS: 'ok' }[ci.state];
+  return { sha: node.shortSha, state: ci.state, text, tone, detail: view.title, url: view.url };
+}
+
+// Merge düğümüne tıklayınca Inspector'da görünen "main CI" kartının satırları (saf model).
+export function mainCICardModel(snap, node) {
+  const badge = mainCIBadge(snap);
+  if (!badge || !node || badge.sha !== node.shortSha) return null;
+  const ci = snap.repo.mainCI;
+  const rows = [];
+  if (ci.workflow) rows.push(['İş akışı', ci.workflow]);
+  rows.push(['Commit', node.shortSha]);
+  if (ci.branch || snap.repo.defaultBranch) rows.push(['Dal', ci.branch || snap.repo.defaultBranch]);
+  if (ci.title) rows.push(['Başlık', ci.title]);
+  if (ci.updatedAt) rows.push(['Son güncelleme', ci.updatedAt]);
+  const note = { RUNNING: 'Merge sonrası testler sürüyor; bitince bu rozet güncellenir.', FAILURE: 'Merge sonrası testler BAŞARISIZ: main kırık olabilir, GitHub\'daki koşuyu inceleyin.', SUCCESS: 'Merge sonrası testler başarılı.' }[ci.state];
+  return { text: badge.text, tone: badge.tone, rows, note, url: badge.url };
+}
+
 // Koruma durumu: "Bilinmiyor", "Korumasız"tan ayrı gösterilir (yönetici olmayan kullanıcıya GitHub 404 verir).
 export function protectionView(repo) {
   const state = repo?.protectionState || (repo?.branchProtected ? 'active' : 'none');
