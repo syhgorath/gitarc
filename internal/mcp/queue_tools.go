@@ -12,6 +12,15 @@ import (
 // (GITARC_MCP_ALLOW_UPDATE=1), plandan alınmış parmak izi ister, çakışmada hiçbir şey yapmaz, force-push etmez.
 const envAllowUpdate = "GITARC_MCP_ALLOW_UPDATE"
 
+// gitarc_queue_step_plan SALT OKUNURDUR. gitarc_queue_step kuyruğun TEK adımını uygular (dalı güncelle = uzak PR dalına push,
+// ya da PR'ı main'e birleştir): geri alınması zor olduğu için varsayılan KAPALIDIR (GITARC_MCP_ALLOW_QUEUE=1).
+const envAllowQueue = "GITARC_MCP_ALLOW_QUEUE"
+
+func queueStepEnabled() bool {
+	v := strings.TrimSpace(os.Getenv(envAllowQueue))
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
 func updateApplyEnabled() bool {
 	v := strings.TrimSpace(os.Getenv(envAllowUpdate))
 	return v == "1" || strings.EqualFold(v, "true")
@@ -35,6 +44,25 @@ func queueToolDefs() []toolDefinition {
 				"properties": map[string]any{
 					"branchId": branchProp,
 					"confirm":  map[string]any{"type": "string", "description": "gitarc_update_branch_plan çıktısındaki fingerprint (aynen)."},
+				},
+				"required": []string{"branchId", "confirm"},
+			},
+		},
+		{
+			Name: "gitarc_queue_step_plan",
+			Description: "Merge kuyruğunun BİR dalı için sıradaki adımın planı. SALT OKUNUR: hiçbir şey yazmaz. action: update (main dalın içine merge edilip uzak PR dalına push edilir) | merge (PR birleştirilebilir: main'e göre güncel + CI yeşil) | wait (CI sürüyor ya da BİLİNMİYOR; yeşil varsayılmaz) | blocked (çakışma, kırmızı CI, inceleme engeli, taslak PR...; reason'a bakın). " +
+				"update/merge için fingerprint (dal ucu + main ucu + eylem + CI) döner; uygulamada confirm olarak verilir.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{"branchId": branchProp}, "required": []string{"branchId"}},
+		},
+		{
+			Name: "gitarc_queue_step",
+			Description: "Kuyruğun TEK adımını uygular: planın action'ı update ise ana dalı dalın içine merge edip UZAK PR dalına push eder (CI yeniden başlar); merge ise PR'ı `--match-head-commit` ile main'e birleştirir (koruma atlatma yok). VARSAYILAN OLARAK KAPALIDIR: yalnızca MCP sunucusu " + envAllowQueue + "=1 ile başlatıldıysa çalışır. " +
+				"Önce gitarc_queue_step_plan çağırıp kullanıcıya göstermeli ve fingerprint'i confirm olarak vermelisiniz; durum değiştiyse (dal/main ilerledi, CI değişti) HİÇBİR ŞEY yapılmaz. Her çağrı tek adımdır; sonraki adım için planı yeniden alın.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"branchId": branchProp,
+					"confirm":  map[string]any{"type": "string", "description": "gitarc_queue_step_plan çıktısındaki fingerprint (aynen)."},
 				},
 				"required": []string{"branchId", "confirm"},
 			},
@@ -97,6 +125,40 @@ func callQueueTool(name string, args map[string]any, mgr *gitengine.Manager) (to
 			return errResult(err.Error() + " (Hiçbir şey değiştirilmediyse mesaj bunu söyler; emin olmak için gitarc_update_branch_plan'ı yeniden çağırın.)"), true
 		}
 		return jsonTextResult(map[string]any{"mode": snap.Repo.Mode, "updated": true, "branchId": id, "note": "Ana dal dalın içine merge edildi ve uzak PR dalına push edildi; CI yeniden başlar."}), true
+	case "gitarc_queue_step_plan":
+		id, _ := args["branchId"].(string)
+		if strings.TrimSpace(id) == "" {
+			return errResult("branchId zorunludur"), true
+		}
+		plan, err := mgr.QueueStepPlan(strings.TrimSpace(id))
+		if err != nil {
+			return errResult(err.Error()), true
+		}
+		next := "Planı kullanıcıya gösterin. Uygulamak için MCP sunucusu " + envAllowQueue + "=1 ile başlatılmalı; ardından gitarc_queue_step'i bu fingerprint ile çağırın."
+		if queueStepEnabled() {
+			next = "Planı kullanıcıya gösterip onayını alın; ardından gitarc_queue_step'i fingerprint'i confirm vererek çağırın."
+		}
+		switch plan.Action {
+		case "wait":
+			next = "Şimdilik yapılacak bir şey yok (CI sürüyor ya da bilinmiyor). CI bitince planı yeniden alın; yeşil varsaymayın."
+		case "blocked":
+			next = "Bu adım engelli (reason'a bakın); kullanıcıya nedenini aktarın. Çakışmaysa gitarc_conflict_plan ile inceleyin."
+		}
+		return jsonTextResult(map[string]any{"plan": plan, "applyEnabled": queueStepEnabled(), "next": next}), true
+	case "gitarc_queue_step":
+		if !queueStepEnabled() {
+			return errResult("Kuyruk adımı MCP'de kapalı: dalı günceller (uzak PR dalına push) ya da PR'ı main'e birleştirir; geri alınması zor. Kullanıcı MCP sunucusunu " + envAllowQueue + "=1 ile başlatırsa açılır; ya da adım GitArc arayüzündeki 🚦 Kuyruk penceresinden uygulanabilir. Önce gitarc_queue_step_plan ile durumu görebilirsiniz."), true
+		}
+		id, _ := args["branchId"].(string)
+		confirm, _ := args["confirm"].(string)
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(confirm) == "" {
+			return errResult("branchId ve confirm (gitarc_queue_step_plan fingerprint'i) zorunludur"), true
+		}
+		snap, err := mgr.QueueStepApply(strings.TrimSpace(id), strings.TrimSpace(confirm))
+		if err != nil {
+			return errResult(err.Error() + " (Hiçbir şey değiştirilmediyse mesaj bunu söyler; emin olmak için gitarc_queue_step_plan'ı yeniden çağırın.)"), true
+		}
+		return jsonTextResult(map[string]any{"mode": snap.Repo.Mode, "applied": true, "branchId": id, "note": "Tek adım uygulandı. Sonraki adım için gitarc_queue_step_plan'ı yeniden çağırın."}), true
 	case "gitarc_queue_plan":
 	default:
 		return toolResult{}, false

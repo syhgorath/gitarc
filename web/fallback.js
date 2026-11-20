@@ -432,6 +432,44 @@
       return plan;
     }
 
+    // Kuyruk adımı (3a): Go'daki decideQueueStep ile AYNI kurallar ve metinler (queue-step.test.mjs).
+    function queueStepDecide(plan, input) {
+      const up = input.update;
+      const out = { ...plan, baseRef: up.baseRef, headSha: up.headSha || '', baseSha: up.baseSha || '', behind: up.behind || 0, ci: input.ci || 'UNKNOWN', review: input.review || '' };
+      const block = (reason) => ({ ...out, action: 'blocked', reason, fingerprint: '' });
+      if (input.prState && input.prState !== 'OPEN') return block(`PR açık değil (${input.prState})`);
+      if (input.draft) return block('PR taslak (draft); önce "Ready for review" yapın');
+      if (up.status === 'conflict') {
+        out.conflictFiles = [...(up.conflictFiles || [])];
+        return block(`ana dalla çakışıyor (${out.conflictFiles.join(', ')}); önce Çakışma Stüdyosu'ndan çözün`);
+      }
+      if (up.status === 'blocked') return block(up.reason);
+      if (input.ghHeadSha && up.headSha && input.ghHeadSha !== up.headSha) return block("GitHub'daki dal ucu yerel uzak kaydından farklı; yenileyip (git fetch) planı yeniden hesaplayın");
+      if (input.review === 'CHANGES_REQUESTED') return block('incelemede değişiklik istendi');
+      if (input.review === 'REVIEW_REQUIRED') return block('inceleme onayı gerekli');
+      if (out.ci === 'FAILURE') return block('CI başarısız; kuyruk durur, önce testleri düzeltin');
+      const fp = (action) => protFingerprint(`${action}:${out.branch}`, { head: up.headSha || up.ahead, base: up.baseSha || up.behind, ci: out.ci });
+      if (up.status === 'ready') {
+        return { ...out, action: 'update', reason: `main'in ${up.behind} yeni commit'i dalın içine merge edilip uzak PR dalına push edilir; CI yeniden başlar`, fingerprint: fp('update') };
+      }
+      if (up.status !== 'up_to_date') return block(`dal durumu belirlenemedi: ${up.reason}`);
+      if (out.ci === 'SUCCESS') return { ...out, action: 'merge', reason: 'dal main\'e göre güncel ve CI yeşil; PR birleştirilebilir (merge commit)', fingerprint: fp('merge') };
+      if (out.ci === 'RUNNING') return { ...out, action: 'wait', reason: 'CI sürüyor; bitince bu adım yeniden planlanır' };
+      return { ...out, action: 'wait', reason: 'CI durumu bilinmiyor (kontrol yok ya da henüz başlamadı); yeşil varsayılmaz' };
+    }
+
+    function queueStepPlanFor(idOrName) {
+      const up = updatePlanFor(idOrName);
+      const b = sim.branches.find((x) => x.id === up.branchId);
+      const plan = { mode: 'simulation', branch: up.branch, branchId: up.branchId, pr: up.pr || 0 };
+      if (!plan.pr) return { ...plan, baseRef: up.baseRef, behind: up.behind, action: 'blocked', reason: 'bu dalın açık bir PR\'ı yok', ci: 'UNKNOWN' };
+      const st = b.pr && b.pr.ci ? b.pr.ci.state : '';
+      const ci = st === 'SUCCESS' || st === 'FAILURE' ? st : (st ? 'RUNNING' : 'UNKNOWN');
+      const res = queueStepDecide(plan, { prState: 'OPEN', ci, update: up });
+      res.notes = ['Simülasyon: inceleme durumu değerlendirilmez.'];
+      return res;
+    }
+
     function recompute() {
       const branches = sim.branches;
       const nodes = sim.nodes;
@@ -928,11 +966,30 @@
         b.behindMain = 0;
         return recompute();
       },
+      queueStepPlan(idOrName) {
+        recompute();
+        return queueStepPlanFor(idOrName);
+      },
+      queueStep(idOrName, confirm) {
+        recompute();
+        const plan = queueStepPlanFor(idOrName);
+        if (plan.action === 'wait') throw new Error(`${plan.branch} için şimdilik yapılacak bir şey yok: ${plan.reason}`);
+        if (plan.action !== 'update' && plan.action !== 'merge') throw new Error(`${plan.branch} için adım uygulanamaz: ${plan.reason}`);
+        if (!confirm || confirm !== plan.fingerprint) throw new Error('kuyruk adımı planı değişti veya onaylanmadı (dal, main ya da CI durumu ilerlemiş olabilir); planı yeniden inceleyip onaylayın. Hiçbir şey değiştirilmedi');
+        if (plan.action === 'update') return this.updateBranch(plan.branchId, updatePlanFor(plan.branchId).fingerprint);
+        const snap = this.mergeBranch(plan.branchId, 'merge');
+        sim.branches.forEach((o) => { if (o.state === 'open' && o.id !== plan.branchId) o.behindMain = (o.behindMain || 0) + 1; });
+        return recompute();
+      },
       queuePlan(ids) {
         recompute();
         return queuePlanBuild(sim.branches, sim.repo.defaultBranch || 'main', ids, sim.protection ? Boolean(sim.protection.strictUpToDate) : false);
       },
       // Saf mantık (git/sim durumu olmadan): Go'daki QueuePlanFromSnapshotData ile birebir; testler bunu doğrudan çağırır.
+      // Saf karar mantığı (Go'daki decideQueueStep ile birebir); testler doğrudan çağırır.
+      queueStepDecide(plan, input) {
+        return queueStepDecide(plan, input);
+      },
       queuePlanFromData(branches, ids, baseBranch, strict) {
         return queuePlanBuild(branches, baseBranch || 'main', ids, strict);
       },

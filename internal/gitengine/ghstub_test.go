@@ -13,7 +13,7 @@ import (
 // files in its directory: <key>.out (stdout) and <key>.exit (exit code), so
 // tests never touch the network or the developer's real GitHub account.
 //
-// Keys: pr_list_open, pr_list_merged, pr_list_merged_head, pr_create, pr_merge,
+// Keys: pr_view, pr_list_open, pr_list_merged, pr_list_merged_head, pr_create, pr_merge,
 // pr_edit, pr_close, run_view, run_list, api_protection_get, api_protection_put, api_rulesets.
 // Every invocation is appended to calls.log; stdin of `api -X PUT` is saved to
 // api_protection_put.stdin.
@@ -38,6 +38,7 @@ case "$1" in
         esac ;;
       create) key="pr_create" ;;
       merge) key="pr_merge" ;;
+      view) key="pr_view" ;;
       edit) key="pr_edit" ;;
       close) key="pr_close" ;;
     esac ;;

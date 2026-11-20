@@ -153,3 +153,51 @@ func TestUpdateBranchToolsRefuseWithoutProjectAndUnknownBranch(t *testing.T) {
 		}
 	}
 }
+
+// ---- kuyruk adımı (güncelle / birleştir): varsayılan KAPALI ----
+
+func TestQueueStepToolsAreListedAndPlanIsReadOnly(t *testing.T) {
+	seen := map[string]string{}
+	for _, d := range listTools() {
+		seen[d.Name] = d.Description
+	}
+	if d, ok := seen["gitarc_queue_step_plan"]; !ok || !strings.Contains(d, "SALT OKUNUR") {
+		t.Fatalf("gitarc_queue_step_plan listede ve SALT OKUNUR olmalı: %q", d)
+	}
+	if d, ok := seen["gitarc_queue_step"]; !ok || !strings.Contains(d, "VARSAYILAN OLARAK KAPALIDIR") || !strings.Contains(d, envAllowQueue) {
+		t.Fatalf("gitarc_queue_step listede ve varsayılan kapalı olmalı: %q", d)
+	}
+}
+
+func TestQueueStepPlanNeedsNoPermissionButApplyIsOffByDefault(t *testing.T) {
+	t.Setenv(envAllowQueue, "")
+	mgr := gitengine.NewManager("sim")
+	out, res := callTyped(t, mgr, "gitarc_queue_step_plan", map[string]any{"branchId": "br-open-424"})
+	if res.IsError {
+		t.Fatalf("plan izin gerektirmemeli: %s", res.Content[0].Text)
+	}
+	plan, _ := out["plan"].(map[string]any)
+	if plan == nil || plan["action"] != "wait" || out["applyEnabled"] != false {
+		t.Fatalf("plan alanları: %+v", out)
+	}
+	if _, res := callTyped(t, mgr, "gitarc_queue_step_plan", map[string]any{}); !res.IsError {
+		t.Fatal("branchId zorunlu")
+	}
+	// uygulama KAPALI: doğru parmak izi bile işe yaramaz ve durum değişmez
+	_, res = callTyped(t, mgr, "gitarc_queue_step", map[string]any{"branchId": "br-open-424", "confirm": "herhangi"})
+	if !res.IsError || !strings.Contains(res.Content[0].Text, "kapalı") {
+		t.Fatalf("varsayılan olarak kapalı olmalı: %+v", res)
+	}
+}
+
+func TestQueueStepApplyWorksOnlyWhenEnabledAndWithFingerprint(t *testing.T) {
+	t.Setenv(envAllowQueue, "1")
+	mgr := gitengine.NewManager("sim")
+	// demo verisinde 422 geride ve CI kırmızı: engelli; uygulanmamalı
+	if _, res := callTyped(t, mgr, "gitarc_queue_step", map[string]any{"branchId": "br-open-422", "confirm": "x"}); !res.IsError {
+		t.Fatal("engelli adım uygulanmamalı")
+	}
+	if _, res := callTyped(t, mgr, "gitarc_queue_step", map[string]any{"branchId": "br-open-422"}); !res.IsError {
+		t.Fatal("confirm zorunlu")
+	}
+}

@@ -1,4 +1,4 @@
-// web/modules/queue.js - Merge kuyruğu planı penceresi (SALT OKUNUR): PR'ları seç, sırala, planı gör.
+// web/modules/queue.js - Merge kuyruğu penceresi: PR'ları seç, sırala, planı gör (salt okunur); sıradaki adımı (güncelle / birleştir) onayla.
 // Plan sunucuda (internal/gitengine/queue.go) hesaplanır; burada yalnızca gösterilir. PR başlıkları/dal adları/dosya yolları
 // güvenilmeyen metindir: yalnızca textContent / DOM API ile yazılır.
 import { state, el } from './state.js';
@@ -43,6 +43,20 @@ export function updatePlanModel(plan) {
   (plan.notes || []).forEach((n) => lines.push(n));
   const title = { ready: '↻ Güncelleme planı', up_to_date: '✓ Zaten güncel', conflict: '⚠ Güncellenemez', blocked: '⛔ Güncellenemez' }[plan.status] || 'Güncelleme planı';
   return { title, lines, canApply: plan.status === 'ready' && Boolean(plan.fingerprint) };
+}
+
+/** Kuyruk adımı planının görünümü (saf model): başlık, satırlar, uygulanabilir mi ve onay düğmesi metni. */
+export function stepPlanModel(plan) {
+  const lines = [];
+  if (plan.reason) lines.push(plan.reason);
+  lines.push(plan.ci && plan.ci !== 'UNKNOWN' ? `CI: ${plan.ci}` : 'CI: bilinmiyor (yeşil varsayılmaz)');
+  if (plan.review) lines.push(`İnceleme: ${plan.review}`);
+  if (plan.action === 'merge') lines.push(`PR #${plan.pr} merge commit ile main'e birleştirilir; dal ucu (${(plan.headSha || '').slice(0, 7)}) değişmişse GitHub reddeder. Koruma atlatılmaz.`);
+  if (plan.action === 'update') lines.push("Ana dal dalın içine merge edilir ve UZAK PR dalına push edilir (CI yeniden başlar). Birleştirme bir sonraki adımdır.");
+  (plan.notes || []).forEach((n) => lines.push(n));
+  const title = { update: '↻ Sıradaki adım: dalı güncelle', merge: '✓ Sıradaki adım: birleştir', wait: '⏳ Şimdilik bekle', blocked: '⛔ Kuyruk burada durur' }[plan.action] || 'Sıradaki adım';
+  const confirmText = plan.action === 'merge' ? `Onayla: #${plan.pr} birleştir` : 'Onayla: dalı güncelle ve push et';
+  return { title, lines, canApply: (plan.action === 'update' || plan.action === 'merge') && Boolean(plan.fingerprint), confirmText };
 }
 
 /** Plan başlığı: kuyruğun nerede durduğunu tek cümlede söyler. */
@@ -123,6 +137,14 @@ function renderPlan(plan, errorText) {
     appendText(head, 'span', m.status.text, `chip ${m.status.tone}`.trim());
     step.appendChild(head);
     m.details.forEach((d) => appendText(step, 'div', d, 'queue-detail'));
+    if (it.position === 1 && it.pr > 0) {
+      const stepBtn = document.createElement('button');
+      stepBtn.type = 'button';
+      stepBtn.className = 'btn ghost sm queue-step-btn';
+      stepBtn.textContent = '▶ Sıradaki adımı planla';
+      stepBtn.addEventListener('click', () => showStepPlan(it, step));
+      step.appendChild(stepBtn);
+    }
     if (it.behind > 0 && it.status !== 'unknown') {
       const upd = document.createElement('button');
       upd.type = 'button';
@@ -176,6 +198,60 @@ async function showUpdatePlan(it, step) {
         refreshQueuePlan();
       });
       panel.appendChild(btn);
+    }
+  } catch (err) {
+    panel.textContent = '';
+    appendText(panel, 'div', err.message || String(err), 'prot-note');
+  }
+}
+
+async function stepPlanCall(branchId) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.queueStepPlan(branchId);
+  return apiCall('/api/queue/step/plan', 'POST', { branchId });
+}
+
+async function stepApplyCall(branchId, confirm) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.queueStep(branchId, confirm);
+  return apiCall('/api/queue/step', 'POST', { branchId, confirm });
+}
+
+/** Kuyruğun sıradaki dalı için TEK adımı (güncelle / birleştir) planlar; "Onayla" yalnızca gösterilen planın parmak iziyle uygular. */
+async function showStepPlan(it, step) {
+  step.querySelector('.queue-stepplan')?.remove();
+  const panel = document.createElement('div');
+  panel.className = 'queue-update queue-stepplan';
+  step.appendChild(panel);
+  appendText(panel, 'div', '⏳ Adım planı hesaplanıyor (GitHub CI durumu okunuyor)...', 'prot-note');
+  try {
+    const plan = await stepPlanCall(it.branchId);
+    const m = stepPlanModel(plan);
+    panel.textContent = '';
+    appendText(panel, 'div', m.title, 'queue-update-title');
+    m.lines.forEach((l) => appendText(panel, 'div', l, 'queue-detail'));
+    if (m.canApply) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn warn sm queue-step-confirm';
+      btn.textContent = m.confirmText;
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const snap = await stepApplyCall(it.branchId, plan.fingerprint);
+          if (view.onApply) view.onApply(snap);
+          showToast(plan.action === 'merge' ? `✓ #${plan.pr} ${it.branch} birleştirildi` : `↻ ${it.branch} güncellendi; CI yeniden başladı`, 'ok');
+        } catch (err) {
+          showToast(err.message, 'danger');
+        }
+        refreshQueuePlan();
+      });
+      panel.appendChild(btn);
+    } else {
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.className = 'btn ghost sm queue-step-recheck';
+      again.textContent = '↻ Yeniden kontrol et';
+      again.addEventListener('click', () => showStepPlan(it, step));
+      panel.appendChild(again);
     }
   } catch (err) {
     panel.textContent = '';
