@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "gitarc": {
-      "command": "/Users/ziyayesilbahce/Developer/GitArc/gitarc",
-      "args": ["-mcp", "-repo", "/Users/ziyayesilbahce/Developer/GitArc"],
-      "env": {"GITARC_MCP_ALLOW_PROTECTION": "1"}
-    }
-  }
-}
