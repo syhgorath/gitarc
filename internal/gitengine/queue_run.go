@@ -95,7 +95,7 @@ outer:
 				}
 				if plan.Reason != lastWait {
 					lastWait = plan.Reason
-					d.emit(model.QueueRunEvent{Kind: "wait", Branch: it.Branch, PR: it.PR, Message: plan.Reason})
+					d.emit(model.QueueRunEvent{Kind: "wait", Branch: it.Branch, PR: it.PR, Message: fmt.Sprintf("%s: %s", label(it), plan.Reason)})
 				}
 				if !d.sleep(ctx, d.poll) {
 					return stopped

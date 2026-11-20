@@ -87,6 +87,8 @@ try {
     await expect(`!!document.querySelector('.queue-stepplan .queue-step-confirm') && document.querySelector('.queue-stepplan').textContent.includes('birleştir')`, 'güncellemeden sonra birleştirme adımı planlanmadı');
     await click('.queue-stepplan .queue-step-confirm');
     await expect(`![...document.querySelectorAll('#queue-candidates .queue-row')].some((r) => r.textContent.includes('#422')) && !document.querySelector('#queue-result').textContent.includes('#422 ')`, 'birleşen #422 kuyruktan kalkmadı');
+    // Pencere ekrandan taşmaz: gövde kendi içinde kayar, kapat düğmesi hep erişilebilir
+    await expect(`(() => { const c = document.querySelector('#queue-modal .modal-card'); const bd = document.querySelector('#queue-modal .modal-body'); return c.getBoundingClientRect().height <= window.innerHeight - 16 && getComputedStyle(bd).overflowY === 'auto'; })()`, 'kuyruk penceresi ekrandan taşıyor ya da gövdesi kaydırılamıyor');
     await click('#queue-close');
     await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });
