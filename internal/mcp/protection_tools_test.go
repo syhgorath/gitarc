@@ -139,15 +139,21 @@ func TestProtectionToolsRejectBadInput(t *testing.T) {
 	}
 }
 
-func TestProtectionToolsRefuseWithoutProject(t *testing.T) {
-	t.Setenv(envAllowProtection, "1")
-	empty := t.TempDir() // depo olmayan klasör: proje yok
+// noProjectManager: depo olmayan bir klasörde (ve çalışma dizininde) açılmış, projesi olmayan yönetici.
+func noProjectManager(t *testing.T) *gitengine.Manager {
+	t.Helper()
+	empty := t.TempDir()
 	old, _ := os.Getwd()
 	if err := os.Chdir(empty); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(old) })
-	mgr := gitengine.NewManager(empty)
+	return gitengine.NewManager(empty)
+}
+
+func TestProtectionToolsRefuseWithoutProject(t *testing.T) {
+	t.Setenv(envAllowProtection, "1")
+	mgr := noProjectManager(t)
 	for _, name := range []string{"gitarc_protection_status", "gitarc_protection_plan", "gitarc_protection_apply"} {
 		if _, res := callTyped(t, mgr, name, map[string]any{"profile": "temel", "confirm": "x"}); !res.IsError {
 			t.Fatalf("%s proje yokken hata vermeli (demo veriyle çalışmamalı)", name)

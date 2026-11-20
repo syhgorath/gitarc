@@ -592,19 +592,26 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 	if err != nil {
 		return failStep(branchID, "findLiveBranch", err)
 	}
-	if b.Conflict == nil || !b.Conflict.HasConflict || len(b.Conflict.Files) == 0 {
-		return m.Snapshot()
-	}
-	if b.IsHEAD && snap.Repo.DirtyCount > 0 {
-		return failStep(b.Name, "dirty working tree guard", fmt.Errorf("aktif dal (%s) üzerinde %d uncommitted değişiklik varken çakışma uygulanamaz; önce commit veya stash yapın", b.Name, snap.Repo.DirtyCount))
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	baseRef, branchRef, mbSHA, err := resolveConflictRefs(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, b)
-	if err != nil {
-		return failStep(b.Name, "git merge-base", err)
+	baseRef, branchRef, mbSHA, refsErr := resolveConflictRefs(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, b)
+	// Anlık görüntüdeki çakışma bayrağı önbellekten/bayat olabilir; yokken dal güncel merge-tree ile bir kez denetlenir.
+	if b.Conflict == nil || !b.Conflict.HasConflict || len(b.Conflict.Files) == 0 {
+		if refsErr != nil {
+			return m.Snapshot()
+		}
+		c := freshConflict(ctx, live.path, baseRef, branchRef)
+		if c == nil || !c.HasConflict || len(c.Files) == 0 {
+			return m.Snapshot()
+		}
+		b.Conflict = c
+	}
+	if refsErr != nil {
+		return failStep(b.Name, "git merge-base", refsErr)
+	}
+	if b.IsHEAD && snap.Repo.DirtyCount > 0 {
+		return failStep(b.Name, "dirty working tree guard", fmt.Errorf("aktif dal (%s) üzerinde %d uncommitted değişiklik varken çakışma uygulanamaz; önce commit veya stash yapın", b.Name, snap.Repo.DirtyCount))
 	}
 
 	wtDir, err := os.MkdirTemp("", "gitarc-wt-*")
