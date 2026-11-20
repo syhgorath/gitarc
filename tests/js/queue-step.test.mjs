@@ -257,3 +257,39 @@ test('merge intent badge: a single "CI bitince merge et" PR gets the same tag la
   const inRun = mergeIntentBadge(qrSnap(), { id: 'c', name: 'feat/c' }, { c: { branchId: 'c' } });
   assert.equal(inRun.text, '🚦 Kuyrukta 3/3');
 });
+
+// ---- geride kalan PR: Merge yerine "Güncelle & Birleştir" ----
+import { needsUpdateBeforeMerge } from '../../web/modules/syncsteps.js';
+import { actionRowHtmlOf } from '../../web/modules/capsule.js';
+
+const behindPR = (extra = {}) => ({ id: 'p', name: 'feat/p', state: 'open', behindMain: 2, pr: { number: 22, ci: { state: 'SUCCESS' } }, ...extra });
+const strict = { repo: { strictUpToDate: true } };
+
+test('needs-update: only a behind, conflict-free open PR in a repo that REQUIRES an up-to-date branch', () => {
+  assert.equal(needsUpdateBeforeMerge(behindPR(), strict), true);
+  assert.equal(needsUpdateBeforeMerge(behindPR(), { repo: { strictUpToDate: false } }), false, 'rule off: a behind PR merges fine');
+  assert.equal(needsUpdateBeforeMerge(behindPR(), { repo: {} }), false, 'unknown rule is never assumed on');
+  assert.equal(needsUpdateBeforeMerge(behindPR({ behindMain: 0 }), strict), false, 'up to date');
+  assert.equal(needsUpdateBeforeMerge(behindPR({ conflict: { hasConflict: true } }), strict), false, 'a conflict is the Conflict Studio\'s job');
+  assert.equal(needsUpdateBeforeMerge(behindPR({ pr: null }), strict), false, 'no PR');
+  assert.equal(needsUpdateBeforeMerge(behindPR({ state: 'merged' }), strict), false);
+  assert.equal(needsUpdateBeforeMerge(null, strict), false);
+});
+
+test('card merge button: "Güncelle & Birleştir" when behind under strict protection, the usual labels otherwise', () => {
+  const open = behindPR({ hemisphere: 'upper', hasRemote: true });
+  assert.match(actionRowHtmlOf(open, { needsUpdate: true }), /Güncelle &amp; Birleştir/);
+  assert.ok(!actionRowHtmlOf(open, { needsUpdate: true }).includes('Merge (Parabolü Kapat)'));
+  assert.match(actionRowHtmlOf(open, { needsUpdate: false }), /Merge \(Parabolü Kapat\)/);
+  const running = behindPR({ hemisphere: 'upper', hasRemote: true, pr: { number: 22, ci: { state: 'RUNNING' } } });
+  assert.match(actionRowHtmlOf(running, { needsUpdate: true, isQueued: false }), /Güncelle &amp; Birleştir/, 'behind + CI running: waiting is pointless, update first');
+  assert.match(actionRowHtmlOf(running, { needsUpdate: false, isQueued: false }), /CI Bitince Merge Et/);
+});
+
+test('offline engine: applying a protection that requires an up-to-date branch sets repo.strictUpToDate', () => {
+  const eng = loadEngine();
+  assert.ok(!eng.snapshot().repo.strictUpToDate, 'unprotected demo: rule is not on');
+  const plan = eng.protectionPlan('ci', ['test']);
+  const snap = eng.applyProtection('ci', ['test'], plan.fingerprint);
+  assert.equal(snap.repo.strictUpToDate, true);
+});

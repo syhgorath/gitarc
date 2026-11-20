@@ -826,3 +826,9 @@ func fetchMainCI(ctx context.Context, repoPath, defaultBranch string) (*model.Ma
 	}
 	return res, nil
 }
+
+// protectionIsStrict: klasik koruma özetinden ("Aktif (strict checks: true)") "dal güncel olmalı" bilgisi. Ruleset ya da okunamayan koruma
+// için false: bilinmeyen, "açık" sayılmaz.
+func protectionIsStrict(summary string) bool {
+	return strings.Contains(summary, "strict checks: true")
+}

@@ -142,7 +142,7 @@ export function proposalCardHtml(prop, draft) {
 }
 
 export function branchHeaderHtml(v) {
-  const { proposalHtml, b, snap, isVirtualWip, isAlreadySynced, isOpen, isRemoteOnly, canPromote, hasOpenPR, mergeStrategy, isRunning, isQueued, canMerge, hasConflict, authorName, isMe } = v;
+  const { proposalHtml, b, snap, isVirtualWip, isAlreadySynced, isOpen, isRemoteOnly, canPromote, hasOpenPR, mergeStrategy, isRunning, isQueued, needsUpdate, canMerge, hasConflict, authorName, isMe } = v;
   return `
     ${proposalHtml}
     <div class="det-header">
@@ -171,7 +171,9 @@ export function branchHeaderHtml(v) {
               <option value="rebase" ${mergeStrategy === 'rebase' ? 'selected' : ''}>Rebase</option>
               <option value="auto" ${mergeStrategy === 'auto' ? 'selected' : ''}>Auto-Merge (Queue)</option>
             </select>
-            ${isRunning
+            ${needsUpdate
+              ? `<button type="button" class="btn warn sm" id="act-merge" title="Dal main'in gerisinde: güncelle, CI'ı bekle, birleştir">↻ Güncelle &amp; Birleştir</button>`
+              : isRunning
               ? `<button type="button" class="btn warn sm ${isQueued ? 'running-pulse' : ''}" id="act-merge">${isQueued ? '⏳ CI Bekleniyor (İptal Et)' : '⏳ CI Bitince Otomatik Merge Et'}</button>`
               : `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>`}
           </div>

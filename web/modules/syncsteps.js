@@ -139,6 +139,14 @@ export function queueRunBadge(snap, b) {
   return null;
 }
 
+// Geride kalan PR korumalı depoda DOĞRUDAN birleşemez ("dal güncel olmalı" açıksa). Bu durumda "Merge" yerine "Güncelle & Birleştir"
+// (tek onaylı 1 PR'lık kuyruk koşusu) sunulur. Kural bilinmiyorsa (ruleset/okunamadı) sunulmaz: gerçek bir retle karşılaşılırsa
+// açıklayıcı hata gösterilir ve aynı plan açılır. Çakışma ayrı bir durumdur (Çakışma Stüdyosu).
+export function needsUpdateBeforeMerge(b, snap) {
+  return Boolean(b && b.state === 'open' && b.pr && b.pr.number > 0 && (b.behindMain || 0) > 0
+    && snap?.repo?.strictUpToDate && !(b.conflict && b.conflict.hasConflict));
+}
+
 // BİRLEŞME NİYETİ rozeti (tek dil): bir PR'ın "birleşecek" olduğunu gösteren her durum aynı görünümü alır.
 //  - kuyruk koşusunda (sunucu): "🚦 Kuyrukta 3/5" ya da "⏳ İşleniyor · CI bekleniyor" (queueRunBadge),
 //  - tekil "CI Bitince Merge Et" (bu sekme, pendingAutoMerge): "⏳ CI bitince birleşecek".
