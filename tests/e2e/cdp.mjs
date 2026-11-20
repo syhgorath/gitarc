@@ -1,7 +1,7 @@
 // Küçük, sıfır bağımlılıklı Chrome DevTools Protocol sürücüsü (yalnızca geliştirme/test için; uygulamaya GÖMÜLMEZ).
 // Node'un yerleşik WebSocket'ini kullanır: npm paketi yok. Chrome bulunamazsa launch() `null` döndürür.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -66,6 +66,11 @@ export async function launch({ width = 1500, height = 950 } = {}) {
 
   const api = {
     errors,
+    // Ekran görüntüsü (README için; tests/e2e/ekran-goruntuleri.mjs). clip: { x, y, width, height } ya da tüm görünüm.
+    async shot(path, clip) {
+      const r = await send('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}) });
+      writeFileSync(path, Buffer.from(r.result.data, 'base64'));
+    },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     async goto(url) { const t0 = Date.now(); errors.length = 0; await send('Page.navigate', { url }); await api.sleep(1200); if (process.env.E2E_TRACE) console.log(`  goto ${((Date.now() - t0) / 1000).toFixed(1)}s`); },
     async eval(expr) {
