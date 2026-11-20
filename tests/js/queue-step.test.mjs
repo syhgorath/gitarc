@@ -226,3 +226,18 @@ test('a running queue keeps polling fast and changes the snapshot signature (car
   assert.notEqual(sigOf(qrSnap()), sigOf({ repo: {} }));
   assert.notEqual(sigOf(qrSnap()), sigOf(qrSnap({ merged: 2, current: 2 })), 'progress changes the signature');
 });
+
+// ---- sarı kesik hedef çizgisi ----
+import { queueLandingGeometry } from '../../web/modules/scene.js';
+import { MAIN_Y, SPINE_STEP_X } from '../../web/modules/constants.js';
+
+test('landing geometry: ghost node sits just right of the spine tip and the arrow ends next to it, from above or below', () => {
+  const up = queueLandingGeometry({ apexX: 900, apexY: 80 }, 700);
+  assert.equal(up.landingX, 700 + SPINE_STEP_X * 0.7);
+  assert.equal(up.landingY, MAIN_Y);
+  assert.ok(up.d.startsWith('M 900 80 C '), 'starts at the apex dot');
+  assert.ok(up.d.endsWith(`${up.landingX} ${MAIN_Y - 8}`), 'an upper arc ends just above the ghost node');
+  const down = queueLandingGeometry({ apexX: 900, apexY: 400 }, 700);
+  assert.ok(down.d.endsWith(`${down.landingX} ${MAIN_Y + 8}`), 'a lower arc ends just below the ghost node');
+  assert.ok(!up.d.includes('NaN') && !down.d.includes('NaN'));
+});

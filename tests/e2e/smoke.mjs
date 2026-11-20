@@ -103,9 +103,11 @@ try {
     await b.eval(`(async () => { const api = await import('/modules/api.js'); const plan = await api.apiCall('/api/queue/run/plan', 'POST', { branchIds: ['br-open-424'] }); await api.apiCall('/api/queue/run/start', 'POST', { branchIds: ['br-open-424'], confirm: plan.fingerprint }); })()`);
     await b.eval(refresh);
     await expect(`!!document.querySelector('.cap-queue-tag.current') && document.querySelector('.cap-queue-tag.current').textContent.includes('İşleniyor')`, 'çalışan koşudaki PR kartında "İşleniyor" rozeti yok');
+    await expect(`!!document.querySelector('.svg-queue-target .svg-queue-target-path') && !!document.querySelector('.svg-queue-landing') && document.querySelector('.svg-queue-target-path').getAttribute('marker-end') === 'url(#queue-arrow)'`, 'işlenen PR için sarı kesik hedef çizgisi/hayalet düğüm yok');
     await b.eval(`(async () => { const api = await import('/modules/api.js'); await api.apiCall('/api/queue/run/stop', 'POST', {}); })()`);
     await b.eval(refresh);
     await expect(`!document.querySelector('.cap-queue-tag')`, 'durdurulan koşudan sonra rozet kalkmalı');
+    await expect(`!document.querySelector('.svg-queue-target')`, 'durdurulan koşudan sonra hedef çizgisi kalkmalı');
   });
   await step('Kuyruğu çalıştır (3b): plan → onay → sunucu sırayla birleştirir → durum "Koşu bitti"', async () => {
     await b.eval(`(async () => { const m = await import('/modules/api.js'); await m.apiCall('/api/branch/fix-ci', 'POST', { branchId: 'br-open-424' }); })()`);
