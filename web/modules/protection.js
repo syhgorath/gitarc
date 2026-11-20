@@ -124,8 +124,9 @@ function renderPlan(plan) {
     });
   }
   if (el.btnEnableProtection) {
-    el.btnEnableProtection.hidden = false;
-    el.btnEnableProtection.disabled = !canApplyPlan(plan);
+    // Plan gelene kadar ve değişecek bir şey yokken düğme hiç görünmez (turuncu bir düğme belirip solmasın).
+    el.btnEnableProtection.hidden = !canApplyPlan(plan);
+    el.btnEnableProtection.disabled = false;
     el.btnEnableProtection.textContent = applyLabel(plan);
   }
 }
@@ -134,7 +135,7 @@ function renderPlan(plan) {
 export async function refreshProtectionPlan() {
   const my = ++view.seq;
   renderProfiles();
-  if (el.btnEnableProtection) el.btnEnableProtection.disabled = true;
+  if (el.btnEnableProtection) el.btnEnableProtection.hidden = true;
   try {
     const plan = await planCall(view.profile, [...view.checks]);
     if (my !== view.seq) return;
@@ -152,7 +153,7 @@ export async function refreshProtectionPlan() {
       p.textContent = err.message || String(err);
       el.protNotes.appendChild(p);
     }
-    if (el.btnEnableProtection) { el.btnEnableProtection.disabled = true; el.btnEnableProtection.textContent = applyLabel(null); }
+    if (el.btnEnableProtection) el.btnEnableProtection.hidden = true;
   }
 }
 
