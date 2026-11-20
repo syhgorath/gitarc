@@ -4161,3 +4161,10 @@ body.no-project .loading-hint {
   .svg-mainci-badge.running .svg-mainci-bg { animation: mainci-dash 1.2s linear infinite; }
 }
 @keyframes mainci-dash { to { stroke-dashoffset: -14; } }
+
+/* Kuyruk otomatik koşusu paneli (3b) */
+.queue-run { margin: 8px 0; }
+.queue-run:empty { display: none; }
+.queue-run > .queue-update-title { margin-bottom: 4px; }
+.queue-run .btn { margin-top: 6px; }
+.queue-run-btn { margin: 6px 0; }

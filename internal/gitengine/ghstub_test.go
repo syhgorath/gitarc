@@ -38,7 +38,7 @@ case "$1" in
         esac ;;
       create) key="pr_create" ;;
       merge) key="pr_merge" ;;
-      view) key="pr_view" ;;
+      view) key="pr_view"; [ -f "$d/pr_view_$3.out" ] && key="pr_view_$3" ;;
       edit) key="pr_edit" ;;
       close) key="pr_close" ;;
     esac ;;

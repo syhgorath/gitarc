@@ -60,7 +60,7 @@ try {
   await step('MCP penceresi açılır ve kapanır', async () => {
     await click('#btn-mcp-connect');
     await expect(visible('#mcp-connect-modal'), 'MCP penceresi açılmadı');
-    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('18 Araç')`, 'MCP penceresi koruma araçlarını/16 araç sayısını göstermiyor');
+    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('22 Araç')`, 'MCP penceresi koruma araçlarını/16 araç sayısını göstermiyor');
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
   });
@@ -94,6 +94,23 @@ try {
     await expect(`!!document.querySelector('#svg-canvas .svg-mainci-badge, svg .svg-mainci-badge')`, 'birleşme sonrası merge düğümünde main CI rozeti yok');
     await b.realClick('.svg-mainci-badge'); // GERÇEK fare: tuval kaydırma işleyicisi tıklamayı yutmamalı
     await expect(`!!document.querySelector('.mainci-card') && document.querySelector('.mainci-card').textContent.includes('main CI')`, 'rozete tıklayınca main CI kartı açılmadı');
+  });
+  await step('Kuyruğu çalıştır (3b): plan → onay → sunucu sırayla birleştirir → durum "Koşu bitti"', async () => {
+    await b.eval(`(async () => { const m = await import('/modules/api.js'); await m.apiCall('/api/branch/fix-ci', 'POST', { branchId: 'br-open-424' }); })()`);
+    await click('#btn-queue');
+    await expect(visible('#queue-modal'), 'Kuyruk penceresi açılmadı');
+    await expect(`!!document.querySelector('#queue-candidates .queue-row')`, 'kuyruk satırları görünmüyor');
+    // çakışan #421'i kuyruktan çıkar: koşu yalnızca sorunsuz öneki içerir (ilk sorunda durur)
+    await b.eval(`[...document.querySelectorAll('#queue-candidates .queue-row')].find((r) => r.textContent.includes('#421'))?.querySelector('input[type=checkbox]').click()`);
+    await expect(`!!document.querySelector('.queue-run-btn') && !document.querySelector('.queue-run-btn').disabled`, '"Kuyruğu çalıştır" düğmesi görünmedi');
+    await click('.queue-run-btn');
+    await expect(`!!document.querySelector('#queue-run .queue-run-confirm') && document.querySelector('#queue-run').textContent.includes('sırayla işlenecek')`, 'koşu planı/onay düğmesi görünmedi');
+    await click('#queue-run .queue-run-confirm');
+    await expect(`document.querySelector('#queue-run') && (document.querySelector('#queue-run').textContent.includes('Koşu bitti') || document.querySelector('#queue-run').textContent.includes('Koşu sürüyor'))`, 'koşu durumu görünmedi');
+    await expect(`document.querySelector('#queue-run').textContent.includes('Koşu bitti')`, 'koşu bitmedi ("Koşu bitti" görünmedi)', 20000);
+    await expect(`![...document.querySelectorAll('#queue-candidates .queue-row')].some((r) => r.textContent.includes('#424'))`, 'birleşen #424 kuyruktan kalkmadı');
+    await click('#queue-close');
+    await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });
   await step('Koruma penceresi: plan görünür, "Temel" uygulanınca depo korumalı olur, pencere kapanır', async () => {
     await click('#btn-protect-branch');

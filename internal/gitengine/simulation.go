@@ -54,6 +54,9 @@ type Manager struct {
 	// yalnızca açıkça `-repo sim` istenirse true'dur; depo bulunamazsa sessizce demoya düşülmez, "proje yok" durumu
 	// gösterilir. `NewManager("")` (testler, gömülü kullanım) eski davranışı korur.
 	demoAllowed bool
+	// Kuyruk otomatik koşusu (3b): proje başına tek koşu; yalnızca kendi dosyasında kalıcıdır.
+	qrOnce  sync.Once
+	qrStore *queueRunStore
 }
 
 // ActiveRepoID: sunucuda şu an etkin olan projenin kimliği ("" = proje yok). İstemciler değiştirici isteklerde kendi

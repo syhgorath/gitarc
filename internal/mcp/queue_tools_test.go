@@ -201,3 +201,61 @@ func TestQueueStepApplyWorksOnlyWhenEnabledAndWithFingerprint(t *testing.T) {
 		t.Fatal("confirm zorunlu")
 	}
 }
+
+// ---- otomatik kuyruk koşusu (3b): varsayılan KAPALI ----
+
+func TestQueueRunToolsAreListedWithTheRightSafety(t *testing.T) {
+	seen := map[string]string{}
+	for _, d := range listTools() {
+		seen[d.Name] = d.Description
+	}
+	for _, name := range []string{"gitarc_queue_run_plan", "gitarc_queue_run_status"} {
+		if d, ok := seen[name]; !ok || !strings.Contains(d, "SALT OKUNUR") {
+			t.Fatalf("%s listede ve SALT OKUNUR olmalı: %q", name, d)
+		}
+	}
+	if d, ok := seen["gitarc_queue_run"]; !ok || !strings.Contains(d, "VARSAYILAN OLARAK KAPALIDIR") || !strings.Contains(d, envAllowQueueRun) {
+		t.Fatalf("gitarc_queue_run varsayılan kapalı olmalı: %q", d)
+	}
+	if _, ok := seen["gitarc_queue_run_stop"]; !ok {
+		t.Fatal("gitarc_queue_run_stop listede olmalı")
+	}
+}
+
+func TestQueueRunIsOffByDefaultEvenWithAFingerprintAndStopIsAlwaysAllowed(t *testing.T) {
+	t.Setenv(envAllowQueueRun, "")
+	mgr := gitengine.NewManager("sim")
+	out, res := callTyped(t, mgr, "gitarc_queue_run_plan", map[string]any{})
+	if res.IsError {
+		t.Fatalf("plan izin gerektirmemeli: %s", res.Content[0].Text)
+	}
+	if out["applyEnabled"] != false {
+		t.Fatalf("applyEnabled false olmalı: %+v", out)
+	}
+	_, res = callTyped(t, mgr, "gitarc_queue_run", map[string]any{"confirm": "herhangi"})
+	if !res.IsError || !strings.Contains(res.Content[0].Text, "kapalı") {
+		t.Fatalf("varsayılan olarak kapalı olmalı: %+v", res)
+	}
+	if st, res := callTyped(t, mgr, "gitarc_queue_run_status", map[string]any{}); res.IsError || st["run"] != nil {
+		t.Fatalf("koşu yokken run null olmalı: %+v %+v", st, res)
+	}
+	// durdurma kapalı bayrağından bağımsızdır; çalışan koşu yokken dürüst hata verir
+	if _, res := callTyped(t, mgr, "gitarc_queue_run_stop", map[string]any{}); !res.IsError {
+		t.Fatal("çalışan koşu yokken durdurma hata vermeli")
+	}
+}
+
+func TestQueueRunEnabledStillNeedsTheFingerprint(t *testing.T) {
+	t.Setenv(envAllowQueueRun, "1")
+	mgr := gitengine.NewManager("sim")
+	if _, res := callTyped(t, mgr, "gitarc_queue_run", map[string]any{}); !res.IsError {
+		t.Fatal("confirm zorunlu")
+	}
+	// yanlış parmak izi: hiçbir şey başlamaz
+	if _, res := callTyped(t, mgr, "gitarc_queue_run", map[string]any{"confirm": "yanlis", "branchIds": []any{"br-open-424"}}); !res.IsError {
+		t.Fatal("yanlış parmak izi reddedilmeli")
+	}
+	if st, _ := callTyped(t, mgr, "gitarc_queue_run_status", map[string]any{}); st["run"] != nil {
+		t.Fatalf("reddedilen başlatma koşu oluşturmamalı: %+v", st)
+	}
+}
