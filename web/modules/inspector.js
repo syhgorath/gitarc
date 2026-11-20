@@ -16,6 +16,7 @@ import {
 } from './inspector-cards.js';
 import { renderStudioInlineDiff, updateStudioPanels } from './studio.js';
 import { wireProposalActions } from './proposal.js';
+import { mainCICardModel } from './syncsteps.js';
 
 export { renderStudioInlineDiff, updateStudioPanels, wireProposalActions };
 
@@ -184,7 +185,11 @@ export function renderInspector(callbacks = {}) {
       if (el.canvasInspector) el.canvasInspector.hidden = false;
       if (el.canvasInspectorTitle) el.canvasInspectorTitle.textContent = `Commit ${node.shortSha}`;
 
-      el.detail.innerHTML = nodeInspectorHtml(node);
+      el.detail.innerHTML = nodeInspectorHtml(node, mainCICardModel(snap, node));
+      document.getElementById('act-mainci-open')?.addEventListener('click', (ev) => {
+        const url = ev.currentTarget.dataset.url;
+        if (url && url.startsWith('https://')) window.open(url, '_blank', 'noopener');
+      });
       document.getElementById('canvas-inspector-close')?.addEventListener('click', () => {
         state.selectedNodeSha = null;
         state.selectedBranchId = null;

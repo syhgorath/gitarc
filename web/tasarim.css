@@ -4144,3 +4144,20 @@ body.no-project .loading-hint {
 .queue-update { margin-top: 6px; padding: 8px 10px; border: 1px dashed var(--line, rgba(128,128,128,.4)); border-radius: 8px; display: grid; gap: 4px; }
 .queue-update-title { font-weight: 700; }
 .queue-step-btn, .queue-step-recheck { margin-top: 6px; }
+
+/* Merge düğümünün altındaki "main CI" rozeti (merge sonrası testler): yalnızca SHA'sı eşleşen düğümde çizilir. */
+.svg-mainci-badge { cursor: pointer; outline: none; }
+.svg-mainci-bg { fill: var(--surface-2, rgba(15, 23, 42, 0.85)); stroke-width: 1.2; }
+.svg-mainci-txt { font-family: var(--mono); font-size: 10px; font-weight: 700; text-anchor: middle; }
+.svg-mainci-badge.ok .svg-mainci-bg { stroke: var(--emerald); }
+.svg-mainci-badge.ok .svg-mainci-txt { fill: var(--emerald); }
+.svg-mainci-badge.fail .svg-mainci-bg { stroke: var(--danger); fill: var(--danger-weak); }
+.svg-mainci-badge.fail .svg-mainci-txt { fill: var(--danger); }
+/* Sürüyor = henüz bitmedi: amber KESİK çerçeve (çizimdeki "yolda" dili) */
+.svg-mainci-badge.running .svg-mainci-bg { stroke: var(--warn); stroke-dasharray: 4 3; }
+.svg-mainci-badge.running .svg-mainci-txt { fill: var(--warn); }
+.svg-mainci-badge:hover .svg-mainci-bg, .svg-mainci-badge:focus-visible .svg-mainci-bg { stroke-width: 2; }
+@media (prefers-reduced-motion: no-preference) {
+  .svg-mainci-badge.running .svg-mainci-bg { animation: mainci-dash 1.2s linear infinite; }
+}
+@keyframes mainci-dash { to { stroke-dashoffset: -14; } }

@@ -90,6 +90,11 @@ try {
     await click('#queue-close');
     await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });
+  await step('Merge sonrası main CI rozeti: birleşen PR\'ın merge düğümünde çıkar, tıklayınca kart açılır', async () => {
+    await expect(`!!document.querySelector('#svg-canvas .svg-mainci-badge, svg .svg-mainci-badge')`, 'birleşme sonrası merge düğümünde main CI rozeti yok');
+    await b.realClick('.svg-mainci-badge'); // GERÇEK fare: tuval kaydırma işleyicisi tıklamayı yutmamalı
+    await expect(`!!document.querySelector('.mainci-card') && document.querySelector('.mainci-card').textContent.includes('main CI')`, 'rozete tıklayınca main CI kartı açılmadı');
+  });
   await step('Koruma penceresi: plan görünür, "Temel" uygulanınca depo korumalı olur, pencere kapanır', async () => {
     await click('#btn-protect-branch');
     await expect(visible('#security-update-modal'), 'Koruma penceresi açılmadı');

@@ -40,9 +40,15 @@ export function isEmptyCanvasTarget(target, svgEl) {
   return Boolean(target === svgEl || target.id === 'rail-svg' || target.classList?.contains('svg-guide-line') || target.classList?.contains('svg-spine-line') || target.classList?.contains('dot-grid-canvas'));
 }
 
+// Tuval kaydırmasını (ve işaretçi yakalamayı) BAŞLATMAMASI gereken etkileşimli öğeler. Yakalama başlarsa tarayıcı `click`'i
+// öğeden alıp svg'ye yönlendirir ve öğenin kendi click işleyicisi hiç çalışmaz (gerçek fareyle tıklanamayan rozet hatası).
+export function isPanExemptTarget(target) {
+  return Boolean(target?.closest && (target.closest('.fo-capsule') || target.closest('circle') || target.closest('path') || target.closest('.svg-mainci-badge')));
+}
+
 function setupPanAndZoom(onRenderSVG) {
   el.svg.addEventListener('pointerdown', (ev) => {
-    if (ev.target.closest('.fo-capsule') || ev.target.closest('circle') || ev.target.closest('path')) return;
+    if (isPanExemptTarget(ev.target)) return;
     state.panning = {
       startX: ev.clientX,
       startY: ev.clientY,
