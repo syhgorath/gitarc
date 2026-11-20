@@ -296,19 +296,23 @@ type fakeGitHub struct {
 	lastTip map[string]string
 	runTill map[string]time.Time
 	stop    chan struct{}
+	done    chan struct{} // döngü gerçekten çıktı (temizlik, çalışan git komutlarını beklemeli)
 	handled int
 	hold    map[string]bool // true: bu dalın CI'ı hiç bitmez
 	ciDelay time.Duration
 }
 
 func (w *stepWorld) fakeGitHub(prs map[string]int) *fakeGitHub {
-	g := &fakeGitHub{t: w.t, w: w, prs: prs, merged: map[string]bool{}, lastTip: map[string]string{}, runTill: map[string]time.Time{}, stop: make(chan struct{}), hold: map[string]bool{}, ciDelay: 120 * time.Millisecond}
+	g := &fakeGitHub{t: w.t, w: w, prs: prs, merged: map[string]bool{}, lastTip: map[string]string{}, runTill: map[string]time.Time{}, stop: make(chan struct{}), done: make(chan struct{}), hold: map[string]bool{}, ciDelay: 120 * time.Millisecond}
 	go g.loop()
-	w.t.Cleanup(func() { close(g.stop) })
+	// Temizlik: döngü, süren bir `git merge/push` (sahte GitHub'ın birleştirmesi) bitirilmeden çıkmamalı; yoksa t.TempDir silinirken
+	// git "unable to get current working directory" ile düşer (CI'da görüldü: son PR'ın birleşmesi test bittikten sonra işleniyordu).
+	w.t.Cleanup(func() { close(g.stop); <-g.done })
 	return g
 }
 
 func (g *fakeGitHub) loop() {
+	defer close(g.done)
 	for {
 		select {
 		case <-g.stop:
