@@ -4,7 +4,7 @@ import { state, el, initElements, resetProjectScopedState } from './modules/stat
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
-import { protectionView, needsUpdateBeforeMerge } from './modules/syncsteps.js';
+import { protectionView, needsUpdateBeforeMerge, queueRunBadge } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
@@ -23,7 +23,7 @@ import { startCockpitTour, closeTour, nextTourStep, prevTourStep } from './modul
 import { openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText } from './modules/mcp-modal.js';
 import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modules/diff-viewer.js';
 import { refreshProtectionPlan, applyShownProtection } from './modules/protection.js';
-import { openQueueModal, closeQueueModal } from './modules/queue.js';
+import { openQueueModal, closeQueueModal, startSingleMergeRun, stopMergeRun } from './modules/queue.js';
 
 // Central Branch Selection
 export function selectBranch(branchId) {
@@ -100,6 +100,27 @@ async function handleMergeBranch(branchId, btnEl = null) {
   const isRunning = b?.pr?.ci?.state === 'RUNNING';
 
   if (isRunning) {
+    // Çevrimiçi: sunucuda 1 PR'lık koşu (yenilemede kaybolmaz). Çevrimdışı yedek: bu sekmenin bekçisi (pendingAutoMerge).
+    if (!state.offlineMode) {
+      if (queueRunBadge(state.snapshot, b)) {
+        try {
+          await stopMergeRun();
+          applySnapshot(await apiCall('/api/snapshot'));
+          showToast('Otomatik merge koşusu durduruldu', 'info');
+        } catch (err) { showToast(err.message, 'danger'); }
+        return;
+      }
+      try {
+        const res = await startSingleMergeRun(branchId);
+        if (res.started) {
+          showToast(`⏳ CI devam ediyor: Bitince '${b?.name}' otomatik birleştirilecek (sunucu koşusu)`, 'warn');
+          applySnapshot(await apiCall('/api/snapshot'));
+        } else {
+          showToast(`Otomatik merge başlatılamadı: ${res.reason}`, 'danger');
+        }
+      } catch (err) { showToast(err.message, 'danger'); }
+      return;
+    }
     if (state.pendingAutoMerge[branchId]) {
       delete state.pendingAutoMerge[branchId];
       renderSVG(getActionCallbacks());

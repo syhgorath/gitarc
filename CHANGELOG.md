@@ -4,6 +4,9 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ## [Yayımlanmamış]
 
+### Değişenler
+- **"⏳ CI Bitince Merge Et" artık sunucuda 1 PR'lık koşu (`startSingleMergeRun`):** Bekçi sekme belleğinde (`pendingAutoMerge`) duruyordu; sayfa yenilenince kayboluyor, geride kalan PR'ı güncellemiyordu. Çevrimiçi modda tıklama `/api/queue/run/plan` + `/start` ile 1 PR'lık koşu başlatır (güncelle → CI bekle → birleştir; yenilemede sürer, ikinci tıklama koşuyu durdurur, kart etiketi kuyrukla aynı). Çevrimdışı yedek eski sekme bekçisini korur. Duman testi güncellendi.
+
 ### Düzeltilenler
 - **Kuyruk penceresi, koşu sürerken planı gereksiz yere yeniden hesaplıyordu (`refreshQueuePlan`, `finishRunUI`):** Her birleşmeden/anlık görüntü yenilemesinden sonra kuyruk (git `merge-tree` simülasyonu + `gh`) yeniden hesaplanıyor, modalın altında "⏳ Plan hesaplanıyor…" takılı görünüyordu; gerçek GitHub'daki 5'li koşuda fark edildi. Koşu sürerken plan artık HESAPLANMAZ (yerine kısa bir not), PR seçimi/sırası kilitlenir (koşu onaylanan plana göre ilerler); koşu bitince ya da durdurulunca plan BİR kez yenilenir. Pencere açılışında önce süren koşu var mı bakılır. Duman testi, koşu sürerken `/api/queue/plan` isteği atılmadığını ve durdurunca plan/seçimin geri geldiğini doğrular; korumayı kaldırınca düşüyor.
 - **CI'da seyrek düşen test: sahte GitHub'ın temizliği süren `git` komutunu beklemiyordu (`fakeGitHub`, `TestQueueRunLiveMergesTwoPRsInOrder…`):** Test, koşunun son PR'ını birleştirince biter; sahte GitHub'ın arka plan döngüsü bu birleşmeyi (ikinci klonda `git merge/push`) test bittikten SONRA işliyor, `t.TempDir` silinirken git "unable to get current working directory" ile düşüyordu (yalnızca test kodu; ürün kodu etkilenmedi). Temizlik artık döngünün gerçekten çıkmasını bekler (`done` kanalı). 25 ardışık `-race -cpu 2` koşusunda geçti; hatayı yerelde önceden yeniden üretemedim, düzeltme CI günlüğündeki nedene dayanır.

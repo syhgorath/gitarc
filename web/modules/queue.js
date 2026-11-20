@@ -501,6 +501,16 @@ function renderRunNote() {
   appendText(box, 'div', 'Koşu sürüyor: PR\'lar sırayla işleniyor. Kuyruk planı koşu bitince ya da durdurulunca yenilenir.', 'prot-note queue-run-note');
 }
 
+/** Tekil "CI Bitince Merge Et": 1 PR'lık sunucu koşusu planlayıp başlatır (yenilemede kaybolmaz, geride kalanı günceller).
+ *  Kullanıcının tıklaması onaydır; parmak izi planın o anki ucuna bağlıdır. Başlatılamazsa nedenini döndürür. */
+export async function startSingleMergeRun(branchId) {
+  const plan = await runPlanCall([branchId]);
+  if (!plan || !plan.startable || !plan.fingerprint) return { started: false, reason: plan?.reason || 'koşu başlatılamıyor' };
+  const started = await runStartCall([branchId], plan.fingerprint);
+  return { started: true, run: started };
+}
+export async function stopMergeRun() { return runStopCall(); }
+
 export async function refreshQueuePlan() {
   const my = ++view.seq;
   const pruned = pruneQueueView(view.order, view.included, state.snapshot);
