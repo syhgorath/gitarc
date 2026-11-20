@@ -130,3 +130,45 @@ test('window model: candidates are open PRs by number; step badges, details and 
   assert.equal(queueSummaryText({ items: [{}, {}], stopsAt: 0 }), '✓ 2 dalın tamamı sırayla temiz birleşir.');
   assert.equal(queueSummaryText({ items: [{}, {}, {}], stopsAt: 2, mergeable: 1 }), '1 dal sorunsuz birleşir; kuyruk 2. sırada durur.');
 });
+
+import { updatePlanModel } from '../../web/modules/queue.js';
+
+test('update-plan window model: ready can be applied; conflict/up-to-date/blocked cannot and say why', () => {
+  const ready = updatePlanModel({ status: 'ready', reason: "origin/main'in 2 yeni commit'i temiz merge edilir", baseRef: 'origin/main', fingerprint: 'abc', notes: ['Not 1'] });
+  assert.equal(ready.canApply, true);
+  assert.ok(ready.lines.some((l) => l.includes('UZAK PR dalına push edilir')));
+  assert.ok(ready.lines.includes('Not 1'));
+  assert.equal(updatePlanModel({ status: 'ready', reason: 'x' }).canApply, false, 'no fingerprint, no apply');
+
+  const conflict = updatePlanModel({ status: 'conflict', reason: 'origin/main ile çakışıyor', conflictFiles: ['a.go', 'b.go'] });
+  assert.equal(conflict.canApply, false);
+  assert.ok(conflict.lines.includes('Çakışan dosyalar: a.go, b.go'));
+  assert.ok(conflict.lines.some((l) => l.includes("Çakışma Stüdyosu'ndan çözün")));
+  assert.equal(updatePlanModel({ status: 'up_to_date', reason: 'güncel' }).title, '✓ Zaten güncel');
+  assert.equal(updatePlanModel({ status: 'blocked', reason: 'dal uzakta yok' }).canApply, false);
+});
+
+// Go'daki simBranchUpdatePlanLocked / UpdateBranchFromBase ile AYNI kurallar (yedek motor eşliği).
+test('fallback engine: update plan, wrong/missing confirm refused, right confirm updates, conflict refused', () => {
+  const eng = loadEngine();
+  const snap = eng.snapshot();
+  const clean = snap.branches.find((b) => open(b) && b.behindMain > 0 && !b.conflict?.hasConflict);
+  assert.ok(clean, 'demo verisinde geride kalmış temiz dal olmalı');
+  const plan = eng.updateBranchPlan(clean.id);
+  assert.equal(plan.status, 'ready');
+  assert.equal(plan.behind, clean.behindMain);
+  assert.ok(plan.fingerprint);
+  assert.throws(() => eng.updateBranch(clean.id, ''), /onaylanmadı/);
+  assert.throws(() => eng.updateBranch(clean.id, 'yanlis'), /onaylanmadı/);
+  assert.equal(eng.updateBranchPlan(clean.id).status, 'ready', 'refused attempts change nothing');
+  eng.updateBranch(clean.id, plan.fingerprint);
+  assert.equal(eng.updateBranchPlan(clean.id).status, 'up_to_date');
+  assert.throws(() => eng.updateBranch(clean.id, plan.fingerprint), /zaten ana dala göre güncel/);
+
+  const conflicting = eng.snapshot().branches.find((b) => open(b) && b.conflict?.hasConflict);
+  if (conflicting) {
+    assert.equal(eng.updateBranchPlan(conflicting.id).status, 'conflict');
+    assert.throws(() => eng.updateBranch(conflicting.id, 'x'), /çakışıyor/);
+  }
+  assert.throws(() => eng.updateBranchPlan('yok-boyle-dal'), /bulunamadı/);
+});

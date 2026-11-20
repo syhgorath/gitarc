@@ -3,8 +3,9 @@
 // güvenilmeyen metindir: yalnızca textContent / DOM API ile yazılır.
 import { state, el } from './state.js';
 import { apiCall } from './api.js';
+import { showToast } from './utils.js';
 
-const view = { order: [], included: new Set(), seq: 0 };
+const view = { order: [], included: new Set(), seq: 0, onApply: null };
 
 /** Kuyruğa girebilecek dallar: açık PR'lar, PR numarasına göre (sunucudaki varsayılanla aynı). */
 export function queueCandidates(snap) {
@@ -28,6 +29,20 @@ export function queueStepModel(it) {
   details.push(it.ci ? `CI: ${it.ci}` : 'CI: bilinmiyor (yeşil varsayılmaz)');
   if (it.review) details.push(`İnceleme: ${it.review}`);
   return { status, details };
+}
+
+/** "Dalı güncelle" planının görünümü (saf model): başlık, satırlar ve uygulanabilir mi. */
+export function updatePlanModel(plan) {
+  const lines = [];
+  if (plan.reason) lines.push(plan.reason);
+  if (plan.status === 'conflict' && plan.conflictFiles?.length) lines.push(`Çakışan dosyalar: ${plan.conflictFiles.join(', ')}`);
+  if (plan.status === 'conflict') lines.push("Güncelleme yapılmaz: önce çakışmayı Çakışma Stüdyosu'ndan çözün.");
+  if (plan.status === 'ready') {
+    lines.push(`${plan.baseRef || 'ana dal'} dalın içine merge edilir (merge commit; rebase/force-push yok) ve UZAK PR dalına push edilir; CI yeniden başlar.`);
+  }
+  (plan.notes || []).forEach((n) => lines.push(n));
+  const title = { ready: '↻ Güncelleme planı', up_to_date: '✓ Zaten güncel', conflict: '⚠ Güncellenemez', blocked: '⛔ Güncellenemez' }[plan.status] || 'Güncelleme planı';
+  return { title, lines, canApply: plan.status === 'ready' && Boolean(plan.fingerprint) };
 }
 
 /** Plan başlığı: kuyruğun nerede durduğunu tek cümlede söyler. */
@@ -108,9 +123,64 @@ function renderPlan(plan, errorText) {
     appendText(head, 'span', m.status.text, `chip ${m.status.tone}`.trim());
     step.appendChild(head);
     m.details.forEach((d) => appendText(step, 'div', d, 'queue-detail'));
+    if (it.behind > 0 && it.status !== 'unknown') {
+      const upd = document.createElement('button');
+      upd.type = 'button';
+      upd.className = 'btn ghost sm queue-update-btn';
+      upd.textContent = '↻ Dalı main\'e göre güncelle';
+      upd.addEventListener('click', () => showUpdatePlan(it, step));
+      step.appendChild(upd);
+    }
     box.appendChild(step);
   });
   (plan.notes || []).forEach((n) => appendText(box, 'div', n, 'prot-note'));
+}
+
+async function updatePlanCall(branchId) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.updateBranchPlan(branchId);
+  return apiCall('/api/branch/update/plan', 'POST', { branchId });
+}
+
+async function updateApplyCall(branchId, confirm) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.updateBranch(branchId, confirm);
+  return apiCall('/api/branch/update', 'POST', { branchId, confirm });
+}
+
+/** Bir adımın altına güncelleme planını gösterir; "Onayla" yalnızca gösterilen planın parmak iziyle uygular. */
+async function showUpdatePlan(it, step) {
+  step.querySelector('.queue-update')?.remove();
+  const panel = document.createElement('div');
+  panel.className = 'queue-update';
+  step.appendChild(panel);
+  appendText(panel, 'div', '⏳ Güncelleme planı hesaplanıyor...', 'prot-note');
+  try {
+    const plan = await updatePlanCall(it.branchId);
+    const m = updatePlanModel(plan);
+    panel.textContent = '';
+    appendText(panel, 'div', m.title, 'queue-update-title');
+    m.lines.forEach((l) => appendText(panel, 'div', l, 'queue-detail'));
+    if (m.canApply) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn warn sm queue-update-confirm';
+      btn.textContent = 'Onayla: uzak PR dalına push et';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const snap = await updateApplyCall(it.branchId, plan.fingerprint);
+          if (view.onApply) view.onApply(snap);
+          showToast(`↻ ${it.branch} ana dala göre güncellendi`, 'ok');
+        } catch (err) {
+          showToast(err.message, 'danger');
+        }
+        refreshQueuePlan();
+      });
+      panel.appendChild(btn);
+    }
+  } catch (err) {
+    panel.textContent = '';
+    appendText(panel, 'div', err.message || String(err), 'prot-note');
+  }
 }
 
 async function planCall(ids) {
@@ -135,7 +205,8 @@ export async function refreshQueuePlan() {
   }
 }
 
-export function openQueueModal() {
+export function openQueueModal(onApplySnapshot = null) {
+  view.onApply = onApplySnapshot;
   const cands = queueCandidates(state.snapshot);
   view.order = cands.map((b) => b.id);
   view.included = new Set(view.order);

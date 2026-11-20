@@ -238,6 +238,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/repo/protection/plan", a.guard(a.handleProtectionPlan))
 	mux.HandleFunc("/api/queue/plan", a.guard(a.handleQueuePlan))
+	mux.HandleFunc("/api/branch/update/plan", a.guard(a.handleBranchUpdatePlan))
+	mux.HandleFunc("/api/branch/update", a.guard(a.handleBranchUpdate))
 	mux.HandleFunc("/api/system/choose-folder", a.guard(a.handleChooseFolder))
 	mux.HandleFunc("/api/system/git-status-ping", a.guard(a.handleGitStatusPing))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
@@ -708,6 +710,39 @@ func (a *App) handleProtectBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap, err := a.mgr.ApplyProtection(req.Profile, req.Checks, req.Confirm)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+// handleBranchUpdatePlan: PR dalının ana dala göre güncellenmesinin SALT OKUNUR planı.
+func (a *App) handleBranchUpdatePlan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	plan, err := a.mgr.BranchUpdatePlan(req.BranchID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// handleBranchUpdate: planı uygular (uzak PR dalına PUSH eder); yalnızca planın parmak iziyle (confirm) çalışır.
+func (a *App) handleBranchUpdate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+		Confirm  string `json:"confirm"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.UpdateBranchFromBase(req.BranchID, req.Confirm)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

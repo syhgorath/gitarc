@@ -60,7 +60,7 @@ try {
   await step('MCP penceresi açılır ve kapanır', async () => {
     await click('#btn-mcp-connect');
     await expect(visible('#mcp-connect-modal'), 'MCP penceresi açılmadı');
-    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('14 Araç')`, 'MCP penceresi koruma araçlarını/14 araç sayısını göstermiyor');
+    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('16 Araç')`, 'MCP penceresi koruma araçlarını/16 araç sayısını göstermiyor');
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
   });
@@ -69,6 +69,12 @@ try {
     await expect(visible('#queue-modal'), 'Kuyruk penceresi açılmadı');
     await expect(`document.querySelectorAll('#queue-candidates .queue-row').length > 0`, 'kuyruğa girecek PR satırları görünmüyor');
     await expect(`document.querySelectorAll('#queue-result .queue-step').length > 0 && !!document.querySelector('#queue-result .queue-summary')`, 'plan adımları/özet görünmüyor');
+    // Geride kalmış temiz PR (#422): "Dalı güncelle" → plan → onay → uygulanır (sunucu bağlama başlığıyla birlikte) → düğme kalkar
+    await expect(`document.querySelectorAll('#queue-result .queue-update-btn').length > 0`, 'geride kalan PR için "Dalı güncelle" düğmesi yok');
+    await b.eval(`[...document.querySelectorAll('#queue-result .queue-step')].find((s) => s.textContent.includes('#422')).querySelector('.queue-update-btn').click()`);
+    await expect(`!!document.querySelector('.queue-update .queue-update-confirm')`, 'güncelleme planı onay düğmesi görünmedi');
+    await click('.queue-update .queue-update-confirm');
+    await expect(`!([...document.querySelectorAll('#queue-result .queue-step')].find((s) => s.textContent.includes('#422')) || document.body).querySelector('.queue-update-btn')`, 'güncellemeden sonra #422 için "Dalı güncelle" düğmesi kalkmalı');
     await click('#queue-close');
     await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });

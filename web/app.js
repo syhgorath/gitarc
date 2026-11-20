@@ -490,7 +490,7 @@ async function bootstrap() {
   el.btnEnableProtection?.addEventListener('click', () => applyShownProtection(applySnapshot));
 
   // Merge kuyruğu planı penceresi
-  el.btnQueue?.addEventListener('click', openQueueModal);
+  el.btnQueue?.addEventListener('click', () => openQueueModal(applySnapshot));
   ['queue-close', 'queue-close-btn'].forEach((id) => document.getElementById(id)?.addEventListener('click', closeQueueModal));
 
   // MCP Connect Modal Events

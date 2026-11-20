@@ -415,6 +415,23 @@
       return queueAssemble('simulation', base, items, strict);
     }
 
+    // Dalı ana dala göre güncelle: internal/gitengine/branch_update.go (simBranchUpdatePlanLocked) ile AYNI kurallar ve metinler.
+    function updatePlanFor(idOrName) {
+      const b = (sim.branches || []).find((x) => x.id === idOrName || x.name === idOrName);
+      if (!b) throw new Error(`dal bulunamadı: ${idOrName}`);
+      const plan = { mode: 'simulation', branch: b.name, branchId: b.id, pr: b.pr ? b.pr.number : 0, baseRef: sim.repo.defaultBranch || 'main', behind: b.behindMain || 0, ahead: b.aheadMain || 0 };
+      if (b.state !== 'open') {
+        Object.assign(plan, { status: 'blocked', reason: 'dal açık değil (birleşmiş ya da silinmiş)' });
+      } else if (b.conflict && b.conflict.hasConflict) {
+        Object.assign(plan, { status: 'conflict', reason: 'ana dalla çakışıyor', conflictFiles: [...(b.conflict.files || [])] });
+      } else if (!plan.behind) {
+        Object.assign(plan, { status: 'up_to_date', reason: 'ana dala göre güncel' });
+      } else {
+        Object.assign(plan, { status: 'ready', reason: `ana dalın ${plan.behind} yeni commit'i temiz merge edilir`, fingerprint: protFingerprint(b.name, { ahead: plan.ahead, behind: plan.behind }) });
+      }
+      return plan;
+    }
+
     function recompute() {
       const branches = sim.branches;
       const nodes = sim.nodes;
@@ -894,6 +911,21 @@
         sim.protection = plan.target;
         sim.repo.branchProtected = true;
         sim.repo.protectionSummary = protSummary(plan.target);
+        return recompute();
+      },
+      updateBranchPlan(idOrName) {
+        recompute();
+        return updatePlanFor(idOrName);
+      },
+      updateBranch(idOrName, confirm) {
+        recompute();
+        const plan = updatePlanFor(idOrName);
+        if (plan.status === 'up_to_date') throw new Error(`${plan.branch} zaten ana dala göre güncel; yapılacak bir şey yok`);
+        if (plan.status === 'conflict') throw new Error(`${plan.branch} ana dalla çakışıyor (${plan.conflictFiles.join(', ')}); güncelleme yapılmadı, önce çakışmayı Çakışma Stüdyosu'ndan çözün`);
+        if (plan.status !== 'ready') throw new Error(`${plan.branch} güncellenemez: ${plan.reason}`);
+        if (!confirm || confirm !== plan.fingerprint) throw new Error('güncelleme planı değişti veya onaylanmadı (dal ya da ana dal ilerlemiş olabilir); planı yeniden inceleyip onaylayın. Hiçbir şey değiştirilmedi');
+        const b = sim.branches.find((x) => x.id === plan.branchId);
+        b.behindMain = 0;
         return recompute();
       },
       queuePlan(ids) {
