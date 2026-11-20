@@ -109,21 +109,87 @@ export function renderDockStreams() {
   }
 }
 
+// Hata Radarı: İŞLEM HATALARI. Günlükteki hata (`level: error`) satırları, kullanıcının bir şey yapması gereken işlemlerin
+// (merge, push, dal güncelleme, kuyruk adımı/koşusu, koruma, onay akışı…) başarısızlığıdır; günlükte kaybolmasın, radara
+// kart olarak düşsün. Kendiliğinden yapılan ağ okumaları (anlık görüntü fetch'i, sürüm kontrolü) "işlem hatası" değildir:
+// onlar zaten "Synced" rozetinde/SyncSteps'te görünür.
+export const NON_ACTION_ERRORS = new Set(['Snapshot', 'Sürüm Kontrolü']);
+
+/** Aynı (eylem, dal, mesaj) hatası tekrar ederse TEK kart + sayaç. dismissed[anahtar] === son günlük kimliği ise kapatılmıştır;
+ *  hata YENİDEN olursa (yeni günlük kimliği) kart yeniden çıkar. Günlük en yeni önce gelir. */
+export function actionFailureCards(logs, dismissed = {}, limit = 8) {
+  const groups = new Map();
+  (logs || []).forEach((l) => {
+    if (!l || l.level !== 'error' || NON_ACTION_ERRORS.has(l.action)) return;
+    const key = [l.action || '', l.branch || '', l.message || ''].join('\u0001');
+    const g = groups.get(key);
+    if (g) { g.count += 1; return; }
+    const isQueue = /^Kuyruk/.test(l.action || '');
+    groups.set(key, {
+      key, count: 1, latestId: l.id, time: l.timestamp || '', action: l.action || 'İşlem', branch: l.branch || '',
+      message: l.message || '', detail: l.detail || '', isQueue,
+      severity: isQueue ? 'critical' : 'warning',
+      title: isQueue && /Koşu/.test(l.action || '') ? 'Kuyruk koşusu durdu' : `${l.action || 'İşlem'} başarısız`,
+    });
+  });
+  return [...groups.values()].filter((g) => { const d = dismissed[g.key]; return d === undefined || d !== g.latestId; }).slice(0, limit);
+}
+
+function buildFailureCard(c, callbacks) {
+  const { onSelectBranch, onOpenQueue } = callbacks;
+  const card = document.createElement('div');
+  card.className = `radar-card ${c.severity} action-failure`;
+  const badgeClass = c.severity === 'critical' ? 'danger' : 'warn';
+  const badgeLabel = c.severity === 'critical' ? '🚨 KRİTİK' : '⚠️ UYARI';
+  card.innerHTML = `
+      <div class="rc-header">
+        <div class="rc-title-group">
+          <span class="rc-badge ${badgeClass}">${badgeLabel} · İşlem Hatası</span>
+          ${c.branch ? `<span class="rc-branch-badge">${esc(c.branch)}</span>` : ''}
+          <strong class="rc-title">${esc(c.title)}</strong>
+          ${c.count > 1 ? `<span class="rc-count" title="Aynı hata ${c.count} kez oldu">×${c.count}</span>` : ''}
+        </div>
+        <div class="rc-actions">
+          ${c.isQueue && onOpenQueue ? '<button type="button" class="rc-action-btn" data-act="open-queue">🚦 Kuyruk Penceresini Aç</button>' : ''}
+          <button type="button" class="rc-action-btn rc-dismiss" data-act="dismiss" aria-label="Kartı kapat" title="Kapat (aynı hata yeniden olursa tekrar görünür)">✕</button>
+        </div>
+      </div>
+      <div class="rc-body">
+        <div class="rc-detail-text">${esc(c.message)}</div>
+        ${c.detail ? `<div class="rc-ci-snippet">${esc(truncate(c.detail, 240))}</div>` : ''}
+        <div class="rc-detail-text rc-time">${esc(c.time)} · ${esc(c.action)}</div>
+      </div>`;
+  card.querySelector('[data-act="open-queue"]')?.addEventListener('click', (ev) => { ev.stopPropagation(); onOpenQueue(); });
+  card.querySelector('[data-act="dismiss"]')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    state.radarDismissed[c.key] = c.latestId;
+    renderRadar(callbacks);
+  });
+  card.addEventListener('click', () => {
+    const b = (state.snapshot?.branches || []).find((x) => x.name === c.branch);
+    if (b && onSelectBranch) onSelectBranch(b.id);
+  });
+  return card;
+}
+
 export function renderRadar(callbacks = {}) {
   const { onSelectBranch, onOpenConflictStudio, onPruneGone } = callbacks;
   const diags = state.snapshot?.diagnostics || [];
-  if (el.dockRadarCount) el.dockRadarCount.textContent = diags.length;
+  const failures = actionFailureCards(state.snapshot?.logs, state.radarDismissed);
+  if (el.dockRadarCount) el.dockRadarCount.textContent = diags.length + failures.length;
   if (!el.radarList) return;
   el.radarList.innerHTML = '';
+  failures.forEach((c) => el.radarList.appendChild(buildFailureCard(c, callbacks)));
 
-  if (diags.length === 0) {
+  if (diags.length === 0 && failures.length === 0) {
     const clean = document.createElement('div');
     clean.className = 'empty-detail';
-    clean.textContent = 'Radar temiz — çakışma, Cross-PR veya CI hatası yok.';
+    clean.textContent = 'Radar temiz — çakışma, Cross-PR, CI veya işlem hatası yok.';
     el.radarList.appendChild(clean);
     renderDockStreams();
     return;
   }
+  if (diags.length === 0) { renderDockStreams(); return; }
 
   const branches = state.snapshot?.branches || [];
 

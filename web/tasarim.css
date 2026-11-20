@@ -4223,3 +4223,8 @@ body.no-project .loading-hint {
   .svg-queue-target-path { animation: queue-target-flow 1.2s linear infinite; }
 }
 @keyframes queue-target-flow { to { stroke-dashoffset: -24; } }
+
+/* Hata Radarı: işlem hatası kartları (günlükteki hatalar) */
+.radar-card.action-failure .rc-count { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--warn-border); color: var(--warn); background: var(--warn-weak); }
+.radar-card.action-failure .rc-dismiss { min-width: 28px; font-weight: 800; }
+.radar-card.action-failure .rc-time { opacity: .6; font-family: var(--mono); font-size: 11px; }

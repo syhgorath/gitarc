@@ -24,7 +24,8 @@ async function step(name, fn) {
 const expect = async (cond, what, timeout = 12000) => { if (!(await b.waitFor(cond, timeout))) throw new Error(what); };
 const noConsoleErrors = () => {
   // Proje bağlama adımı BİLEREK 409 üretir (başka projeyi gösteren sekme taklidi); başka hiçbir 409'a izin yok.
-  const real = b.errors.filter((e) => !/favicon/i.test(e) && !/status of 409.*\/api\/branch\/delete/.test(e));
+  // Hata Radarı adımı BİLEREK çakışan bir PR'ın merge'ünü reddettirir (409 /api/branch/merge).
+  const real = b.errors.filter((e) => !/favicon/i.test(e) && !/status of 409.*\/api\/branch\/delete/.test(e) && !/status of 409.*\/api\/branch\/merge/.test(e));
   if (real.length) throw new Error(`konsol hatası: ${real.slice(0, 2).join(' | ')}`);
 };
 
@@ -149,6 +150,21 @@ try {
     await expect(`Number(document.getElementById('dock-action-count').textContent) > 0`, 'Son İşlemler sayacı 0: başarılı işlemler görünmüyor');
     await expect(`!!document.querySelector('#dock-actions-stream .dock-log-item.ok') && !document.querySelector('#dock-actions-stream .dock-log-item.danger') && !document.querySelector('#dock-actions-stream').textContent.includes('Henüz tamamlanmış')`, 'Son İşlemler listesi boş ya da hata içeriyor');
     await click('#dock-tab-radar');
+  });
+  await step('Hata Radarı: reddedilen yazan işlem kart olur, kapatılır, aynı hata yeniden olunca geri gelir', async () => {
+    const refresh = `(async () => { const api = await import('/modules/api.js'); const app = await import('/app.js'); app.applySnapshot(await api.apiCall('/api/snapshot')); return true; })()`;
+    const failMerge = `(async () => { const api = await import('/modules/api.js'); try { await api.apiCall('/api/branch/merge', 'POST', { branchId: 'br-open-421', strategy: 'merge' }); } catch { /* beklenen ret */ } })()`;
+    await click('#dock-tab-radar');
+    await b.eval(failMerge);
+    await b.eval(refresh);
+    await expect(`!!document.querySelector('#radar-list .radar-card.action-failure') && document.querySelector('#radar-list .radar-card.action-failure').textContent.includes('çakışma')`, 'reddedilen merge Hata Radarı kartı olmadı');
+    const before = await b.eval(`Number(document.getElementById('dock-radar-count').textContent)`);
+    await click('#radar-list .radar-card.action-failure .rc-dismiss');
+    await expect(`!document.querySelector('#radar-list .radar-card.action-failure')`, 'kapatılan işlem hatası kartı kalkmadı');
+    await expect(`Number(document.getElementById('dock-radar-count').textContent) === ${before - 1}`, 'radar sayacı kapatınca azalmadı');
+    await b.eval(failMerge);
+    await b.eval(refresh);
+    await expect(`!!document.querySelector('#radar-list .radar-card.action-failure')`, 'aynı hata yeniden olunca kart geri gelmedi');
   });
   await step('Koruma penceresi: plan görünür, "Temel" uygulanınca depo korumalı olur, pencere kapanır', async () => {
     await click('#btn-protect-branch');
