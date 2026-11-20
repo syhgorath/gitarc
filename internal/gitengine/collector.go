@@ -659,12 +659,21 @@ func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, br
 		}
 	}
 
+	// complete: tüm komutlar GERÇEKTEN çalışıp sonuç verdi mi. Zaman aşımı/iptal/git hatası "çakışma yok, 0 commit ileride"
+	// gibi yanlış bir sonucu üretir; SHA anahtarlı önbellek bunu sonsuza dek saklayıp kokpitin çakışmayı bir görüp bir
+	// görmemesine yol açıyordu. Yalnızca eksiksiz değerlendirme önbelleğe yazılır.
+	complete := true
+
 	if cntOut, _, err := runCmd(ctx, repoPath, "git", "rev-list", "--left-right", "--count", baseRef+"..."+branchRef); err == nil {
 		fields := strings.Fields(cntOut)
 		if len(fields) == 2 {
 			behindMain, _ = strconv.Atoi(fields[0])
 			aheadMain, _ = strconv.Atoi(fields[1])
+		} else {
+			complete = false
 		}
+	} else {
+		complete = false
 	}
 
 	if diffOut, _, err := runCmd(ctx, repoPath, "git", "diff", "--name-only", baseRef+"..."+branchRef); err == nil {
@@ -673,14 +682,24 @@ func evaluateBranchVsBase(ctx context.Context, repoPath, baseRef, baseTipSHA, br
 				changed = append(changed, strings.TrimSpace(f))
 			}
 		}
+	} else {
+		complete = false
 	}
 
 	if aheadMain > 0 {
 		mtOut, mtCode, _ := runCmd(ctx, repoPath, "git", "merge-tree", "--write-tree", baseRef, branchRef)
-		conflict = ParseMergeTreeOutput(mtCode, mtOut)
+		// merge-tree: 0 = temiz, 1 = çakışma; başka bir kod (128, -1 öldürüldü...) bir hatadır, "çakışma yok" demek değildir.
+		if mtCode != 0 && mtCode != 1 {
+			complete = false
+		} else {
+			conflict = ParseMergeTreeOutput(mtCode, mtOut)
+		}
+	}
+	if ctx.Err() != nil {
+		complete = false
 	}
 
-	if cacheKey != "" {
+	if cacheKey != "" && complete {
 		evalCacheMu.Lock()
 		if len(evalCache) > 2000 {
 			evalCache = map[string]cachedBranchEval{}
