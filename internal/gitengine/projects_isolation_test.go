@@ -556,3 +556,75 @@ func TestFreshRepoSnapshotHasEmptyArraysNotNull(t *testing.T) {
 		t.Fatal(`anlık görüntüde "branches":null var`)
 	}
 }
+
+// 8) Eski kimlik: yeniden eklenen projenin eski kimliğiyle seçim hatasız bir şekilde yönetilmeli (arayüz localStorage'da
+// eski kimliği tutar). Kimlik, yeniden eklemede AYNI kalmalı (kararlı kimlik).
+func TestIso_ProjectIDIsStableAcrossRemoveAndReAdd(t *testing.T) {
+	w := newIsoWorld(t, "a", "b")
+	oldID := w.ids["b"]
+	if _, err := w.mgr.RemoveProject(oldID); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := w.mgr.AddProject(w.dirs["b"], "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Repo.ID != oldID {
+		t.Fatalf("aynı yol yeniden eklenince kimlik değişti (%s -> %s); arayüzün hatırladığı kimlik geçersiz kalır", oldID, snap.Repo.ID)
+	}
+}
+
+// 9) Aynı depo farklı yol yazımlarıyla (alt klasör, sembolik bağ) ikinci bir proje olarak eklenmemeli.
+func TestIso_SamePathSpellingsAreOneProject(t *testing.T) {
+	w := newIsoWorld(t, "a", "b")
+	before, _ := w.mgr.Snapshot()
+	n := len(before.Repos)
+
+	sub := filepath.Join(w.dirs["b"], "alt")
+	if err := os.Mkdir(sub, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.mgr.AddProject(sub, "alt klasör"); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "b-link")
+	if err := os.Symlink(w.dirs["b"], link); err != nil {
+		t.Skip("symlink yok")
+	}
+	if _, err := w.mgr.AddProject(link, "b sembolik"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := w.mgr.Snapshot()
+	if len(after.Repos) != n {
+		var names []string
+		for _, r := range after.Repos {
+			names = append(names, r.Name+"="+r.Path)
+		}
+		t.Fatalf("aynı depo ikinci kez eklendi (%d -> %d): %v", n, len(after.Repos), names)
+	}
+}
+
+// Proje kimliği yoldan türetilir: biçim sabit, farklı depolar farklı kimlik alır, aynı depo hangi yazımla verilirse aynı.
+func TestProjectIDForPathIsStableAndPathBased(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	idA := projectIDForPath(a)
+	if !strings.HasPrefix(idA, "live-proj-") || len(idA) != len("live-proj-")+8 {
+		t.Fatalf("beklenen biçim live-proj-<8 hex>: %q", idA)
+	}
+	if idA != projectIDForPath(a) {
+		t.Fatal("aynı yol aynı kimliği vermeli")
+	}
+	if idA == projectIDForPath(b) {
+		t.Fatal("farklı depolar farklı kimlik almalı")
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(a, link); err != nil {
+		t.Skip("symlink yok")
+	}
+	if projectIDForPath(link) != idA {
+		t.Fatal("sembolik bağ yazımı aynı kimliği vermeli")
+	}
+	if projectIDForPath(a+"/") != idA {
+		t.Fatal("sondaki eğik çizgi kimliği değiştirmemeli")
+	}
+}
