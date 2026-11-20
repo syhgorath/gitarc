@@ -331,6 +331,9 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID, strategy string) (m
 			if isBehindMergeError(out) {
 				return model.CockpitSnapshot{}, fmt.Errorf("PR #%d birleştirilemedi: dal %s dalının gerisinde kaldı (korumada \"dal güncel olmalı\" açık). Önce \"↻ Güncelle & Birleştir\" ile dalı güncelleyin; hiçbir şey değiştirilmedi", b.PR.Number, defBranch)
 			}
+			if isPolicyBlockedMergeError(out) {
+				return model.CockpitSnapshot{}, fmt.Errorf("PR #%d şu an birleştirilemiyor: %s dalının koruma kuralı engelliyor (zorunlu CI kontrolü henüz bitmemiş/geçmemiş ya da onay eksik olabilir). \"⏳ CI Bitince Merge Et\" ile kontroller yeşil olunca otomatik birleşmesini sağlayın; hiçbir şey değiştirilmedi", b.PR.Number, defBranch)
+			}
 			return model.CockpitSnapshot{}, fmt.Errorf("PR #%d merge edilemedi: %s", b.PR.Number, strings.TrimSpace(out))
 		}
 		syncDefaultBranchNonDestructive(ctx, live.path, defBranch)
@@ -646,6 +649,12 @@ func (m *Manager) GetDiffStat() (model.DiffStat, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.getDiffStatSimLocked(), nil
+}
+
+// isPolicyBlockedMergeError: `gh pr merge` çıktısı "dal koruma kuralı birleştirmeyi engelliyor" reddi mi (bitmemiş zorunlu CI, eksik
+// onay...)? Ham metin `--auto` / `--admin` önerir; GitArc'ta doğru yol "CI Bitince Merge Et"tir, `--admin` hiçbir yerde kullanılmaz.
+func isPolicyBlockedMergeError(out string) bool {
+	return strings.Contains(strings.ToLower(out), "base branch policy prohibits the merge")
 }
 
 // isBehindMergeError: `gh pr merge` çıktısı "dal ana dala göre güncel değil" reddi mi? (Ham GitHub/CLI metni kullanıcıya sızdırılmaz.)

@@ -61,7 +61,7 @@ try {
   await step('MCP penceresi açılır ve kapanır', async () => {
     await click('#btn-mcp-connect');
     await expect(visible('#mcp-connect-modal'), 'MCP penceresi açılmadı');
-    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('22 Araç')`, 'MCP penceresi koruma araçlarını/16 araç sayısını göstermiyor');
+    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('Araçlar (22)') && document.getElementById('mcp-connect-modal').textContent.includes('varsayılan KAPALI')`, 'MCP penceresi koruma araçlarını/22 araç sayısını/kapalı grubu göstermiyor');
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
   });
@@ -180,6 +180,7 @@ try {
     await click('#btn-protect-branch');
     await expect(visible('#security-update-modal'), 'Koruma penceresi açılmadı');
     await expect(`document.querySelectorAll('#prot-changes li').length > 0`, 'plan satırları görünmüyor');
+    await expect(`document.querySelectorAll('#prot-now .prot-now-row').length >= 5`, '"Şu an" kontrol listesi görünmüyor');
     await click('input[name="prot-profile"][value="temel"]');
     // Düğme plan gelene kadar gizlidir: GÖRÜNÜR olmasını beklemek, "Temel" planının geldiğinin kanıtıdır (önceki profilin
     // eski düğmesine tıklayıp yarışa girmeyelim).

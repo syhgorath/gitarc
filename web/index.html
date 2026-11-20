@@ -18,15 +18,18 @@
           </svg>
         </div>
         <div class="brand-copy">
-          <span class="brand-title">GitArc <span class="brand-accent">SVG</span></span>
-          <span class="brand-sub" id="mode-badge">Parabolik Topoloji</span>
+          <span class="brand-title">Git<span class="brand-accent">Arc</span></span>
+          <span class="brand-sub-row">
+            <button type="button" class="btn ghost mono brand-ver" id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v0.10.0</button>
+            <span class="brand-sub" id="mode-badge">Parabolik Topoloji</span>
+          </span>
         </div>
       </div>
 
       <div class="repo-picker">
         <label class="sr-only" for="repo-select">Depo Seç</label>
         <select id="repo-select" class="select-control" aria-label="Depo seçici"></select>
-        <button type="button" class="btn ghost sm" id="btn-add-project" title="Yeni yerel Git deposu ekle">➕ Proje Ekle</button>
+        <button type="button" class="btn ghost sm" id="btn-add-project" title="Yeni yerel Git deposu ekle">➕ Proje</button>
         <button type="button" class="btn ghost sm" id="btn-remove-project" title="Seçili projeyi GitArc listesinden kaldır (yerel dosyalarınız silinmez)">🗑️</button>
       </div>
 
@@ -39,17 +42,16 @@
       <div class="topbar-spacer"></div>
 
       <div class="toolbar-actions">
-        <label class="check-pill" title="Birleşmiş tam parabol kemerlerini göster veya gizle">
+        <label class="check-pill" title="Birleşmiş Paraboller: birleşmiş tam parabol kemerlerini göster veya gizle">
           <input type="checkbox" id="toggle-merged-arches" checked>
-          <span>Birleşmiş Paraboller</span>
+          <span>Birleşmiş</span>
         </label>
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-main-ci" hidden title="Merge sonrası omurga testleri">main CI</button>
         <button type="button" class="btn ghost" id="btn-queue" title="Merge kuyruğu: PR'ları sırayla main'e birleştirmenin salt okunur planı ve onayınla uygulanan sıradaki adım">🚦 Kuyruk</button>
         <button type="button" class="btn ghost" id="btn-protect-branch" title="GitHub main dal koruma ve güvenlik durumu">🛡️ Koruma</button>
-        <button type="button" class="btn ghost mono" id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v0.10.0</button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP</button>
-        <button type="button" class="btn ghost sm" id="btn-start-tour" title="GitArc etkileşimli kullanım turunu başlat">🎓 Tur</button>
+        <button type="button" class="btn ghost sm" id="btn-start-tour" title="Tur: GitArc etkileşimli kullanım turunu başlat" aria-label="Tur">🎓</button>
         <button type="button" class="btn emerald" id="btn-new-branch" title="main omurgasından yeni parabolik dal aç">+ Yeni Dal</button>
         <button type="button" class="icon-btn" id="btn-theme" title="Tema değiştir (Koyu / Açık)" aria-label="Tema değiştir">◐</button>
       </div>
@@ -412,22 +414,38 @@
     <div class="modal-backdrop" id="mcp-connect-modal" hidden>
       <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">
         <div class="modal-head">
-          <h3 id="mcp-modal-title"><span class="modal-dot"></span>🔌 MCP &amp; AI Bağlantı Merkezi</h3>
+          <h3 id="mcp-modal-title"><span class="modal-dot"></span>🔌 MCP &amp; AI Bağlantısı</h3>
           <button type="button" class="icon-close" id="mcp-close" aria-label="Kapat">✕</button>
         </div>
         <div class="modal-body">
-          <div class="det-badges">
-            <span class="chip accent">JSON-RPC 2.0 Stdio · Evrensel MCP</span>
-          </div>
-          <div class="layer-line">Antigravity Global (<code>~/.gemini/config/mcp_config.json</code>), Claude Code, Cursor veya Windsurf içine aşağıdaki bloğu ekleyerek GitArc'ı doğrudan AI aracınıza bağlayabilirsiniz:</div>
+          <div class="prot-intro">MCP, AI aracınızın (Claude Code, Cursor, Windsurf…) GitArc'ı doğrudan kullanmasını sağlar: durumu okur, planı çıkarır, size gösterir. <strong>Geri alınması zor işlemler varsayılan olarak kapalıdır.</strong></div>
+
+          <div class="prot-step">1 · Yapılandırmayı AI aracınıza ekleyin</div>
           <pre class="terminal-box studio-mcp-json" id="mcp-config-snippet"></pre>
-          <div class="diag-card">
-            <h4>Etkin MCP Araçları (22 Araç)</h4>
-            <div class="layer-line"><code>gitarc_status</code> · <code>gitarc_check_conflicts</code> · <code>gitarc_ci_failure_digest</code> · <code>gitarc_sync_main</code> · <code>gitarc_conflict_plan</code> (salt okunur) · <code>gitarc_queue_plan</code> (salt okunur) · <code>gitarc_update_branch_plan</code> (salt okunur) · <code>gitarc_queue_step_plan</code> (salt okunur) · <code>gitarc_queue_run_plan</code> (salt okunur) · <code>gitarc_queue_run_status</code> (salt okunur) · <code>gitarc_queue_run_stop</code> · <code>gitarc_propose_commit</code> · <code>gitarc_cleanup_candidates</code> · <code>gitarc_scan_secrets</code> · <code>gitarc_audit_log</code></div>
-            <div class="layer-line">Yazan ve geri alınması zor araçlar <strong>varsayılan kapalıdır</strong>: <code>gitarc_queue_run</code> (kuyruğu OTOMATİK çalıştırır: PR'ları sırayla günceller + birleştirir, ilk sorunda durur; <code>"env": {"GITARC_MCP_ALLOW_QUEUE_RUN": "1"}</code>), <code>gitarc_queue_step</code> (kuyruğun tek adımı: dalı günceller ya da PR'ı birleştirir; <code>"env": {"GITARC_MCP_ALLOW_QUEUE": "1"}</code>), <code>gitarc_update_branch</code> (uzak PR dalına push eder; <code>"env": {"GITARC_MCP_ALLOW_UPDATE": "1"}</code>), <code>gitarc_resolve_conflict</code> (yerel dalı günceller ve uzağa push eder; açmak için <code>"env": {"GITARC_MCP_ALLOW_RESOLVE": "1"}</code>). Dal koruması: <code>gitarc_protection_status</code> · <code>gitarc_protection_plan</code> (salt okunur) · <code>gitarc_protection_apply</code> (<strong>varsayılan kapalı</strong>: yalnızca yapılandırmaya <code>"env": {"GITARC_MCP_ALLOW_PROTECTION": "1"}</code> eklerseniz açılır; yalnızca güçlendirir)</div>
+          <div class="layer-line">Ekledikten sonra AI aracınızı (oturumu) yeniden başlatın; MCP süreci oturum başında açılır.</div>
+
+          <div class="prot-step">2 · Araçlar (22)</div>
+          <div class="diag-card mcp-group">
+            <h4><span>✅ Okuma &amp; plan</span><span class="chip ok">her zaman açık</span></h4>
+            <div class="layer-line mcp-tools"><code>gitarc_status</code> <code>gitarc_check_conflicts</code> <code>gitarc_ci_failure_digest</code> <code>gitarc_conflict_plan</code> <code>gitarc_queue_plan</code> <code>gitarc_update_branch_plan</code> <code>gitarc_queue_step_plan</code> <code>gitarc_queue_run_plan</code> <code>gitarc_queue_run_status</code> <code>gitarc_protection_status</code> <code>gitarc_protection_plan</code> <code>gitarc_cleanup_candidates</code> <code>gitarc_scan_secrets</code> <code>gitarc_audit_log</code></div>
+          </div>
+          <div class="diag-card mcp-group">
+            <h4><span>✋ Güvenli yazma</span><span class="chip">her zaman açık</span></h4>
+            <div class="layer-line mcp-tools"><code>gitarc_sync_main</code> (çalışma dizinini bozmadan main'i eşitler) <code>gitarc_propose_commit</code> (arayüzde onayınızı bekleyen öneri kartı) <code>gitarc_queue_run_stop</code> (çalışan koşuyu durdurur)</div>
+          </div>
+          <div class="diag-card mcp-group">
+            <h4><span>🔒 Uzağa yazan işlemler</span><span class="chip warn">varsayılan KAPALI</span></h4>
+            <div class="layer-line">Her biri hem ortam değişkeni hem de plandan alınan <code>fingerprint</code> ister; durum değiştiyse hiçbir şey yapmaz. Açmak için yapılandırmadaki <code>"env"</code> alanına ekleyin.</div>
+            <div class="mcp-gated">
+              <div><code>gitarc_queue_run</code><span>PR'ları sırayla günceller + birleştirir, ilk sorunda durur</span><code>GITARC_MCP_ALLOW_QUEUE_RUN=1</code></div>
+              <div><code>gitarc_queue_step</code><span>Kuyruğun tek adımı: dalı günceller ya da birleştirir</span><code>GITARC_MCP_ALLOW_QUEUE=1</code></div>
+              <div><code>gitarc_update_branch</code><span>PR dalını main ile günceller (uzak dala push)</span><code>GITARC_MCP_ALLOW_UPDATE=1</code></div>
+              <div><code>gitarc_resolve_conflict</code><span>Çakışmayı çözer, dalı uzağa push eder</span><code>GITARC_MCP_ALLOW_RESOLVE=1</code></div>
+              <div><code>gitarc_protection_apply</code><span>Dal korumasını güçlendirir (gevşetmez)</span><code>GITARC_MCP_ALLOW_PROTECTION=1</code></div>
+            </div>
           </div>
           <div class="modal-foot">
-            <button type="button" class="btn primary" id="mcp-copy-json">📋 Konfigürasyonu Kopyala</button>
+            <button type="button" class="btn primary" id="mcp-copy-json">📋 Yapılandırmayı kopyala</button>
             <button type="button" class="btn ghost" id="mcp-close-btn">Kapat</button>
           </div>
         </div>
@@ -474,22 +492,27 @@
       </div>
     </div>
 
-    <!-- MODAL: BRANCH PROTECTION & SELF-UPDATE MERKEZİ -->
+    <!-- MODAL: BRANCH PROTECTION & SÜRÜM MERKEZİ -->
     <div class="modal-backdrop" id="security-update-modal" hidden>
       <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="sec-modal-title">
         <div class="modal-head">
-          <h3 id="sec-modal-title"><span class="modal-dot"></span>🛡️ Dal Koruması, Team Modu &amp; Güncelleme Merkezi</h3>
+          <h3 id="sec-modal-title"><span class="modal-dot"></span>🛡️ Dal Koruması &amp; Sürüm</h3>
           <button type="button" class="icon-close" id="sec-close" aria-label="Kapat">✕</button>
         </div>
         <div class="modal-body">
           <div class="diag-card">
             <h4>
-              <span>GitHub Branch Protection (Ana Dal Koruması)</span>
+              <span>Ana dal koruması (GitHub)</span>
               <span class="chip" id="sec-prot-badge">Kontrol ediliyor...</span>
             </h4>
+            <div class="prot-intro">Koruma, <strong>ana dala</strong> kontrolsüz değişiklik girmesini engeller. GitArc yalnızca <strong>güçlendirir</strong>: mevcut hiçbir kuralı gevşetmez. Önce planı görürsünüz, onaylayınca uygulanır.</div>
             <div class="layer-line" id="sec-prot-summary">—</div>
+            <div class="prot-step">1 · Şu an</div>
+            <div class="prot-now" id="prot-now" hidden></div>
+            <div class="prot-step">2 · Hedef profili seçin</div>
             <div class="prot-profiles" id="prot-profiles" role="radiogroup" aria-label="Koruma profili"></div>
             <div class="prot-checks" id="prot-checks" hidden></div>
+            <div class="prot-step">3 · Değişecekler</div>
             <ul class="prot-changes" id="prot-changes" aria-label="Değişecekler"></ul>
             <div class="prot-notes" id="prot-notes"></div>
             <div class="det-actions">
@@ -499,14 +522,14 @@
 
           <div class="diag-card">
             <h4>
-              <span>Self-Update &amp; Team Server Durumu</span>
+              <span>Sürüm &amp; güncelleme</span>
               <span class="chip accent mono" id="sec-team-chip">Bireysel Masaüstü</span>
             </h4>
             <div class="layer-line" id="sec-update-status">Mevcut sürüm: v0.10.0</div>
             <div class="cmd-box"><code class="cmd-code" id="sec-update-cmd">git pull --ff-only origin main &amp;&amp; go build -o gitarc .</code></div>
             <div class="det-actions">
-              <button type="button" class="btn primary sm" id="btn-run-update-check">🔄 Uzak Etiketleri Denetle</button>
-              <button type="button" class="btn sm" id="sec-copy-update-cmd">📋 Güncelleme Komutunu Kopyala</button>
+              <button type="button" class="btn primary sm" id="btn-run-update-check">🔄 Yeni sürüm var mı?</button>
+              <button type="button" class="btn sm" id="sec-copy-update-cmd">📋 Güncelleme komutunu kopyala</button>
             </div>
           </div>
 

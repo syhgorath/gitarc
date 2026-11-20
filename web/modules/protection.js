@@ -6,10 +6,26 @@ import { apiCall } from './api.js';
 import { showToast } from './utils.js';
 
 export const PROTECTION_PROFILES = [
-  { id: 'temel', title: 'Temel', desc: 'PR zorunlu; force-push ve dal silme kapalı.' },
-  { id: 'ci', title: 'CI zorunlu', desc: 'Temel + dal güncel olmalı + seçtiğiniz CI kontrolleri geçmeden merge yok.' },
-  { id: 'siki', title: 'Sıkı', desc: 'CI zorunlu + 1 onay + yöneticiler dahil. Tek geliştiricide kendi PR\'ınızı birleştirmenizi engeller.' },
+  { id: 'temel', title: 'Temel', desc: 'Doğrudan push yok, PR zorunlu; force-push ve dal silme kapalı.' },
+  { id: 'ci', title: 'CI zorunlu (önerilen)', desc: 'Temel + CI kontrolleri yeşil olmadan ve dal main\'e göre güncel değilken birleştirme yok. AI/ekip PR kuyruğu için uygun.' },
+  { id: 'siki', title: 'Sıkı', desc: 'CI zorunlu + 1 onay + kurallar yöneticiler için de geçerli. Tek geliştiricide kendi PR\'ınızı birleştirmenizi engeller.' },
 ];
+
+/** "Şu an" kontrol listesi: korumanın bugünkü hâli sade satırlar olarak. [{label, on, value}] (on: açık mı). */
+export function currentRows(plan) {
+  const c = plan?.current;
+  if (!c) return [];
+  const checks = Array.isArray(c.checks) ? c.checks : [];
+  return [
+    { label: 'PR olmadan push yok', on: Boolean(c.requirePR), value: c.requirePR ? 'açık' : 'kapalı' },
+    { label: 'CI kontrolleri geçmeden merge yok', on: checks.length > 0, value: checks.length ? checks.join(', ') : 'zorunlu kontrol yok' },
+    { label: 'Dal main\'e göre güncel olmalı', on: Boolean(c.strictUpToDate), value: c.strictUpToDate ? 'açık' : 'kapalı' },
+    { label: 'Gereken onay sayısı', on: (c.approvals || 0) > 0, value: String(c.approvals || 0) },
+    { label: 'Force-push engelli', on: Boolean(c.blockForcePush), value: c.blockForcePush ? 'açık' : 'kapalı' },
+    { label: 'Dal silme engelli', on: Boolean(c.blockDeletion), value: c.blockDeletion ? 'açık' : 'kapalı' },
+    { label: 'Yöneticiler de kurala uyar', on: Boolean(c.enforceAdmins), value: c.enforceAdmins ? 'açık' : 'kapalı' },
+  ];
+}
 
 const view = { profile: 'ci', checks: new Set(), plan: null, planKey: '', seq: 0 };
 
@@ -73,7 +89,7 @@ function renderChecks(plan) {
   if (box.hidden) return;
   const head = document.createElement('div');
   head.className = 'prot-checks-head';
-  head.textContent = 'Zorunlu yapılacak CI kontrolleri (varsayılan dalın son çalışmasından):';
+  head.textContent = 'Hangi CI kontrolleri geçmeden birleştirilemesin? (dalın son çalışmasından listelenir)';
   box.appendChild(head);
   const names = plan.availableChecks || [];
   if (!names.length) {
@@ -102,7 +118,30 @@ function renderChecks(plan) {
   });
 }
 
+function renderNow(plan) {
+  const box = el.protNow;
+  if (!box) return;
+  box.textContent = '';
+  const rows = currentRows(plan);
+  box.hidden = rows.length === 0;
+  rows.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'prot-now-row ' + (r.on ? 'on' : 'off');
+    const mark = document.createElement('span');
+    mark.className = 'prot-now-mark';
+    mark.textContent = r.on ? '✓' : '–';
+    const label = document.createElement('span');
+    label.textContent = r.label;
+    const val = document.createElement('span');
+    val.className = 'prot-now-val';
+    val.textContent = r.value;
+    row.append(mark, label, val);
+    box.appendChild(row);
+  });
+}
+
 function renderPlan(plan) {
+  renderNow(plan);
   const list = el.protChanges;
   if (list) {
     list.textContent = '';

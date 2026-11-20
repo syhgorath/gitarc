@@ -5,6 +5,13 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 ## [Yayımlanmamış]
 
 ### Değişenler
+- **Üst çubuk kompakt:** Başlık `GitArc` (Arc yeşil, "SVG" kaldırıldı); sürüm rozeti başlığın altına taşındı; `Proje Ekle`, `Birleşmiş Paraboller`, `Tur` kısaltıldı: 1280 px'te sığar.
+- **Koruma ve MCP pencereleri sadeleşti:** Koruma: "1 · Şu an (✓/– kontrol listesi) → 2 · Profil (önerilen işaretli) → 3 · Değişecekler" + kısa açıklama (`currentRows`). MCP: 1 · yapılandırmayı ekle, 2 · araçlar üç grupta (okuma, güvenli yazma, uzağa yazan KAPALI olanlar ve açan ortam değişkeni).
+
+### Düzeltilenler
+- **Bitmemiş zorunlu CI ile Merge hep ham İngilizce `--auto/--admin` hatası veriyordu:** GitHub, korumalı dalda zorunlu kontrol bitmeden birleştirmeyi reddedince (`base branch policy prohibits the merge`) artık açıklayıcı Türkçe hata gelir ve arayüz çıkmaz sokak yerine 1 PR'lık "CI bitince merge et" koşusunu otomatik başlatır. `--admin` hiçbir yerde kullanılmaz.
+
+### Değişenler
 - **"⏳ CI Bitince Merge Et" artık sunucuda 1 PR'lık koşu (`startSingleMergeRun`):** Bekçi sekme belleğinde (`pendingAutoMerge`) duruyordu; sayfa yenilenince kayboluyor, geride kalan PR'ı güncellemiyordu. Çevrimiçi modda tıklama `/api/queue/run/plan` + `/start` ile 1 PR'lık koşu başlatır (güncelle → CI bekle → birleştir; yenilemede sürer, ikinci tıklama koşuyu durdurur, kart etiketi kuyrukla aynı). Çevrimdışı yedek eski sekme bekçisini korur. Duman testi güncellendi.
 
 ### Düzeltilenler

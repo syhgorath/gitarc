@@ -151,6 +151,16 @@ async function handleMergeBranch(branchId, btnEl = null) {
       showToast(err.message, 'danger');
       // Sunucu "dal main'in gerisinde" diyorsa (kural arayüzce bilinmiyordu: ruleset/okunamadı) çıkmaz sokakta bırakma: aynı planı aç.
       if (/gerisinde kaldı/.test(err.message || '')) openQueueModal(applySnapshot, { only: branchId, autoPlan: true });
+      // Koruma kuralı (bitmemiş zorunlu CI) engelledi: çıkmaz sokak yerine güvenli ön adım — CI bitince birleştiren 1 PR'lık koşu.
+      else if (!state.offlineMode && /koruma kuralı engelliyor/.test(err.message || '')) {
+        try {
+          const res = await startSingleMergeRun(branchId);
+          if (res.started) {
+            showToast(`⏳ '${b?.name}' için kontroller bitince otomatik birleştirilecek (sunucu koşusu)`, 'warn');
+            applySnapshot(await apiCall('/api/snapshot'));
+          }
+        } catch { /* koşu başlatılamadı: yukarıdaki açıklayıcı hata zaten gösterildi */ }
+      }
     }
   });
 }

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-import { changeRows, canApplyPlan, applyLabel, PROTECTION_PROFILES } from '../../web/modules/protection.js';
+import { changeRows, canApplyPlan, applyLabel, currentRows, PROTECTION_PROFILES } from '../../web/modules/protection.js';
 
 function loadEngine() {
   const ctx = { window: {}, console };
@@ -77,4 +77,17 @@ test('window model: rows, apply gating and label', () => {
   assert.equal(canApplyPlan(null), false);
   assert.equal(applyLabel(plan), '🛡️ 1 Değişikliği Uygula');
   assert.equal(applyLabel({ ...plan, changes: [] }), '🛡️ Değişecek Bir Şey Yok');
+});
+
+test('currentRows: "şu an" listesi korumanın bugünkü hâlini sade satırlara çevirir', () => {
+  assert.deepEqual(currentRows(null), []);
+  const rows = currentRows({ current: { requirePR: true, approvals: 0, strictUpToDate: true, checks: ['test'], blockForcePush: true, blockDeletion: false, enforceAdmins: false } });
+  const by = Object.fromEntries(rows.map((r) => [r.label, r]));
+  assert.equal(by['PR olmadan push yok'].on, true);
+  assert.equal(by['CI kontrolleri geçmeden merge yok'].value, 'test');
+  assert.equal(by['Dal main\'e göre güncel olmalı'].on, true);
+  assert.equal(by['Gereken onay sayısı'].on, false);
+  assert.equal(by['Dal silme engelli'].on, false);
+  const none = currentRows({ current: { checks: [] } });
+  assert.equal(none.find((r) => r.label.startsWith('CI kontrolleri')).value, 'zorunlu kontrol yok');
 });
