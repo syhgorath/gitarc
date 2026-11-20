@@ -29,6 +29,22 @@ export const state = {
   clientLogs: [],
 };
 
+// Projeye özel arayüz durumu: proje değişince eski projenin seçimi, taslakları ve KUYRUĞA ALINMIŞ otomatik merge'leri yeni
+// projeye taşınmamalı (dal adı eşleşirse başka projedeki bir dal birleştirilirdi).
+export function resetProjectScopedState(st = state) {
+  st.selectedBranchId = null;
+  st.selectedNodeSha = null;
+  st.pendingAutoMerge = {};
+  st.autoMergingInFlight = {};
+  st.draftPrEdits = {};
+  st.proposalDraftEdits = {};
+  st.localRunOutput = {};
+  st.studio = null;
+  st.baseOpen = false;
+  st.longLivedOpen = false;
+  st.historyOpen = false;
+}
+
 // Cached DOM element lookup helper
 export const el = {};
 

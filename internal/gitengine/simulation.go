@@ -56,6 +56,14 @@ type Manager struct {
 	demoAllowed bool
 }
 
+// ActiveRepoID: sunucuda şu an etkin olan projenin kimliği ("" = proje yok). İstemciler değiştirici isteklerde kendi
+// gösterdikleri projenin kimliğini gönderir; uyuşmazlıkta istek reddedilir (bkz. main.go guard).
+func (m *Manager) ActiveRepoID() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeRepoID
+}
+
 // NoProject: açık bir proje yok (depo bulunamadı ya da son proje kaldırıldı) ve demo da istenmedi.
 func (m *Manager) NoProject() bool {
 	m.mu.RLock()

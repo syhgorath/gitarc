@@ -1,6 +1,6 @@
 // web/app.js - GitArc Modular Main Application Entry Point
 import { REPO_STORAGE_KEY } from './modules/constants.js';
-import { state, el, initElements } from './modules/state.js';
+import { state, el, initElements, resetProjectScopedState } from './modules/state.js';
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
@@ -276,6 +276,7 @@ export function applySnapshot(snap) {
   // "Uzağa gidiyor" izi için önceki görüntü ve önceki yerleşim (alt ray konumu) saklanır.
   const prevSnap = state.snapshot;
   const prevApex = state.apexLayout ? new Map(state.apexLayout) : null;
+  if (prevSnap?.repo?.id && snap?.repo?.id && prevSnap.repo.id !== snap.repo.id) resetProjectScopedState();
   state.snapshot = snap;
   state.lastSig = snapshotSignature(snap);
 
@@ -417,6 +418,12 @@ async function bootstrap() {
         showToast(err.message, 'danger');
       }
     });
+  });
+
+  // Başka bir sekme projeyi değiştirdi: bu sekmedeki işlem YAPILMADI (sunucu 409 verdi); sunucunun projesini benimseyip yenile.
+  window.addEventListener('gitarc:repo-mismatch', () => {
+    showToast('⚠ Proje başka bir sekmede değiştirildi; işlem yapılmadı. Sayfa yenileniyor...', 'danger');
+    setTimeout(() => window.location.reload(), 1400);
   });
 
   // Repo / Project Switcher
