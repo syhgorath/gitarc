@@ -3,6 +3,7 @@ package gitengine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -57,10 +58,10 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 		}
 	}
 
-	repoPath := ""
+	repoPath, repoName := "", ""
 	cfg := DefaultGuardConfig
 	if live, ok := m.activeLiveRepo(); ok {
-		repoPath = live.path
+		repoPath, repoName = live.path, live.name
 		cfg = LoadGuardConfig(repoPath)
 	}
 
@@ -176,6 +177,8 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 		ShieldResult:      shieldResult,
 		CountCheckMatch:   countMatch,
 		CountCheckMessage: countMsg,
+		RepoPath:          repoPath,
+		RepoName:          repoName,
 	}
 
 	m.mu.Lock()
@@ -184,7 +187,13 @@ func (m *Manager) ProposeCommit(branchName, message string, files []string, prTi
 	m.mu.Unlock()
 
 	if repoPath != "" {
-		saveProposalToFile(repoPath, prop)
+		// Kart arayüze bu dosya üzerinden ulaşır (MCP ve arayüz ayrı süreçlerdir): yazılamadıysa sessizce "iletildi" deme.
+		if err := saveProposalToFile(repoPath, prop); err != nil {
+			m.mu.Lock()
+			m.pendingProposal = nil
+			m.mu.Unlock()
+			return model.CommitProposal{}, fmt.Errorf("öneri kartı kaydedilemedi, arayüze iletilemez: %v", err)
+		}
 	}
 
 	return prop, nil
@@ -231,35 +240,47 @@ func (m *Manager) DismissProposal() (model.CockpitSnapshot, error) {
 	return m.Snapshot()
 }
 
-// GetPendingProposal returns active proposal or loads it from .git IPC file.
+// GetPendingProposal bekleyen öneriyi döndürür. Canlı depoda `.git/gitarc_proposal.json` TEK GERÇEK KAYNAKTIR: öneriyi
+// MCP süreci yazar, arayüz süreci okur, onay/ret/mutasyon dosyayı siler. Bellekteki kopya dosyayı geriden izler
+// (eskiden bellekteki kart dosyadaki yeni kartın önüne geçiyor, başka süreçte onaylanan kart arayüzde kalıyordu).
+// Simülasyonda dosya yoktur; bellek esastır.
 func (m *Manager) GetPendingProposal() *model.CommitProposal {
-	m.mu.RLock()
-	if m.pendingProposal != nil {
-		defer m.mu.RUnlock()
+	if live, ok := m.activeLiveRepo(); ok {
+		prop, err := loadProposalFromFile(live.path)
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		switch {
+		case err == nil && prop != nil:
+			m.pendingProposal = prop
+		case err != nil && errors.Is(err, os.ErrNotExist):
+			m.pendingProposal = nil
+		}
 		return m.pendingProposal
 	}
-	m.mu.RUnlock()
-
-	if live, ok := m.activeLiveRepo(); ok {
-		if prop, err := loadProposalFromFile(live.path); err == nil && prop != nil {
-			m.mu.Lock()
-			m.pendingProposal = prop
-			m.mu.Unlock()
-			return prop
-		}
-	}
-	return nil
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.pendingProposal
 }
 
 func proposalFilePath(repoPath string) string {
 	return filepath.Join(repoPath, ".git", "gitarc_proposal.json")
 }
 
-func saveProposalToFile(repoPath string, prop model.CommitProposal) {
-	p := proposalFilePath(repoPath)
-	if b, err := json.MarshalIndent(prop, "", "  "); err == nil {
-		_ = os.WriteFile(p, b, 0644)
+func saveProposalToFile(repoPath string, prop model.CommitProposal) error {
+	b, err := json.MarshalIndent(prop, "", "  ")
+	if err != nil {
+		return err
 	}
+	return os.WriteFile(proposalFilePath(repoPath), b, 0644)
+}
+
+// proposalFileSig: kart dosyasının imzası (yoksa ""). Başka bir süreç (MCP) kartı yazınca/silince yoklama imzası değişsin.
+func proposalFileSig(repoPath string) string {
+	st, err := os.Stat(proposalFilePath(repoPath))
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d-%d", st.ModTime().UnixNano(), st.Size())
 }
 
 func loadProposalFromFile(repoPath string) (*model.CommitProposal, error) {

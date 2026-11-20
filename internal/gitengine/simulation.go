@@ -203,6 +203,7 @@ func NewManager(extraRepoPath string) *Manager {
 		m.activeRepoID = "" // bağlanacak proje yok ve demo istenmedi: "proje yok" durumu
 	}
 	m.logs = loadSavedLogs()
+	m.logSeq = maxLogSeq(m.logs) // yeniden başlatınca kimlikler çakışmasın (arayüz günlük değişimini kimlikten anlar)
 	return m
 }
 
@@ -293,7 +294,8 @@ func (m *Manager) QuickRepoSignature() string {
 	}
 
 	// bgVersion: arka plan fetch/gh sonuçları geldiğinde imza değişsin, arayüz taze veriyi çeksin.
-	return fmt.Sprintf("%s:%d:%d:%d", live.id, headMod, indexMod, bgVersion(live.path))
+	// proposalFileSig: MCP'nin yazdığı öneri kartı değişince arayüz yeni anlık görüntüyü çekip kartı göstersin.
+	return fmt.Sprintf("%s:%d:%d:%d:%s", live.id, headMod, indexMod, bgVersion(live.path), proposalFileSig(live.path))
 }
 
 // BackgroundVersion: etkin canlı deponun arka plan sonuçlarının (gh, fetch) sürümü; simülasyonda 0. Yoklama bunu ayrı
@@ -374,10 +376,11 @@ func (m *Manager) recordLogLocked(level, action, branch, message, detail string)
 		Branch:    branch,
 		Message:   strings.TrimSpace(message),
 		Detail:    strings.TrimSpace(detail),
+		RepoID:    m.activeRepoID,
 	}
 	m.logs = append([]model.ActionLogEntry{entry}, m.logs...)
-	if len(m.logs) > 50 {
-		m.logs = m.logs[:50]
+	if len(m.logs) > maxStoredLogs {
+		m.logs = m.logs[:maxStoredLogs]
 	}
 	_ = persistSavedLogs(m.logs)
 }
@@ -398,12 +401,23 @@ func (m *Manager) logLiveOutcome(action, branch, okMsg string, snap model.Cockpi
 	return snap, nil
 }
 
+// visibleLogLocked: kayıt etkin projeye mi ait (ya da eski, projesiz bir kayıt mı).
+func (m *Manager) visibleLogLocked(e model.ActionLogEntry) bool {
+	return e.RepoID == "" || e.RepoID == m.activeRepoID
+}
+
+// recentLogsLocked: etkin projenin (ve eski projesiz) en yeni kayıtları; her proje için en fazla maxVisibleLogs.
 func (m *Manager) recentLogsLocked() []model.ActionLogEntry {
-	if len(m.logs) == 0 {
-		return nil
+	var out []model.ActionLogEntry
+	for _, e := range m.logs {
+		if !m.visibleLogLocked(e) {
+			continue
+		}
+		out = append(out, e)
+		if len(out) >= maxVisibleLogs {
+			break
+		}
 	}
-	out := make([]model.ActionLogEntry, len(m.logs))
-	copy(out, m.logs)
 	return out
 }
 
@@ -416,9 +430,16 @@ func (m *Manager) recentLogs() []model.ActionLogEntry {
 // ClearLogs empties the in-memory cockpit operation/error log buffer and clears the persistent file.
 func (m *Manager) ClearLogs() (model.CockpitSnapshot, error) {
 	m.mu.Lock()
-	m.logs = nil
+	// Yalnızca görünen (etkin projenin) kayıtlar silinir; başka projelerin günlüğüne dokunulmaz.
+	kept := m.logs[:0:0]
+	for _, e := range m.logs {
+		if !m.visibleLogLocked(e) {
+			kept = append(kept, e)
+		}
+	}
+	m.logs = kept
+	_ = persistSavedLogs(m.logs)
 	m.mu.Unlock()
-	clearSavedLogsFile()
 	return m.Snapshot()
 }
 

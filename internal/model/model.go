@@ -33,6 +33,10 @@ type CommitProposal struct {
 	ShieldResult      string   `json:"shieldResult,omitempty"`
 	CountCheckMatch   bool     `json:"countCheckMatch"`
 	CountCheckMessage string   `json:"countCheckMessage,omitempty"`
+	// RepoName: önerinin oluşturulduğu projenin adı (kartta "Proje: X" olarak gösterilir).
+	RepoName string `json:"repoName,omitempty"`
+	// RepoPath: önerinin oluşturulduğu depo. Onay başka bir projede yapılmasın diye (yanlış depoya commit).
+	RepoPath string `json:"repoPath,omitempty"`
 }
 
 // RepoOption describes a selectable workspace repository (live or simulated).
@@ -305,6 +309,9 @@ type ActionLogEntry struct {
 	Branch    string `json:"branch,omitempty"`
 	Message   string `json:"message"`
 	Detail    string `json:"detail,omitempty"`
+	// RepoID: kaydın oluştuğu proje. Günlük proje başına gösterilir (bir projenin hatası ötekinin günlüğünde görünmesin);
+	// boş (eski kayıtlar) her projede görünür, böylece hiçbir şey kaybolmaz.
+	RepoID string `json:"repoId,omitempty"`
 }
 
 // SyncStep, bir veri toplama adımının (git fetch, gh PR listesi, koruma sorgusu) son durumudur.

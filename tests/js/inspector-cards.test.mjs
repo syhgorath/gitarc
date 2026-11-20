@@ -302,3 +302,11 @@ test('no user-facing "Üst Ray / Alt Ray" wording is left in the inspector (it i
   assert.doesNotMatch(upper + lower, /Üst Ray|Alt Ray/);
   assert.match(lower, /Yerel · Local/);
 });
+
+test('proposalCardHtml: shows which project the proposal belongs to (escaped), and nothing when unknown', () => {
+  const prop = { id: 'p1', branchName: 'feat/x', message: 'm', files: ['a.txt'], repoName: 'GitArc <b>' };
+  const html = proposalCardHtml(prop, null);
+  assert.match(html, /Proje: <strong>GitArc &lt;b&gt;<\/strong>/);
+  assert.doesNotMatch(html, /GitArc <b>/, 'project name must be escaped');
+  assert.doesNotMatch(proposalCardHtml({ ...prop, repoName: undefined }, null), /Proje:/);
+});
