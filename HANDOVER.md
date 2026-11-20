@@ -2,7 +2,7 @@
 
 > **Mevcut Sürüm:** `0.10.0` (`VERSION` ve `internal/gitengine/collector.go` `AppVersion`)  
 > **Modül / Go Sürümü:** `module gitarc` · `go 1.27.3` · Sıfır dış bağımlılık (`go.mod`)  
-> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **256 üst düzey Go testi + 252 JS testi geçti** (`gitarc`: 28 (JS sarmalayıcı ve gerçek tarayıcıda duman testi `TestBrowserSmoke` dahil; kapsam **%78**), `internal/gitengine`: 204 · kapsam **%87**, `internal/mcp`: 24 · kapsam **%83**, `internal/model`: test dosyası yok; v0.10.0 sonrası ek: merge kuyruğu planı + dalı güncelle, dal koruması, proje izolasyonu paketi `projects_isolation_test.go`), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
+> **Son Doğrulanmış Test Durumu:** `go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .` → **293 üst düzey Go testi + 281 JS testi geçti** (`gitarc`: 30 (JS sarmalayıcı ve gerçek tarayıcıda duman testi `TestBrowserSmoke` dahil; kapsam **%76**), `internal/gitengine`: 229 · kapsam **%87**, `internal/mcp`: 34 · kapsam **%85**, `internal/model`: test dosyası yok; v0.10.0 sonrası ek: merge kuyruğu (plan, dalı güncelle, adım adım, otomatik döngü, geride kalan PR için "Güncelle & Birleştir"), tuvalde `main CI` rozeti + kartı, kuyruk/tekil PR "birleşecek" etiketi ve oku, Son İşlemler sekmesi, Hata Radarı işlem hatası kartları, MCP `gitarc_status` kısa özeti, dal koruması, proje izolasyonu paketi `projects_isolation_test.go`), `node --check web/*.js web/modules/*.js` → **0 hata**. Ayrıntılar için bkz. **Bölüm 8 (Test Altyapısı)**.
 
 ---
 
@@ -167,7 +167,7 @@ GitArc, son kullanıcının Git iç işleyişini veya sırasını ezberlemek zor
 14. **Açık tema ve koyu bloklar:**
     - Alt çekmece/stüdyo sütunlarının zeminleri `--terminal-bg` / `--diff-bg` değişkenleridir (koyu: `#070a11`/`#090d16`, açık: `#eef1f6`/`#f8f9fc`); sabit renk kodu yazma, yoksa açık temada siyah şerit çıkar. Log/CI kutuları (`--log-bg`, `.terminal-box`) açık temada bilinçli olarak koyu kalır (IDE terminali görünümü).
 15. **`go test` kapsamı ve node:**
-    - `e2e_smoke_test.go` + `tests/e2e/` (GELİŞTİRİCİ testi: gerçek Chrome'da ana pencereleri tıklar; Chrome/node yoksa ya da `GITARC_E2E=0` ise atlanır, `CHROME_BIN` ile yol verilir; ikiliye gömülmez), `canvas_js_test.go` `node --test tests/js/` komutunu çalıştırır; node yoksa test atlanır (CI `ubuntu-latest` üzerinde node hazırdır). `tests/js/` `web/` dışındadır, bu yüzden ikiliye gömülmez ve CSP testine takılmaz.
+    - `e2e_smoke_test.go` + `tests/e2e/` (GELİŞTİRİCİ testi: gerçek Chrome'da ana pencereleri tıklar; Chrome/node yoksa ya da `GITARC_E2E=0` ise atlanır, `CHROME_BIN` ile yol verilir; ikiliye gömülmez), `canvas_js_test.go` `node --test tests/js/` komutunu çalıştırır; node yoksa test atlanır (CI `ubuntu-latest` üzerinde node hazırdır). `tests/js/` `web/` dışındadır, bu yüzden ikiliye gömülmez ve CSP testine takılmaz. Tuvalde (SVG) tıklanabilir yeni öğeler duman testinde sentetik `click()` yerine GERÇEK fare tıklamasıyla (`b.realClick`, `tests/e2e/cdp.mjs`) sınanır: kaydırma işleyicisi işaretçiyi yakalayıp tıklamayı yutabilir (`interactions.js` `isPanExemptTarget`).
 
 ---
 
