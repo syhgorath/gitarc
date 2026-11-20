@@ -466,6 +466,9 @@ func TestQueueRunLiveStopsWhenSomeoneElsePushesWhileWaitingForCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(150 * time.Millisecond) // koşu bekleme döngüsünde
+	if snap, err := mgr.Snapshot(); err != nil || snap.Repo.QueueRun == nil || snap.Repo.QueueRun.Total != 1 || snap.Repo.QueueRun.Items[0].State != "current" {
+		t.Fatalf("çalışan koşu anlık görüntüde görünmeli (kart rozeti): %+v %v", snap.Repo.QueueRun, err)
+	}
 	w.pushFromOther("feat/x", "baskasi.txt", "b\n") // koşu kendi fetch'ini çalıştırıyor: yerel klona dokunma
 	final := waitRunDone(t, mgr)
 	// Dışarıdan push iki yoldan fark edilir (hangisi önce olduğu zamanlamaya bağlı): koşunun kendi yenilediği uç onaylanandan
@@ -513,5 +516,66 @@ func TestQueueRunStartedByAnotherProcessIsNotMarkedInterruptedWhileItsHeartbeatI
 	}
 	if _, err := mgr.StopQueueRun(); err == nil || !strings.Contains(err.Error(), "başka bir süreçte") {
 		t.Fatalf("durdurma, koşunun başka süreçte olduğunu söylemeli: %v", err)
+	}
+}
+
+// Kart rozeti: çalışan koşu anlık görüntüde (kuyruk penceresi kapalıyken de) görünür; biten/durdurulan koşu görünmez; imza değişir.
+func TestRunningQueueIsInTheSnapshotForCardBadgesAndTheSignatureChanges(t *testing.T) {
+	fastRun(t)
+	mgr := NewManager("")
+	sigIdle := mgr.QuickRepoSignature()
+	if snap, _ := mgr.Snapshot(); snap.Repo.QueueRun != nil {
+		t.Fatalf("koşu yokken rozet verisi olmamalı: %+v", snap.Repo.QueueRun)
+	}
+	ids := []string{"br-open-424"} // CI sürüyor: koşu bekler
+	plan, _ := mgr.QueueRunPlan(ids)
+	if _, err := mgr.StartQueueRun(ids, plan.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, "bekleme olayı", func() bool {
+		r, _ := mgr.QueueRunStatus()
+		return r != nil && len(r.Events) > 1
+	})
+	snap, _ := mgr.Snapshot()
+	q := snap.Repo.QueueRun
+	if q == nil || q.Total != 1 || q.Merged != 0 || len(q.Items) != 1 || q.Items[0].BranchID != "br-open-424" || q.Items[0].State != "current" {
+		t.Fatalf("çalışan koşu özeti: %+v", q)
+	}
+	if q.Phase != "CI bekleniyor" {
+		t.Fatalf("CI beklerken aşama 'CI bekleniyor' olmalı: %q", q.Phase)
+	}
+	if mgr.QuickRepoSignature() == sigIdle {
+		t.Fatal("koşu başlayınca anlık görüntü imzası değişmeli (arayüz kartları yenilesin)")
+	}
+	if _, err := mgr.StopQueueRun(); err != nil {
+		t.Fatal(err)
+	}
+	if snap, _ := mgr.Snapshot(); snap.Repo.QueueRun != nil {
+		t.Fatalf("durdurulan koşu için rozet verisi kalkmalı: %+v", snap.Repo.QueueRun)
+	}
+}
+
+func TestQueueRunBriefMarksDoneCurrentAndWaitingItems(t *testing.T) {
+	mgr := NewManager("")
+	run := &model.QueueRun{ID: "r", Status: "running", Mode: "simulation", Items: items("a", "b", "c"), Merged: 1, UpdatedAt: time.Now().Format(time.RFC3339),
+		Events: []model.QueueRunEvent{{Kind: "info"}, {Kind: "merge", Branch: "a"}, {Kind: "update", Branch: "b"}}}
+	s := mgr.qr()
+	s.mu.Lock()
+	s.state["simulation"] = run
+	s.active["simulation"] = &activeQueueRun{}
+	s.mu.Unlock()
+	b := mgr.queueRunBrief("simulation", "", false)
+	if b == nil || b.Total != 3 || b.Merged != 1 || b.Current != 1 {
+		t.Fatalf("özet: %+v", b)
+	}
+	got := []string{b.Items[0].State, b.Items[1].State, b.Items[2].State}
+	if strings.Join(got, ",") != "done,current,waiting" || b.Phase != "CI bekleniyor" {
+		t.Fatalf("durumlar/aşama: %v %q", got, b.Phase)
+	}
+	s.mu.Lock()
+	run.Status = "blocked"
+	s.mu.Unlock()
+	if mgr.queueRunBrief("simulation", "", false) != nil {
+		t.Fatal("bitmiş/durmuş koşu rozet vermemeli")
 	}
 }

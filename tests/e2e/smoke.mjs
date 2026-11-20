@@ -97,6 +97,16 @@ try {
     await b.realClick('.svg-mainci-badge'); // GERÇEK fare: tuval kaydırma işleyicisi tıklamayı yutmamalı
     await expect(`!!document.querySelector('.mainci-card') && document.querySelector('.mainci-card').textContent.includes('main CI')`, 'rozete tıklayınca main CI kartı açılmadı');
   });
+  await step('Çalışan kuyruk koşusu: PR kartında "kuyrukta/işleniyor" rozeti çıkar, durdurunca kalkar', async () => {
+    const refresh = `(async () => { const api = await import('/modules/api.js'); const app = await import('/app.js'); app.applySnapshot(await api.apiCall('/api/snapshot')); return true; })()`;
+    // #424'ün CI'ı sürüyor: koşu başlar ve bekler (rozet görünür kalır)
+    await b.eval(`(async () => { const api = await import('/modules/api.js'); const plan = await api.apiCall('/api/queue/run/plan', 'POST', { branchIds: ['br-open-424'] }); await api.apiCall('/api/queue/run/start', 'POST', { branchIds: ['br-open-424'], confirm: plan.fingerprint }); })()`);
+    await b.eval(refresh);
+    await expect(`!!document.querySelector('.cap-queue-tag.current') && document.querySelector('.cap-queue-tag.current').textContent.includes('İşleniyor')`, 'çalışan koşudaki PR kartında "İşleniyor" rozeti yok');
+    await b.eval(`(async () => { const api = await import('/modules/api.js'); await api.apiCall('/api/queue/run/stop', 'POST', {}); })()`);
+    await b.eval(refresh);
+    await expect(`!document.querySelector('.cap-queue-tag')`, 'durdurulan koşudan sonra rozet kalkmalı');
+  });
   await step('Kuyruğu çalıştır (3b): plan → onay → sunucu sırayla birleştirir → durum "Koşu bitti"', async () => {
     await b.eval(`(async () => { const m = await import('/modules/api.js'); await m.apiCall('/api/branch/fix-ci', 'POST', { branchId: 'br-open-424' }); })()`);
     await click('#btn-queue');

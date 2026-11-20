@@ -280,7 +280,7 @@ func (m *Manager) QuickRepoSignature() string {
 		}
 	}
 	if live == nil || !isGitDir(live.path) {
-		return fmt.Sprintf("sim-%d", m.logSeq)
+		return fmt.Sprintf("sim-%d%s", m.logSeq, m.queueRunSignature("simulation", "", false))
 	}
 
 	gitDir := filepath.Join(live.path, ".git")
@@ -305,7 +305,7 @@ func (m *Manager) QuickRepoSignature() string {
 	for _, lr := range m.liveRepos {
 		props = append(props, proposalFileSig(lr.path))
 	}
-	return fmt.Sprintf("%s:%d:%d:%d:%s", live.id, headMod, indexMod, bgVersion(live.path), strings.Join(props, ","))
+	return fmt.Sprintf("%s:%d:%d:%d:%s%s", live.id, headMod, indexMod, bgVersion(live.path), strings.Join(props, ","), m.queueRunSignature(live.path, live.path, true))
 }
 
 // BackgroundVersion: etkin canlı deponun arka plan sonuçlarının (gh, fetch) sürümü; simülasyonda 0. Yoklama bunu ayrı
@@ -356,6 +356,7 @@ func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 	m.mu.RUnlock()
 	snap.PendingProposal = m.GetPendingProposal()
 	snap.Logs = m.recentLogs()
+	snap.Repo.QueueRun = m.queueRunBrief(live.path, live.path, true)
 	return snap, nil
 }
 
@@ -1164,6 +1165,7 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 	copy(nodes, m.simRepo.nodes)
 
 	repoMeta := m.simRepo.repo
+	repoMeta.QueueRun = m.queueRunBrief("simulation", "", false)
 	repoMeta.MainCI = simMainCI(repoMeta, nodes)
 	repoMeta.TeamMode = m.teamMode
 	repoMeta.AppVersion = AppVersion

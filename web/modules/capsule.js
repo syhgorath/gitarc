@@ -7,6 +7,7 @@
 import { state } from './state.js';
 import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H } from './constants.js';
 import { esc, truncate, svgEl, isWorkingTreeBranch, diffArgsFor, prHeadline } from './utils.js';
+import { queueRunBadge } from './syncsteps.js';
 
 export function capsulePositionForApex(b, apexX, apexY) {
   if (b.state === 'merged') {
@@ -262,7 +263,9 @@ export function openCardModel(b, ctx) {
   const actionRowHtml = actionRowHtmlOf(b, ctx);
   const authorBadgeHtml = authorBadgeHtmlOf(b, ctx.currentUser);
   const className = `cap-card ${ctx.tone} ${ctx.isSelected ? 'selected' : ''}`;
+  const qr = ctx.queueRun;
   const html = `
+    ${qr ? `<span class="cap-queue-tag ${esc(qr.tone)}" title="${esc(qr.title)}">${esc(qr.text)}</span>` : ''}
     <div class="cap-head">
       <span class="cap-title" title="${esc(b.name)}">${f.isWorkingTreeWip ? '✏️ Çalışma Alanı' : esc(truncate(b.name, 18))}</span>
       ${authorBadgeHtml}
@@ -380,6 +383,7 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
     tone,
     isSelected,
     isQueued: Boolean(state.pendingAutoMerge[b.id]),
+    queueRun: queueRunBadge(snap, b),
     pendingProposal: snap?.pendingProposal,
     currentUser: snap?.repo?.currentUser,
   }, callbacks));
