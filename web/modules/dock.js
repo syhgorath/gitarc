@@ -46,9 +46,21 @@ export function logBadgeModel(logs) {
   };
 }
 
+// "Son İşlemler": günlüğün BAŞARILI (level "ok") satırları, yani kullanıcının/ajanın yaptığı ve tamamlanan işlemler
+// ("PR #16 birleştirildi", "dal güncellendi", "koşu bitti"). Hata satırları Hata Radarı'nda/Sistem Loglarında kalır, bilgi
+// satırları yalnızca Sistem Loglarında; sürüm kontrolü gibi kendiliğinden yapılan işlemler "işlem" sayılmaz. Veri tek yerde
+// (snapshot.logs); ayrı bir depolama yok.
+export const AUTOMATIC_ACTIONS = new Set(['Sürüm Kontrolü']);
+
+export function recentActionsModel(logs, limit = 30) {
+  return (logs || [])
+    .filter((l) => l && l.level === 'ok' && !AUTOMATIC_ACTIONS.has(l.action))
+    .slice(0, limit);
+}
+
 export function renderDockStreams() {
   const logs = getMergedLogs();
-  const actionLogs = state.snapshot?.actionLogs || [];
+  const actionLogs = recentActionsModel(logs);
 
   if (el.dockLogCount) {
     const badge = logBadgeModel(logs);
@@ -80,11 +92,11 @@ export function renderDockStreams() {
   if (el.dockActionsStream) {
     el.dockActionsStream.innerHTML = '';
     if (actionLogs.length === 0) {
-      el.dockActionsStream.innerHTML = '<div class="empty-detail">Henüz kaydedilmiş işlem yok.</div>';
+      el.dockActionsStream.innerHTML = '<div class="empty-detail">Henüz tamamlanmış bir işlem yok. Başarılı işlemler (birleştirme, dal güncelleme, kuyruk koşusu…) burada görünür; hatalar Hata Radarı ve Sistem Loglarındadır.</div>';
     } else {
-      actionLogs.slice(0, 50).forEach((a) => {
+      actionLogs.forEach((a) => {
         const item = document.createElement('div');
-        item.className = `dock-log-item ${a.level === 'error' ? 'danger' : (a.level === 'warn' ? 'warn' : 'ok')}`;
+        item.className = 'dock-log-item ok';
         item.innerHTML = `
           <span class="dock-log-time">${esc(a.timestamp || '')}</span>
           <span class="dock-log-act">${esc(a.action || '')}</span>

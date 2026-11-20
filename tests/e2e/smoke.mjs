@@ -144,6 +144,12 @@ try {
     await click('#queue-close');
     await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });
+  await step('Son İşlemler sekmesi: tamamlanan işlemleri (başarılı günlük satırları) gösterir, hata göstermez', async () => {
+    await click('#dock-tab-actions');
+    await expect(`Number(document.getElementById('dock-action-count').textContent) > 0`, 'Son İşlemler sayacı 0: başarılı işlemler görünmüyor');
+    await expect(`!!document.querySelector('#dock-actions-stream .dock-log-item.ok') && !document.querySelector('#dock-actions-stream .dock-log-item.danger') && !document.querySelector('#dock-actions-stream').textContent.includes('Henüz tamamlanmış')`, 'Son İşlemler listesi boş ya da hata içeriyor');
+    await click('#dock-tab-radar');
+  });
   await step('Koruma penceresi: plan görünür, "Temel" uygulanınca depo korumalı olur, pencere kapanır', async () => {
     await click('#btn-protect-branch');
     await expect(visible('#security-update-modal'), 'Koruma penceresi açılmadı');
