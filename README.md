@@ -106,6 +106,15 @@ Demo verisi yalnızca bilerek istenince açılır: `./gitarc -repo sim`. Demo de
 | `gitarc_ci_failure_digest` | Gürültüsüz CI hata özeti ve yerel repro komutu |
 | `gitarc_sync_main` | Çalışma dizinini bozmadan `origin/main` eşitleme |
 | `gitarc_resolve_conflict` | İzole worktree içinde doğrulamalı çakışma çözümü |
+| `gitarc_propose_commit` | Commit & PR öneri kartı (arayüzde onay bekler, doğrudan commit etmez) |
+| `gitarc_cleanup_candidates` | Temizlenebilir birleşmiş/silinmiş dallar ve kanıtları (silmez) |
+| `gitarc_scan_secrets` | API anahtarı, özel anahtar, `.env` ve kişisel yol taraması |
+| `gitarc_audit_log` | Kokpit ve MCP işlem kayıtları |
+| `gitarc_protection_status` | Varsayılan dalın koruma durumu ve zorunlu yapılabilecek CI kontrolleri (salt okunur) |
+| `gitarc_protection_plan` | Bir koruma profilinin ne değiştireceği (salt okunur; yalnızca güçlendirir) |
+| `gitarc_protection_apply` | Planı uygular. **Varsayılan KAPALI**: yalnızca sunucu `GITARC_MCP_ALLOW_PROTECTION=1` ile başlatılırsa çalışır ve plandan alınan `fingerprint` ister |
+
+Dal koruması bir güvenlik ayarı olduğu için `gitarc_protection_apply` ajana kendiliğinden bırakılmaz. Açmak için MCP yapılandırmasına `"env": {"GITARC_MCP_ALLOW_PROTECTION": "1"}` ekleyin. Açıkken bile araç yalnızca **güçlendirir**: mevcut bir kuralı gevşetmez ya da silmez, ve ancak ajanın kullanıcıya gösterdiği planla (`fingerprint`) çalışır.
 
 Ayrıntılı mimari şartname için [docs/PLAN.md](docs/PLAN.md) belgesine bakın.
 
