@@ -156,7 +156,7 @@ export function mergeIntentBadge(snap, b, pending = {}) {
   const q = queueRunBadge(snap, b);
   if (q) return q;
   if (!b || !pending || !pending[b.id]) return null;
-  return { text: '⏳ CI bitince birleşecek', tone: 'current', title: 'CI bitince otomatik birleştirilecek (bu sekmede; sayfa yenilenirse kaybolur)' };
+  return { text: '⏳ CI bitince birleşecek', tone: 'current', title: 'CI bitince otomatik birleştirilecek (çevrimdışı yedekte bu sekmede)' };
 }
 
 // Koruma durumu: "Bilinmiyor", "Korumasız"tan ayrı gösterilir (yönetici olmayan kullanıcıya GitHub 404 verir).

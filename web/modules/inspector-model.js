@@ -3,7 +3,7 @@
 // Hangi kartın/butonun/metnin gösterileceği buradaki fonksiyonlardan gelir; HTML basımı inspector-cards.js ve
 // studio.js'te, olay bağlama inspector.js / studio.js / proposal.js'te yapılır.
 import { truncate, isMergedOrGone, suggestUniqueBranchName, prHeadline } from './utils.js';
-import { needsUpdateBeforeMerge } from './syncsteps.js';
+import { needsUpdateBeforeMerge, queueRunBadge } from './syncsteps.js';
 
 // ---------------------------------------------------------------------------
 // CI kontrolleri: iki panelde (stüdyo ve inspector) tek sınıflandırma
@@ -60,7 +60,7 @@ export function branchViewModel(b, snap, st = {}) {
   const isLive = snap.repo.mode === 'live';
   const ciState = b.pr?.ci?.state || '';
   const isRunning = ciState === 'RUNNING';
-  const isQueued = Boolean(st.pendingAutoMerge?.[b.id]);
+  const isQueued = Boolean(st.pendingAutoMerge?.[b.id] || queueRunBadge(snap, b));
   const needsUpdate = needsUpdateBeforeMerge(b, snap);
   const canCommitWorkingTree = Boolean(isVirtualWip || (b.uncommittedCount || 0) > 0 || (b.isHead && (snap?.repo?.dirtyCount || 0) > 0));
   const isAlreadySynced = b.aheadMain === 0 && (b.uncommittedCount || 0) === 0 && !isVirtualWip;

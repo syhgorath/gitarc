@@ -57,6 +57,10 @@ test('branchViewModel: virtual working tree, remote-only, queued auto-merge, liv
   assert.equal(branchViewModel(open('r', { hasRemote: true }), snap()).isRemoteOnly, true);
   assert.equal(branchViewModel(open('r', { hasRemote: true, hasLocal: true }), snap()).isRemoteOnly, false);
   assert.equal(branchViewModel(open('q'), snap(), { pendingAutoMerge: { q: true } }).isQueued, true);
+  // Sunucu koşusundaki PR de "kuyrukta" sayılır (yenilemeden sonra da sürer).
+  const sq = snap();
+  sq.repo.queueRun = { total: 1, phase: 'CI bekleniyor', items: [{ branchId: 'q', branch: 'q', state: 'current' }] };
+  assert.equal(branchViewModel(open('q'), sq, {}).isQueued, true);
   assert.equal(branchViewModel(open('q'), snap(), {}).isQueued, false);
   assert.equal(branchViewModel(open('q'), snap({ mode: 'simulation' })).isLive, false);
   assert.equal(branchViewModel(open('plain-name'), snap()).title, 'plain-name');
