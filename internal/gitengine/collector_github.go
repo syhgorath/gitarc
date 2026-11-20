@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,20 +21,20 @@ const ghCacheTTL = 10 * time.Second
 // `gh pr list --json statusCheckRollup` ~5 sn sürer) arka planda, bol süreyle çalışır;
 // anlık snapshot yalnızca ghWait / fetchWait kadar bekler ve eldeki (bayat) veriyi gösterir.
 var (
-	ghWait         = 2 * time.Second  // snapshot'ın gh sonucunu en fazla ne kadar bekleyeceği (ilk veri / bir mutasyondan sonra)
-	fetchWait      = 1 * time.Second  // snapshot'ın git fetch sonucunu en fazla ne kadar bekleyeceği (ilk fetch / mutasyondan sonra)
+	ghWait    = 2 * time.Second // snapshot'ın gh sonucunu en fazla ne kadar bekleyeceği (ilk veri / bir mutasyondan sonra)
+	fetchWait = 1 * time.Second // snapshot'ın git fetch sonucunu en fazla ne kadar bekleyeceği (ilk fetch / mutasyondan sonra)
 	// Eldeki veri yalnızca süresi dolduğu için bayatsa (kimse bir şeyi değiştirmedi) çok kısa beklenir: bayat veri
 	// hemen gösterilir, yenisi arka planda gelince imza (bgVersion) değişir ve arayüz kendiliğinden yeniler. Eskiden
 	// her 10 sn'lik süre dolumunda bir sonraki anlık görüntü boşuna ~3 sn (2 + 1) bekliyordu.
 	ghWaitPassive    = 300 * time.Millisecond
 	fetchWaitPassive = 200 * time.Millisecond
-	fetchTTL       = 10 * time.Second // aynı depoda iki git fetch arası en az süre
-	ghRefreshLimit = 90 * time.Second // arka plan yenilemesinin toplam üst sınırı
-	ghPRTimeout    = 60 * time.Second
-	ghMergedLimit  = 30 * time.Second
-	ghProtTimeout  = 15 * time.Second
-	ghLogTimeout   = 15 * time.Second
-	gitFetchLimit  = 90 * time.Second
+	fetchTTL         = 10 * time.Second // aynı depoda iki git fetch arası en az süre
+	ghRefreshLimit   = 90 * time.Second // arka plan yenilemesinin toplam üst sınırı
+	ghPRTimeout      = 60 * time.Second
+	ghMergedLimit    = 30 * time.Second
+	ghProtTimeout    = 15 * time.Second
+	ghLogTimeout     = 15 * time.Second
+	gitFetchLimit    = 90 * time.Second
 )
 
 // ghData, GitHub'dan alınan son başarılı sonuçlardır (bayat gösterim için saklanır).
@@ -796,7 +797,30 @@ func fetchMainCI(ctx context.Context, repoPath, defaultBranch string) (*model.Ma
 		return nil, nil
 	}
 	head := runs[0].HeadSHA // gh en yeniyi başa koyar
-	res := &model.MainCIStatus{State: "SUCCESS", Branch: defaultBranch, Title: runs[0].DisplayTitle, UpdatedAt: runs[0].UpdatedAt, Workflow: runs[0].WorkflowName, URL: runs[0].URL}
+	// Omurganın GERÇEK ucu (origin/<omurga>): GitHub, push'tan sonra yeni commit için iş akışı kaydını birkaç saniye (bazen
+	// dakika) sonra oluşturur; o aralıkta "en son koşu" bir ÖNCEKİ commit'indir ve yeşil görünüp yeni merge'ün testlerini gizlerdi.
+	if tip := mainTipSHA(rCtx, repoPath, defaultBranch); tip != "" {
+		has := false
+		for _, r := range runs {
+			if r.HeadSHA == tip {
+				has = true
+				break
+			}
+		}
+		if has {
+			head = tip
+		} else {
+			return pendingMainCI(rCtx, repoPath, defaultBranch, tip), nil
+		}
+	}
+	first := runs[0]
+	for _, r := range runs {
+		if r.HeadSHA == head {
+			first = r
+			break
+		}
+	}
+	res := &model.MainCIStatus{State: "SUCCESS", Branch: defaultBranch, Title: first.DisplayTitle, UpdatedAt: first.UpdatedAt, Workflow: first.WorkflowName, URL: first.URL}
 	if len(head) >= 7 {
 		res.SHA = head[:7]
 	}
@@ -825,6 +849,32 @@ func fetchMainCI(ctx context.Context, repoPath, defaultBranch string) (*model.Ma
 		return nil, nil // yalnızca atlanmış çalıştırmalar: sonuç yok
 	}
 	return res, nil
+}
+
+// mainTipSHA: yerel `origin/<omurga>` ucu; okunamazsa "" (eski davranış: son koşuya güven).
+func mainTipSHA(ctx context.Context, repoPath, branch string) string {
+	sha, err := revParse(ctx, repoPath, "origin/"+branch)
+	if err != nil {
+		return ""
+	}
+	return sha
+}
+
+// mainCIPendingWindow: omurga ucu bu kadar yeniyse ve GitHub henüz o commit için koşu kaydı açmadıysa "testler başlıyor" sayılır.
+var mainCIPendingWindow = 15 * time.Minute
+
+// pendingMainCI: omurga ucunun CI koşusu GitHub'da henüz görünmüyor. Uç yeniyse RUNNING ("başlıyor"; asla yeşil değil), eskiyse
+// (iş akışı bu push'ta hiç koşmuyor olabilir) sonuç yok (nil): rozet gösterilmez, sahte yeşil/sahte bekleme olmaz.
+func pendingMainCI(ctx context.Context, repoPath, branch, tip string) *model.MainCIStatus {
+	out, _, err := runCmd(ctx, repoPath, "git", "show", "-s", "--format=%ct", tip)
+	if err != nil {
+		return nil
+	}
+	ts, perr := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
+	if perr != nil || time.Since(time.Unix(ts, 0)) > mainCIPendingWindow {
+		return nil
+	}
+	return &model.MainCIStatus{State: "RUNNING", Branch: branch, SHA: tip[:7], Title: "bu commit için GitHub henüz test kaydı açmadı (başlıyor)"}
 }
 
 // protectionIsStrict: klasik koruma özetinden ("Aktif (strict checks: true)") "dal güncel olmalı" bilgisi. Ruleset ya da okunamayan koruma

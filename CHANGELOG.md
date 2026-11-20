@@ -8,6 +8,7 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 - **README görselleri yenilendi:** Tüm ekran görüntüleri güncel arayüzle (demo verisiyle) yeniden çekildi ve tarayıcı penceresi çerçevesine alınmış tek dosyalık SVG oldu (`scripts/ekran-cercevesi.py`; çekim: `tests/e2e/ekran-goruntuleri.mjs`). Eski `.webp` görüntüler kişisel tarayıcı sekmelerini/yer imlerini gösteriyordu; kaldırıldı. Merge Kuyruğu, Dal koruması ve MCP pencereleri için yeni görseller; "Kuyrukta biri kırmızı yandı" senaryosu eklendi.
 
 ### Düzeltilenler
+- **`main CI` rozeti merge'ten hemen sonra ESKİ commit'in yeşilini gösteriyordu (`fetchMainCI`):** GitHub, push'tan sonra yeni commit için iş akışı kaydını birkaç saniye geç açar; o aralıkta "en son koşu" bir önceki commit'e aittir ve rozet onu yeni merge'ün sonucu gibi `✓ main CI` gösterip yeni testlerin sürdüğünü gizliyordu (GitHub sayfası "in progress" derken GitArc yeşildi). Artık koşular omurganın GERÇEK ucuyla (`origin/<omurga>`) karşılaştırılır: uç için koşu yoksa ve uç 15 dk'dan yeniyse `⏳ testleri koşuyor (başlıyor)`, eskiyse sonuç yok (rozet gizli); asla eski yeşil değil. `TestMainCIDoesNotShowStaleGreenForFreshTip` eski kodda düşüyor.
 - **Sürüm rozeti başlığı yukarı itiyordu:** `topbar.js` düğmenin `className`'ini yeniden yazdığı için `.brand-ver` sınıf kuralı hiç uygulanmıyordu (rozet 28 px, başlık çubuğun kenarına yapışıyordu); kural konuma (`.brand-sub-row > button`) bağlandı.
 
 ### Değişenler

@@ -16,11 +16,49 @@ func run(sha, status, conclusion, wf string) string {
 	return fmt.Sprintf(`{"status":%q,"conclusion":%q,"headSha":%q,"workflowName":%q,"url":"https://github.com/acme/demo/actions/runs/%s","displayTitle":"Merge pull request #7","updatedAt":"2026-11-19T10:00:00Z"}`, status, conclusion, sha, wf, wf)
 }
 
+// originTip: test deposunun origin/main ucu (fetchMainCI'ın karşılaştırdığı gerçek omurga ucu).
+func originTip(t *testing.T, dir string) string {
+	t.Helper()
+	sha, err := revParse(context.Background(), dir, "origin/main")
+	if err != nil {
+		t.Fatalf("origin/main ucu okunamadı: %v", err)
+	}
+	return sha
+}
+
+// Merge'ten hemen sonra GitHub yeni commit için koşu kaydını henüz açmamıştır: "en son koşu" bir ÖNCEKİ commit'indir ve YEŞİL.
+// Rozet bu eski yeşili yeni merge'ün sonucu diye göstermemeli (kullanıcı "main'de test kaldı mı" sorusunu bu rozetle yanıtlar).
+func TestMainCIDoesNotShowStaleGreenForFreshTip(t *testing.T) {
+	stub := newGHStub(t)
+	dir, _ := newGitHubLikeRepo(t)
+	ctx := context.Background()
+	stub.set("run_list", runsJSON(run("dddddd4444444444444444444444444444444ddd", "completed", "success", "CI")), 0)
+
+	got, err := fetchMainCI(ctx, dir, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.State != "RUNNING" {
+		t.Fatalf("yeni uç için koşu görünmüyorsa yeşil değil RUNNING (başlıyor) olmalı: %+v", got)
+	}
+	if got.SHA != originTip(t, dir)[:7] {
+		t.Fatalf("rozet eski commit'i değil omurganın ucunu göstermeli: %+v", got)
+	}
+
+	// Uç eskiyse (iş akışı bu push'ta hiç koşmuyor olabilir) sahte bekleme de yok: sonuç yok.
+	old := mainCIPendingWindow
+	mainCIPendingWindow = -time.Hour
+	defer func() { mainCIPendingWindow = old }()
+	if got, _ := fetchMainCI(ctx, dir, "main"); got != nil {
+		t.Fatalf("eski uç + koşu kaydı yok: sonuç yok (nil) olmalı, geldi %+v", got)
+	}
+}
+
 func TestFetchMainCIStates(t *testing.T) {
 	stub := newGHStub(t)
 	dir, _ := newGitHubLikeRepo(t)
 	ctx := context.Background()
-	head := "aaaaaaa1111111111111111111111111111111aa"
+	head := originTip(t, dir) // koşular omurganın GERÇEK ucuna ait olmalı
 	old := "bbbbbbb2222222222222222222222222222222bb"
 
 	cases := []struct {
@@ -51,7 +89,7 @@ func TestFetchMainCIStates(t *testing.T) {
 		if got == nil || got.State != c.want {
 			t.Errorf("%s: want %s, got %+v", c.name, c.want, got)
 		}
-		if got != nil && (got.SHA != "aaaaaaa" || got.Branch != "main" || !strings.HasPrefix(got.URL, "https://")) {
+		if got != nil && (got.SHA != head[:7] || got.Branch != "main" || !strings.HasPrefix(got.URL, "https://")) {
 			t.Errorf("%s: metadata wrong: %+v", c.name, got)
 		}
 	}
@@ -65,7 +103,7 @@ func TestFetchMainCIStates(t *testing.T) {
 func TestSnapshotShowsBrokenMainAndRadarWarning(t *testing.T) {
 	stub := newGHStub(t)
 	dir, _ := newGitHubLikeRepo(t)
-	head := "cccccccc3333333333333333333333333333333c"
+	head := originTip(t, dir)
 	stub.set("run_list", runsJSON(run(head, "completed", "failure", "CI")), 0)
 
 	mgr := NewManager(dir)
