@@ -66,6 +66,9 @@ func TestResetSimulationRestoresState(t *testing.T) {
 }
 
 func TestClearLogsEmptiesBufferAndFile(t *testing.T) {
+	// "Temizle" artık yalnızca etkin projenin kayıtlarını siler (başka projelerinki kalır; bkz. TestIso_ClearLogsOnlyClearsTheActiveProject).
+	// Ortak HOME'daki başka testlerin kayıtları dosyada kalabileceğinden bu test yalıtılmış bir HOME kullanır.
+	isoHome(t)
 	mgr := NewManager("")
 	mgr.recordLog("info", "Test", "", "mesaj", "")
 	snap, _ := mgr.Snapshot()

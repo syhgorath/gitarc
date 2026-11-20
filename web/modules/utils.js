@@ -220,7 +220,7 @@ export function snapshotSignature(snap) {
   const logSig = `${snap.logs?.length || 0}:${snap.logs?.[0]?.id || ''}`;
   // Veri toplama adımları ve koruma durumu değişince arayüz yenilensin (zaman damgası dışarıda: her anketi tetiklemesin).
   const syncSig = (r.syncSteps || []).map((s) => `${s.id}=${s.state}/${s.count || 0}`).join(',');
-  return `${r.id}:${r.ahead}:${r.behind}:${r.dirtyCount}:${snap.nodes?.length || 0}:${lastNode}:${bSig}:${logSig}:${r.protectionState || ''}:${syncSig}:${r.mainCI?.state || ''}:${r.mainCI?.sha || ''}`;
+  return `${r.id}:${r.ahead}:${r.behind}:${r.dirtyCount}:${snap.nodes?.length || 0}:${lastNode}:${bSig}:${logSig}:${r.protectionState || ''}:${syncSig}:${r.mainCI?.state || ''}:${r.mainCI?.sha || ''}:${snap.pendingProposal?.id || ''}`;
 }
 
 // Birleşmiş dalın birleşme (merge) commit'i: omurgada EndSpineIndex konumundaki düğüm.

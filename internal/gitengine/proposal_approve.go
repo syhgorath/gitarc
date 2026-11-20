@@ -2,6 +2,7 @@ package gitengine
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"gitarc/internal/model"
@@ -20,6 +21,13 @@ func (m *Manager) ApproveProposal(proposalID, branchName, message, prTitle, prBo
 	if prop == nil {
 		err := fmt.Errorf("bekleyen AI önerisi yok (zaten onaylanmış, reddedilmiş veya süresi dolmuş olabilir)")
 		m.recordLog("error", "AI Önerisi Onayı", "", err.Error(), "")
+		return model.CockpitSnapshot{}, err
+	}
+	// Öneri hangi depo için oluşturulduysa yalnızca orada onaylanır: aksi hâlde (proje değiştirildiyse) öneri, açık olan
+	// başka bir depoda yeni dal açıp commit atmaya çalışırdı.
+	if live, ok := m.activeLiveRepo(); ok && prop.RepoPath != "" && !sameRepoPath(prop.RepoPath, live.path) {
+		err := fmt.Errorf("bu öneri başka bir proje için oluşturuldu (%s); önce o projeye geçin, aksi hâlde yanlış depoya commit atılır", prop.RepoPath)
+		m.recordLog("error", "AI Önerisi Onayı", prop.BranchName, err.Error(), "")
 		return model.CockpitSnapshot{}, err
 	}
 	if strings.TrimSpace(proposalID) != prop.ID {
@@ -83,4 +91,16 @@ func (m *Manager) ApproveProposal(proposalID, branchName, message, prTitle, prBo
 		removeProposalFile(live.path)
 	}
 	return m.Snapshot()
+}
+
+// sameRepoPath: iki depo yolu aynı klasörü gösteriyor mu (sembolik bağlar çözülür; macOS /var -> /private/var).
+func sameRepoPath(a, b string) bool {
+	norm := func(p string) string {
+		p = filepath.Clean(p)
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return p
+	}
+	return norm(a) == norm(b)
 }

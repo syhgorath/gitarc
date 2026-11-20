@@ -67,6 +67,7 @@ export function proposalCardHtml(prop, draft) {
           </h4>
           <span class="proposal-time">${esc(prop.createdAt || '')}</span>
         </div>
+        ${prop.repoName ? `<div class="proposal-project">📁 Proje: <strong>${esc(prop.repoName)}</strong> — bu öneri yalnızca bu projede onaylanır</div>` : ''}
         <div class="wt-note">
           Claude bir commit ve PR önerisi hazırladı. Bu öneri <strong>${esc(prop.baseBranch || 'origin/main')}</strong> tabanlı yeni bir dal açacak, yalnız aşağıdaki açık dosyaları stage edecek ve PR oluşturacaktır. İnceleyip onaylayabilir veya başlık/açıklama alanlarını doğrudan düzenleyebilirsiniz.
         </div>
