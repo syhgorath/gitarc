@@ -70,6 +70,7 @@ try {
     await expect(`document.getElementById('btn-enable-protection').textContent.includes('Değişikliği Uygula') && !document.getElementById('btn-enable-protection').disabled`, 'Uygula düğmesi açılmadı');
     await click('#btn-enable-protection');
     await expect(`document.getElementById('btn-protect-branch').textContent.includes('Korumalı')`, 'uygulama sonrası düğme "Korumalı" olmadı');
+    await expect(hidden('#btn-enable-protection'), 'uygulanacak bir şey kalmadı, Uygula düğmesi gizlenmeliydi');
     await click('#sec-close');
     await expect(hidden('#security-update-modal'), 'Koruma penceresi kapanmadı');
   });
