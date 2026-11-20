@@ -309,6 +309,7 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			VersionTag:        versionTag,
 			CurrentUser:       currentUser,
 			BranchProtected:   protectionState == "active",
+			StrictUpToDate:    protectionIsStrict(protectionSummary),
 			ProtectionState:   protectionState,
 			ProtectionSummary: protectionSummary,
 			MainCI:            mainCIFor(repoPath),

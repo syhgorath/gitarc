@@ -65,6 +65,9 @@ type RepoMeta struct {
 	MainCI *MainCIStatus `json:"mainCI,omitempty"`
 	// QueueRun: çalışan (yalnızca "running") otomatik kuyruk koşusunun özeti; kartlardaki "kuyrukta" rozetini besler. Koşu yoksa/bittiyse nil.
 	QueueRun *QueueRunBrief `json:"queueRun,omitempty"`
+	// StrictUpToDate: korumada "dal güncel olmalı" AÇIK mı (gerideki PR birleşemez). Okunamıyorsa/bilinmiyorsa false: arayüz geride kalan
+	// PR'a "güncelle" önermez, GitHub reddederse açıklayıcı hata gösterir (kural uydurulmaz).
+	StrictUpToDate bool `json:"strictUpToDate,omitempty"`
 	// BaseCandidates: omurga olarak seçilebilecek yerel dallar (yalnızca canlı depoda dolu).
 	BaseCandidates []string `json:"baseCandidates,omitempty"`
 	RemoteName        string `json:"remoteName"`

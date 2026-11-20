@@ -4,7 +4,7 @@ import { state, el, initElements, resetProjectScopedState } from './modules/stat
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
-import { protectionView } from './modules/syncsteps.js';
+import { protectionView, needsUpdateBeforeMerge } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
@@ -92,6 +92,11 @@ async function handleCheckoutBranch(branchId, btnEl = null) {
 
 async function handleMergeBranch(branchId, btnEl = null) {
   const b = (state.snapshot?.branches || []).find((x) => x.id === branchId);
+  // Geride kalan PR korumalı depoda doğrudan birleşemez: tek onaylı 1 PR'lık koşu (güncelle → CI bekle → birleştir) planını aç.
+  if (needsUpdateBeforeMerge(b, state.snapshot)) {
+    openQueueModal(applySnapshot, { only: branchId, autoPlan: true });
+    return;
+  }
   const isRunning = b?.pr?.ci?.state === 'RUNNING';
 
   if (isRunning) {
@@ -123,6 +128,8 @@ async function handleMergeBranch(branchId, btnEl = null) {
       showToast(`✓ Dal birleştirildi (${state.mergeStrategy.toUpperCase()}) ve parabol kapatıldı!`, 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
+      // Sunucu "dal main'in gerisinde" diyorsa (kural arayüzce bilinmiyordu: ruleset/okunamadı) çıkmaz sokakta bırakma: aynı planı aç.
+      if (/gerisinde kaldı/.test(err.message || '')) openQueueModal(applySnapshot, { only: branchId, autoPlan: true });
     }
   });
 }

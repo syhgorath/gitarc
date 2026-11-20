@@ -966,6 +966,7 @@
         if (!plan.changes.length) throw new Error('koruma bu profili zaten karşılıyor; değişecek bir şey yok');
         if (!confirm || confirm !== plan.fingerprint) throw new Error('koruma planı değişti veya onaylanmadı; planı yeniden inceleyip onaylayın');
         sim.protection = plan.target;
+        sim.repo.strictUpToDate = Boolean(plan.target.strictUpToDate);
         sim.repo.branchProtected = true;
         sim.repo.protectionSummary = protSummary(plan.target);
         return recompute();

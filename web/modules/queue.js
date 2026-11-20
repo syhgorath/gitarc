@@ -524,15 +524,20 @@ export async function refreshQueuePlan() {
   }
 }
 
-export function openQueueModal(onApplySnapshot = null) {
+/** opts.only: yalnızca bu PR kuyruğa girer (örn. kartın "Güncelle & Birleştir" düğmesi: 1 PR'lık koşu); opts.autoPlan: pencere açılınca
+ *  koşu planını doğrudan göster (kullanıcı yalnızca onaylar). Süren bir koşu varsa plan gösterilmez. */
+export function openQueueModal(onApplySnapshot = null, opts = {}) {
   view.onApply = onApplySnapshot;
   const cands = queueCandidates(state.snapshot);
   view.order = cands.map((b) => b.id);
-  view.included = new Set(view.order);
+  view.included = new Set(opts.only && view.order.includes(opts.only) ? [opts.only] : view.order);
   if (el.queueModal) el.queueModal.hidden = false;
   renderCandidates();
   // Önce süren bir koşu var mı bak: varsa plan hesaplanmaz (renderRunNote), yoksa bir kez hesaplanır.
-  restoreRun().then(() => refreshQueuePlan());
+  restoreRun().then(async () => {
+    await refreshQueuePlan();
+    if (opts.autoPlan && !run.active && view.included.size) showRunPlan();
+  });
 }
 
 export function closeQueueModal() {

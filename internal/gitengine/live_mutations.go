@@ -328,6 +328,9 @@ func (m *Manager) mergeBranchLive(live *repoEntry, branchID, strategy string) (m
 		}
 		out, _, err := runCmd(ctx, live.path, "gh", mergeArgs...)
 		if err != nil {
+			if isBehindMergeError(out) {
+				return model.CockpitSnapshot{}, fmt.Errorf("PR #%d birleştirilemedi: dal %s dalının gerisinde kaldı (korumada \"dal güncel olmalı\" açık). Önce \"↻ Güncelle & Birleştir\" ile dalı güncelleyin; hiçbir şey değiştirilmedi", b.PR.Number, defBranch)
+			}
 			return model.CockpitSnapshot{}, fmt.Errorf("PR #%d merge edilemedi: %s", b.PR.Number, strings.TrimSpace(out))
 		}
 		syncDefaultBranchNonDestructive(ctx, live.path, defBranch)
@@ -643,4 +646,10 @@ func (m *Manager) GetDiffStat() (model.DiffStat, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.getDiffStatSimLocked(), nil
+}
+
+// isBehindMergeError: `gh pr merge` çıktısı "dal ana dala göre güncel değil" reddi mi? (Ham GitHub/CLI metni kullanıcıya sızdırılmaz.)
+func isBehindMergeError(out string) bool {
+	o := strings.ToLower(out)
+	return strings.Contains(o, "not up to date with the base branch") || strings.Contains(o, "head branch is not up to date")
 }

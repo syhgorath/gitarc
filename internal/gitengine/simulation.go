@@ -1166,6 +1166,7 @@ func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitS
 
 	repoMeta := m.simRepo.repo
 	repoMeta.QueueRun = m.queueRunBrief("simulation", "", false)
+	repoMeta.StrictUpToDate = m.simRepo.protection != nil && m.simRepo.protection.StrictUpToDate
 	repoMeta.MainCI = simMainCI(repoMeta, nodes)
 	repoMeta.TeamMode = m.teamMode
 	repoMeta.AppVersion = AppVersion

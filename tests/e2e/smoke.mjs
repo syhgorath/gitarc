@@ -191,6 +191,24 @@ try {
     await click('#sec-close');
     await expect(hidden('#security-update-modal'), 'Koruma penceresi kapanmadı');
   });
+  await step('Geride kalan PR: korumada "dal güncel olmalı" açıksa Merge → "Güncelle & Birleştir" (onaylı 1 PR\'lık koşu), plan otomatik açılır', async () => {
+    const refresh = `(async () => { const api = await import('/modules/api.js'); const app = await import('/app.js'); app.applySnapshot(await api.apiCall('/api/snapshot')); return true; })()`;
+    // Önceki adımlar #422'yi zaten birleştirdi: demo'yu başa al (geride kalan PR'lar geri gelir). "ci" profili dal güncel olmalı kuralını
+    // açar; #422'nin CI'ı yeşile döner (kırmızı CI ayrı bir engel).
+    await b.eval(`(async () => { const api = await import('/modules/api.js'); await api.apiCall('/api/simulation/reset', 'POST', {}); })()`);
+    await b.eval(`(async () => { const api = await import('/modules/api.js'); const plan = await api.apiCall('/api/repo/protection/plan', 'POST', { profile: 'ci', checks: ['test'] }); await api.apiCall('/api/repo/protect', 'POST', { profile: 'ci', checks: ['test'], confirm: plan.fingerprint }); await api.apiCall('/api/branch/fix-ci', 'POST', { branchId: 'br-open-422' }); })()`);
+    await b.eval(refresh);
+    const card = `[...document.querySelectorAll('.fo-capsule')].find((f) => f.textContent.includes('#422') && f.querySelector('[data-act="merge"]'))`;
+    await expect(`!!(${card}) && ${card}.querySelector('[data-act="merge"]').textContent.includes('Güncelle')`, 'geride kalan PR için "Güncelle & Birleştir" düğmesi yok');
+    await b.eval(`${card}.querySelector('[data-act="merge"]').click()`);
+    await expect(visible('#queue-modal'), 'Güncelle & Birleştir kuyruk penceresini açmadı');
+    await expect(`!!document.querySelector('#queue-run .queue-run-confirm') && document.querySelector('#queue-run').textContent.includes('1 PR sırayla işlenecek')`, 'yalnızca bu PR için koşu planı/onay düğmesi görünmedi');
+    await click('#queue-run .queue-run-confirm');
+    await expect(`document.querySelector('#queue-run').textContent.includes('Koşu bitti')`, 'koşu bitmedi', 20000);
+    await expect(`![...document.querySelectorAll('.fo-capsule')].some((f) => f.textContent.includes('#422') && f.querySelector('[data-act="merge"]'))`, 'birleşen PR kartta açık kalmamalı');
+    await click('#queue-close');
+    await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
+  });
   await step('Proje bağlama: başka projeyi gösteren sekmenin değiştirici isteği 409 ile REDDEDİLİR', async () => {
     // Gerçek tarayıcıda: sunucudaki etkin projeden farklı bir kimlikle gelen istek işlem yapmamalı ve etkin projeyi bildirmeli.
     await expect(`(async()=>{

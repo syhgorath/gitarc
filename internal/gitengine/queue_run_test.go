@@ -583,3 +583,30 @@ func TestQueueRunBriefMarksDoneCurrentAndWaitingItems(t *testing.T) {
 		t.Fatal("bitmiş/durmuş koşu rozet vermemeli")
 	}
 }
+
+func TestProtectionIsStrictOnlyForAnExplicitTrue(t *testing.T) {
+	cases := map[string]bool{
+		"Aktif (strict checks: true)":        true,
+		"Aktif (strict checks: false)":       false,
+		"Aktif (GitHub Ruleset: main kural)": false, // ruleset: strict bilinmiyor → açık sayılmaz
+		"Koruma durumu okunamadı":            false,
+		"":                                   false,
+	}
+	for in, want := range cases {
+		if got := protectionIsStrict(in); got != want {
+			t.Errorf("%q: %v bekleniyordu, %v geldi", in, want, got)
+		}
+	}
+}
+
+func TestIsBehindMergeErrorRecognisesOnlyTheNotUpToDateRefusal(t *testing.T) {
+	behind := "X Pull request syhgorath/x#22 is not mergeable: the head branch is not up to date with the base branch.\nTo have the pull request merged after all the requirements have been met, add the `--auto` flag."
+	if !isBehindMergeError(behind) {
+		t.Fatal("güncel değil reddi tanınmalı")
+	}
+	for _, other := range []string{"", "X Pull request is not mergeable: the base branch policy prohibits the merge.", "HTTP 502: bad gateway", "merge conflict"} {
+		if isBehindMergeError(other) {
+			t.Fatalf("başka bir ret 'geride' sayılmamalı: %q", other)
+		}
+	}
+}

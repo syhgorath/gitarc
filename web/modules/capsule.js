@@ -7,7 +7,7 @@
 import { state } from './state.js';
 import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H } from './constants.js';
 import { esc, truncate, svgEl, isWorkingTreeBranch, diffArgsFor, prHeadline } from './utils.js';
-import { mergeIntentBadge } from './syncsteps.js';
+import { mergeIntentBadge, needsUpdateBeforeMerge } from './syncsteps.js';
 
 export function capsulePositionForApex(b, apexX, apexY) {
   if (b.state === 'merged') {
@@ -225,7 +225,7 @@ export function actionRowHtmlOf(b, ctx = {}) {
       } else {
         actionRowHtml = `
           <button type="button" class="cap-btn sky" data-act="promote">🚀 Push &amp; PR</button>
-          ${hasOpenPR ? `<button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>` : ''}
+          ${hasOpenPR ? (ctx.needsUpdate ? `<button type="button" class="cap-btn amber" data-act="merge" title="Dal main'in gerisinde: güncelle, CI'ı bekle, birleştir">↻ Güncelle &amp; Birleştir</button>` : `<button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge</button>`) : ''}
           ${diffBtn}
           ${checkoutBtn}
           <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
@@ -234,14 +234,14 @@ export function actionRowHtmlOf(b, ctx = {}) {
     }
   } else if (f.isRunning) {
     actionRowHtml = `
-      <button type="button" class="cap-btn amber ${ctx.isQueued ? 'running-pulse' : ''}" data-act="merge">${ctx.isQueued ? '⏳ CI Bekleniyor (İptal)' : '⏳ CI Bitince Merge Et'}</button>
+      <button type="button" class="cap-btn amber ${ctx.isQueued ? 'running-pulse' : ''}" data-act="merge">${ctx.needsUpdate ? '↻ Güncelle &amp; Birleştir' : (ctx.isQueued ? '⏳ CI Bekleniyor (İptal)' : '⏳ CI Bitince Merge Et')}</button>
       ${diffBtn}
       ${checkoutBtn}
       <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
     `;
   } else {
     actionRowHtml = `
-      <button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge (Parabolü Kapat)</button>
+      ${ctx.needsUpdate ? '<button type="button" class="cap-btn amber" data-act="merge" title="Dal main\'in gerisinde: güncelle, CI\'ı bekle, birleştir">↻ Güncelle &amp; Birleştir</button>' : '<button type="button" class="cap-btn emerald" data-act="merge">⚡ Merge (Parabolü Kapat)</button>'}
       ${diffBtn}
       ${checkoutBtn}
       <button type="button" class="cap-btn-del" data-act="delete" title="${delTitle}">🗑️</button>
@@ -383,6 +383,7 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
     tone,
     isSelected,
     isQueued: Boolean(state.pendingAutoMerge[b.id]),
+    needsUpdate: needsUpdateBeforeMerge(b, snap),
     queueRun: mergeIntentBadge(snap, b, state.pendingAutoMerge),
     pendingProposal: snap?.pendingProposal,
     currentUser: snap?.repo?.currentUser,
