@@ -242,6 +242,10 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/branch/update", a.guard(a.handleBranchUpdate))
 	mux.HandleFunc("/api/queue/step/plan", a.guard(a.handleQueueStepPlan))
 	mux.HandleFunc("/api/queue/step", a.guard(a.handleQueueStep))
+	mux.HandleFunc("/api/queue/run/plan", a.guard(a.handleQueueRunPlan))
+	mux.HandleFunc("/api/queue/run/start", a.guard(a.handleQueueRunStart))
+	mux.HandleFunc("/api/queue/run/stop", a.guard(a.handleQueueRunStop))
+	mux.HandleFunc("/api/queue/run/status", a.guard(a.handleQueueRunStatus))
 	mux.HandleFunc("/api/system/choose-folder", a.guard(a.handleChooseFolder))
 	mux.HandleFunc("/api/system/git-status-ping", a.guard(a.handleGitStatusPing))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
@@ -783,6 +787,67 @@ func (a *App) handleQueueStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// handleQueueRunPlan: kuyruğu OTOMATİK çalıştırmanın SALT OKUNUR planı (yalnızca sorunsuz önek; ilk sorunda durur).
+func (a *App) handleQueueRunPlan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchIDs []string `json:"branchIds"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	plan, err := a.mgr.QueueRunPlan(req.BranchIDs)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// handleQueueRunStart: onaylanan planı arka planda çalıştırır; yalnızca planın parmak iziyle (confirm) başlar.
+func (a *App) handleQueueRunStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchIDs []string `json:"branchIds"`
+		Confirm   string   `json:"confirm"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	run, err := a.mgr.StartQueueRun(req.BranchIDs, req.Confirm)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+// handleQueueRunStop: çalışan koşuyu durdurur (güvenliği artırır; her zaman serbest).
+func (a *App) handleQueueRunStop(w http.ResponseWriter, r *http.Request) {
+	var req struct{}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	run, err := a.mgr.StopQueueRun()
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+// handleQueueRunStatus: etkin projenin son koşusu (yoksa null).
+func (a *App) handleQueueRunStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "GET bekleniyor")
+		return
+	}
+	run, err := a.mgr.QueueRunStatus()
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
 }
 
 // handleQueuePlan: seçilen dalların sırayla main'e birleşmesinin SALT OKUNUR planı (boş liste = tüm açık PR'lar).

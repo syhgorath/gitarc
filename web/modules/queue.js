@@ -51,6 +51,51 @@ export function stepPlanModel(plan) {
   return { title, lines, canApply: (plan.action === 'update' || plan.action === 'merge') && Boolean(plan.fingerprint), confirmText };
 }
 
+/** Otomatik koşu planının görünümü (saf model): satırlar, başlatılabilir mi ve onay düğmesi metni. */
+export function runPlanModel(plan) {
+  const lines = [];
+  (plan.items || []).forEach((it) => lines.push(`${it.position}. #${it.pr} ${it.branch}`));
+  if (!plan.startable && plan.reason) lines.push(`Başlatılamaz: ${plan.reason}`);
+  (plan.excluded || []).forEach((it) => lines.push(`✗ koşuya girmez: ${it.pr > 0 ? `#${it.pr} ` : ''}${it.branch}`));
+  (plan.notes || []).forEach((n) => lines.push(n));
+  const n = (plan.items || []).length;
+  return {
+    title: plan.startable ? `▶ ${n} PR sırayla işlenecek` : '⛔ Koşu başlatılamaz',
+    lines,
+    canStart: Boolean(plan.startable && plan.fingerprint),
+    confirmText: `Onayla: ${n} PR'ı sırayla güncelle ve birleştir`,
+  };
+}
+
+const RUN_TONES = { running: 'warn', completed: 'ok', stopped: '', blocked: 'warn', timeout: 'warn', interrupted: 'warn' };
+const RUN_TITLES = {
+  running: '⏳ Koşu sürüyor', completed: '✓ Koşu bitti', stopped: '■ Koşu durduruldu',
+  blocked: '⛔ Koşu ilk sorunda durdu', timeout: '⏱ Koşu zaman aşımında durdu', interrupted: '⚠ Koşu yarım kaldı',
+};
+
+/** Koşu durumunun görünümü (saf model). Son olaylar yeni → eski değil, kronolojik (son 8). */
+export function runStatusModel(run) {
+  if (!run) return null;
+  const total = (run.items || []).length;
+  const lines = [];
+  if (run.status === 'running' && total) {
+    const idx = Math.min(run.current || 0, total - 1);
+    const cur = run.items[idx];
+    lines.push(`İşlenen: ${idx + 1}/${total} · #${cur.pr} ${cur.branch} · ${run.merged || 0} birleşti`);
+  } else {
+    lines.push(`${run.merged || 0}/${total} PR birleştirildi`);
+  }
+  if (run.stopReason) lines.push(run.stopReason);
+  (run.events || []).slice(-8).forEach((e) => lines.push(`${(e.time || '').slice(11, 19)} ${e.message}`.trim()));
+  return {
+    title: RUN_TITLES[run.status] || run.status,
+    tone: RUN_TONES[run.status] ?? '',
+    running: run.status === 'running',
+    lines,
+    resumable: ['blocked', 'timeout', 'interrupted', 'stopped'].includes(run.status),
+  };
+}
+
 /** Plan başlığı: kuyruğun nerede durduğunu tek cümlede söyler. */
 export function queueSummaryText(plan) {
   if (!plan || !plan.items?.length) return 'Kuyruğa girecek açık PR/dal yok.';
@@ -118,6 +163,15 @@ function renderPlan(plan, errorText) {
     return;
   }
   appendText(box, 'div', queueSummaryText(plan), `queue-summary ${plan.stopsAt === 0 && plan.items.length ? 'ok' : 'warn'}`);
+  if (plan.mergeable > 0) {
+    const runBtn = document.createElement('button');
+    runBtn.type = 'button';
+    runBtn.className = 'btn ghost sm queue-run-btn';
+    runBtn.textContent = '▶ Kuyruğu çalıştır (ilk sorunda durur)';
+    runBtn.disabled = Boolean(run.active);
+    runBtn.addEventListener('click', () => showRunPlan());
+    box.appendChild(runBtn);
+  }
   plan.items.forEach((it) => {
     const m = queueStepModel(it);
     const step = document.createElement('div');
@@ -196,6 +250,137 @@ async function showStepPlan(it, step) {
   }
 }
 
+const run = { timer: null, panel: null, active: false, seq: 0 };
+
+function ensureRunPanel() {
+  if (run.panel && run.panel.isConnected) return run.panel;
+  const p = document.createElement('div');
+  p.className = 'queue-run';
+  p.id = 'queue-run';
+  el.queueResult?.parentNode?.insertBefore(p, el.queueResult);
+  run.panel = p;
+  return p;
+}
+
+function selectedIds() { return view.order.filter((id) => view.included.has(id)); }
+
+async function runPlanCall(ids) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.queueRunPlan(ids);
+  return apiCall('/api/queue/run/plan', 'POST', { branchIds: ids });
+}
+async function runStartCall(ids, confirm) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.queueRun(ids, confirm);
+  return apiCall('/api/queue/run/start', 'POST', { branchIds: ids, confirm });
+}
+async function runStopCall() {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.queueRunStop();
+  return apiCall('/api/queue/run/stop', 'POST', {});
+}
+async function runStatusCall() {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.queueRunStatus();
+  return apiCall('/api/queue/run/status', 'GET');
+}
+
+function stopRunPolling() {
+  if (run.timer) clearInterval(run.timer);
+  run.timer = null;
+}
+
+/** Koşu durumunu çizer; sürüyorsa 3 sn'de bir yeniler, bitince anlık görüntüyü ve planı tazeler. */
+function renderRun(runObj) {
+  const panel = ensureRunPanel();
+  const m = runStatusModel(runObj);
+  panel.textContent = '';
+  if (!m) { run.active = false; return; }
+  run.active = m.running;
+  const head = document.createElement('div');
+  head.className = 'queue-update-title';
+  head.textContent = m.title;
+  panel.appendChild(head);
+  m.lines.forEach((l) => appendText(panel, 'div', l, 'queue-detail'));
+  if (m.running) {
+    const stop = document.createElement('button');
+    stop.type = 'button';
+    stop.className = 'btn danger sm queue-run-stop';
+    stop.textContent = '■ Durdur';
+    stop.addEventListener('click', async () => {
+      stop.disabled = true;
+      try { renderRun(await runStopCall()); } catch (err) { showToast(err.message, 'danger'); }
+    });
+    panel.appendChild(stop);
+  }
+}
+
+async function pollRun() {
+  const my = ++run.seq;
+  try {
+    const r = await runStatusCall();
+    if (my !== run.seq) return;
+    const wasActive = run.active;
+    renderRun(r);
+    if (r && r.status !== 'running') {
+      stopRunPolling();
+      if (wasActive || r) {
+        try { const snap = await apiCall('/api/snapshot'); if (view.onApply) view.onApply(snap); } catch { /* çevrimdışı */ }
+        refreshQueuePlan();
+      }
+    }
+  } catch { /* geçici hata: sonraki turda yeniden denenir */ }
+}
+
+function startRunPolling() {
+  stopRunPolling();
+  run.timer = setInterval(pollRun, 3000);
+}
+
+/** Koşu planını gösterir; "Onayla" yalnızca gösterilen planın parmak iziyle başlatır. */
+async function showRunPlan() {
+  const panel = ensureRunPanel();
+  const ids = selectedIds();
+  panel.textContent = '';
+  appendText(panel, 'div', '⏳ Koşu planı hesaplanıyor...', 'prot-note');
+  try {
+    const plan = await runPlanCall(ids);
+    const m = runPlanModel(plan);
+    panel.textContent = '';
+    appendText(panel, 'div', m.title, 'queue-update-title');
+    m.lines.forEach((l) => appendText(panel, 'div', l, 'queue-detail'));
+    if (m.canStart) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn warn sm queue-run-confirm';
+      btn.textContent = m.confirmText;
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const started = await runStartCall(ids, plan.fingerprint);
+          renderRun(started);
+          if (started && started.status === 'running') startRunPolling(); else { try { const snap = await apiCall('/api/snapshot'); if (view.onApply) view.onApply(snap); } catch { /* çevrimdışı */ } refreshQueuePlan(); }
+          showToast('▶ Kuyruk koşusu başladı; ilk sorunda durur', 'ok');
+        } catch (err) {
+          showToast(err.message, 'danger');
+          btn.disabled = false;
+        }
+      });
+      panel.appendChild(btn);
+    }
+  } catch (err) {
+    panel.textContent = '';
+    appendText(panel, 'div', err.message || String(err), 'prot-note');
+  }
+}
+
+/** Pencere açılınca: sürmekte olan (ya da yeni biten/yarım kalan) bir koşu varsa gösterir ve izler. */
+async function restoreRun() {
+  try {
+    const r = await runStatusCall();
+    if (!r) { renderRun(null); return; }
+    const recent = r.finishedAt ? (Date.now() - Date.parse(r.finishedAt)) < 30 * 60 * 1000 : true;
+    if (r.status === 'running' || recent) renderRun(r); else renderRun(null);
+    if (r.status === 'running') startRunPolling();
+  } catch { /* koşu bilgisi yok */ }
+}
+
 async function planCall(ids) {
   if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.queuePlan(ids);
   return apiCall('/api/queue/plan', 'POST', { branchIds: ids });
@@ -230,8 +415,10 @@ export function openQueueModal(onApplySnapshot = null) {
   if (el.queueModal) el.queueModal.hidden = false;
   renderCandidates();
   refreshQueuePlan();
+  restoreRun();
 }
 
 export function closeQueueModal() {
+  stopRunPolling();
   if (el.queueModal) el.queueModal.hidden = true;
 }

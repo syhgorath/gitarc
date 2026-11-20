@@ -470,6 +470,25 @@
       return res;
     }
 
+    // Kuyruk otomatik koşusu (3b): çevrimdışı yedek motor ZAMAN geçirmez: adımları art arda uygular; CI "sürüyor/bilinmiyor"
+    // ya da herhangi bir engelde durur (gerçek bekleme yalnızca sunucuda). Kurallar Go'daki queue_run.go ile aynıdır.
+    let lastQueueRun = null;
+    function queueRunPlanFor(ids) {
+      const qp = queuePlanBuild(sim.branches, sim.repo.defaultBranch || 'main', ids, sim.protection ? Boolean(sim.protection.strictUpToDate) : false);
+      const limit = qp.stopsAt > 0 ? qp.stopsAt - 1 : qp.items.length;
+      const items = []; const excluded = [];
+      qp.items.forEach((it, i) => {
+        const ri = { position: i + 1, branchId: it.branchId, branch: it.branch, pr: it.pr || 0, title: it.title || '' };
+        if (i < limit && ri.pr > 0 && excluded.length === 0) items.push(ri); else excluded.push(ri);
+      });
+      const plan = { mode: 'simulation', baseBranch: qp.baseBranch, baseSha: 'sim', items, excluded, startable: false, pollSeconds: 20, timeoutMinutes: 30, notes: [] };
+      if (!items.length) plan.reason = 'kuyruğun ilk PR\'ı sorunsuz birleşemiyor; koşu başlatılamaz';
+      else { plan.startable = true; plan.fingerprint = protFingerprint('run', { ids: items.map((x) => x.branchId), n: sim.nodes.length }); }
+      if (excluded.length) plan.notes.push(`${excluded.length} PR koşuya girmez (ilk sorunlu PR ve sonrakiler); koşu bitince yeniden planlayın.`);
+      plan.notes.push('Çevrimdışı simülasyonda koşu zaman geçirmez: CI sürüyorsa ya da herhangi bir engelde durur.');
+      return plan;
+    }
+
     function recompute() {
       const branches = sim.branches;
       const nodes = sim.nodes;
@@ -980,6 +999,45 @@
         const snap = this.mergeBranch(plan.branchId, 'merge');
         sim.branches.forEach((o) => { if (o.state === 'open' && o.id !== plan.branchId) o.behindMain = (o.behindMain || 0) + 1; });
         return recompute();
+      },
+      queueRunPlan(ids) {
+        recompute();
+        return queueRunPlanFor(ids);
+      },
+      queueRun(ids, confirm) {
+        recompute();
+        const plan = queueRunPlanFor(ids);
+        if (!plan.startable) throw new Error(`koşu başlatılamaz: ${plan.reason}`);
+        if (!confirm || confirm !== plan.fingerprint) throw new Error('koşu planı değişti veya onaylanmadı; planı yeniden inceleyip onaylayın. Hiçbir şey başlatılmadı');
+        const now = () => new Date().toISOString();
+        const run = { id: `run-${Date.now()}`, status: 'completed', mode: 'simulation', items: plan.items, current: 0, merged: 0, stopReason: '', message: '', startedAt: now(), updatedAt: now(), timeoutMinutes: 30, events: [{ time: now(), kind: 'info', message: `Koşu başladı: ${plan.items.length} PR sırayla işlenecek` }] };
+        const stop = (status, reason) => { run.status = status; run.stopReason = reason; };
+        outer: for (let i = 0; i < plan.items.length; i += 1) {
+          const it = plan.items[i];
+          run.current = i;
+          for (let guard = 0; guard < 10; guard += 1) {
+            const p = queueStepPlanFor(it.branchId);
+            if (p.action === 'blocked') { stop('blocked', `#${it.pr} ${it.branch}: ${p.reason}`); break outer; }
+            if (p.action === 'wait') { stop('timeout', `#${it.pr} ${it.branch}: ${p.reason} (çevrimdışı simülasyonda beklenmez)`); break outer; }
+            this.queueStep(it.branchId, p.fingerprint);
+            if (p.action === 'merge') { run.merged += 1; run.events.push({ time: now(), kind: 'merge', message: `#${it.pr} ${it.branch} birleştirildi` }); continue outer; }
+            run.events.push({ time: now(), kind: 'update', message: `#${it.pr} ${it.branch} main'e göre güncellendi` });
+          }
+          stop('blocked', `#${it.pr} ${it.branch}: adım sınırı aşıldı`);
+          break;
+        }
+        run.current = Math.min(run.current, plan.items.length);
+        run.finishedAt = now();
+        run.message = run.status === 'completed' ? `Koşu bitti: ${run.merged} PR birleştirildi` : `Koşu durdu (${run.status}): ${run.stopReason}`;
+        run.events.push({ time: run.finishedAt, kind: 'stop', message: run.message });
+        lastQueueRun = run;
+        return run;
+      },
+      queueRunStatus() {
+        return lastQueueRun;
+      },
+      queueRunStop() {
+        throw new Error('bu projede çalışan bir kuyruk koşusu yok');
       },
       queuePlan(ids) {
         recompute();

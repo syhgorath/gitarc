@@ -62,8 +62,8 @@ func TestMCPServeStdioTools(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &r2); err != nil {
 		t.Fatal(err)
 	}
-	if len(r2.Result.Tools) != 18 {
-		t.Fatalf("expected 18 MCP tools, got %d", len(r2.Result.Tools))
+	if len(r2.Result.Tools) != 22 {
+		t.Fatalf("expected 22 MCP tools, got %d", len(r2.Result.Tools))
 	}
 
 	// Verify gitarc_status includes activeContext and openPRs for AI assistance

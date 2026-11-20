@@ -16,6 +16,16 @@ const envAllowUpdate = "GITARC_MCP_ALLOW_UPDATE"
 // ya da PR'ı main'e birleştir): geri alınması zor olduğu için varsayılan KAPALIDIR (GITARC_MCP_ALLOW_QUEUE=1).
 const envAllowQueue = "GITARC_MCP_ALLOW_QUEUE"
 
+// gitarc_queue_run_plan ve gitarc_queue_run_status SALT OKUNURDUR; gitarc_queue_run_stop her zaman serbesttir (güvenliği artırır).
+// gitarc_queue_run kuyruğu OTOMATİK çalıştırır (PR'ları sırayla günceller + birleştirir): geri alınması zor olduğu için
+// varsayılan KAPALIDIR (GITARC_MCP_ALLOW_QUEUE_RUN=1) ve plan parmak izi ister. Koşu MCP sunucusunun sürecinde çalışır.
+const envAllowQueueRun = "GITARC_MCP_ALLOW_QUEUE_RUN"
+
+func queueRunEnabled() bool {
+	v := strings.TrimSpace(os.Getenv(envAllowQueueRun))
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
 func queueStepEnabled() bool {
 	v := strings.TrimSpace(os.Getenv(envAllowQueue))
 	return v == "1" || strings.EqualFold(v, "true")
@@ -68,6 +78,35 @@ func queueToolDefs() []toolDefinition {
 			},
 		},
 		{
+			Name: "gitarc_queue_run_plan",
+			Description: "Kuyruğu OTOMATİK çalıştırmanın planı. SALT OKUNUR: hiçbir şey başlatmaz. Seçilen PR'ların (boşsa tüm açık PR'lar) yalnızca SORUNSUZ ÖNEKİ koşuya girer (items); ilk sorunlu PR ve sonrakiler excluded'dadır. " +
+				"startable true ise fingerprint (sıralı dal + uç listesi + ana dal ucu) gitarc_queue_run'a confirm olarak verilir. Koşu her PR için: gerekirse dalı main'e göre güncelle → CI yeşil olana kadar bekle (zaman aşımı timeoutMinutes) → birleştir; ilk sorunda durur.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{"branchIds": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Birleşme SIRASIYLA dal kimlikleri/adları. Boşsa tüm açık PR'lar PR numarasına göre."}}},
+		},
+		{
+			Name: "gitarc_queue_run",
+			Description: "Kuyruğu OTOMATİK çalıştırır (arka planda): PR'ları sırayla işler; her biri için dalı main'e göre günceller (uzak PR dalına push), CI yeşil olana kadar bekler, PR'ı `--match-head-commit` ile main'e birleştirir (koruma atlatma yok). İlk sorunda (çakışma, kırmızı CI, inceleme engeli, dışarıdan değişen dal ucu, zaman aşımı) DURUR. " +
+				"VARSAYILAN OLARAK KAPALIDIR: yalnızca MCP sunucusu " + envAllowQueueRun + "=1 ile başlatıldıysa çalışır. Önce gitarc_queue_run_plan çağırıp kullanıcıya göstermeli ve fingerprint'i confirm olarak vermelisiniz; durum değiştiyse HİÇBİR ŞEY başlamaz. Başladıktan sonra gitarc_queue_run_status ile izleyin; gitarc_queue_run_stop ile durdurun.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"branchIds": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "gitarc_queue_run_plan'a verdiğiniz AYNI sıra."},
+					"confirm":   map[string]any{"type": "string", "description": "gitarc_queue_run_plan çıktısındaki fingerprint (aynen)."},
+				},
+				"required": []string{"confirm"},
+			},
+		},
+		{
+			Name:        "gitarc_queue_run_status",
+			Description: "Etkin projenin son kuyruk koşusunun durumu (SALT OKUNUR): status (running | completed | stopped | blocked | timeout | interrupted), kaç PR birleşti, durma nedeni ve olay günlüğü. Koşu yoksa run null. interrupted: uygulama kapanmıştı; koşu kendiliğinden devam ETMEZ.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+		},
+		{
+			Name:        "gitarc_queue_run_stop",
+			Description: "Çalışan kuyruk koşusunu durdurur. Her zaman serbesttir (güvenliği artırır): süren adım tamamlanır, sonrası yapılmaz. Koşu yoksa hata döner.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+		},
+		{
 			Name: "gitarc_queue_plan",
 			Description: "Merge kuyruğu planı (SALT OKUNUR; hiçbir şey birleştirmez/güncellemez/push etmez). Seçilen dalları/PR'ları verilen SIRAYLA main'e birleştirilmiş gibi bellekte simüle eder: her dal, kuyruktaki ÖNCEKİLER birleşmiş olarak denenir " +
 				"(tek başına temiz bir dal, bir öncekinden sonra çakışabilir). Dönenler: her dal için status (clean | conflict | unknown), çakışan dosyalar, çakışmaya sebep olan önceki PR'lar, " +
@@ -85,6 +124,16 @@ func queueToolDefs() []toolDefinition {
 			},
 		},
 	}
+}
+
+func trimmedList(v any) []string {
+	var out []string
+	for _, id := range stringList(v) {
+		if id = strings.TrimSpace(id); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func callQueueTool(name string, args map[string]any, mgr *gitengine.Manager) (toolResult, bool) {
@@ -159,6 +208,44 @@ func callQueueTool(name string, args map[string]any, mgr *gitengine.Manager) (to
 			return errResult(err.Error() + " (Hiçbir şey değiştirilmediyse mesaj bunu söyler; emin olmak için gitarc_queue_step_plan'ı yeniden çağırın.)"), true
 		}
 		return jsonTextResult(map[string]any{"mode": snap.Repo.Mode, "applied": true, "branchId": id, "note": "Tek adım uygulandı. Sonraki adım için gitarc_queue_step_plan'ı yeniden çağırın."}), true
+	case "gitarc_queue_run_plan":
+		plan, err := mgr.QueueRunPlan(trimmedList(args["branchIds"]))
+		if err != nil {
+			return errResult(err.Error()), true
+		}
+		next := "Planı kullanıcıya gösterin. Başlatmak için MCP sunucusu " + envAllowQueueRun + "=1 ile başlatılmalı; ardından gitarc_queue_run'ı bu fingerprint ve AYNI branchIds ile çağırın."
+		if queueRunEnabled() {
+			next = "Planı kullanıcıya gösterip onayını alın; ardından gitarc_queue_run'ı fingerprint'i confirm vererek ve AYNI branchIds ile çağırın."
+		}
+		if !plan.Startable {
+			next = "Koşu başlatılamaz (reason'a bakın); kullanıcıya nedenini aktarın."
+		}
+		return jsonTextResult(map[string]any{"plan": plan, "applyEnabled": queueRunEnabled(), "next": next}), true
+	case "gitarc_queue_run":
+		if !queueRunEnabled() {
+			return errResult("Otomatik kuyruk koşusu MCP'de kapalı: PR'ları sırayla günceller (uzak dallara push) ve birleştirir; geri alınması zor. Kullanıcı MCP sunucusunu " + envAllowQueueRun + "=1 ile başlatırsa açılır; ya da koşu GitArc arayüzündeki 🚦 Kuyruk penceresinden başlatılabilir. Önce gitarc_queue_run_plan ile planı görebilirsiniz."), true
+		}
+		confirm, _ := args["confirm"].(string)
+		if strings.TrimSpace(confirm) == "" {
+			return errResult("confirm (gitarc_queue_run_plan fingerprint'i) zorunludur"), true
+		}
+		run, err := mgr.StartQueueRun(trimmedList(args["branchIds"]), strings.TrimSpace(confirm))
+		if err != nil {
+			return errResult(err.Error() + " (Hiçbir şey başlatılmadıysa mesaj bunu söyler; emin olmak için gitarc_queue_run_status'u çağırın.)"), true
+		}
+		return jsonTextResult(map[string]any{"started": true, "run": run, "note": "Koşu arka planda sürüyor; gitarc_queue_run_status ile izleyin, gitarc_queue_run_stop ile durdurun."}), true
+	case "gitarc_queue_run_status":
+		run, err := mgr.QueueRunStatus()
+		if err != nil {
+			return errResult(err.Error()), true
+		}
+		return jsonTextResult(map[string]any{"run": run}), true
+	case "gitarc_queue_run_stop":
+		run, err := mgr.StopQueueRun()
+		if err != nil {
+			return errResult(err.Error()), true
+		}
+		return jsonTextResult(map[string]any{"stopped": true, "run": run}), true
 	case "gitarc_queue_plan":
 	default:
 		return toolResult{}, false

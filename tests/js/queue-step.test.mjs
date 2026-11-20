@@ -93,3 +93,57 @@ test('merged/closed PRs are dropped from the queue view so the next plan request
   assert.equal(JSON.stringify(r.order), JSON.stringify(['a', 'c']));
   assert.equal(JSON.stringify([...r.included]), JSON.stringify(['a']));
 });
+
+// ---- 3b: otomatik koşu ----
+import { runPlanModel, runStatusModel } from '../../web/modules/queue.js';
+
+test('run plan model: only a startable plan with a fingerprint can be confirmed; excluded PRs are listed, not run', () => {
+  const m = runPlanModel({ startable: true, fingerprint: 'fp', items: [{ position: 1, pr: 4, branch: 'feat/d' }, { position: 2, pr: 5, branch: 'feat/e' }], excluded: [{ pr: 6, branch: 'feat/f' }], notes: ['not 1'] });
+  assert.equal(m.canStart, true);
+  assert.match(m.confirmText, /2 PR/);
+  assert.ok(m.lines.includes('1. #4 feat/d') && m.lines.some((l) => l.includes('koşuya girmez') && l.includes('#6')) && m.lines.includes('not 1'));
+  const no = runPlanModel({ startable: false, reason: 'ilk PR çakışıyor', items: [], excluded: [] });
+  assert.equal(no.canStart, false);
+  assert.ok(no.lines.some((l) => l.includes('ilk PR çakışıyor')));
+  assert.equal(runPlanModel({ startable: true, items: [{}] }).canStart, false, 'no fingerprint, no start');
+});
+
+test('run status model: running shows progress; every stop status has a title, and only stops can be re-planned', () => {
+  const items = [{ pr: 4, branch: 'feat/d' }, { pr: 5, branch: 'feat/e' }];
+  const run = runStatusModel({ status: 'running', items, current: 1, merged: 1, events: [{ time: '2026-11-20T15:04:05Z', message: 'x birleştirildi' }] });
+  assert.equal(run.running, true);
+  assert.ok(run.lines[0].includes('2/2') && run.lines[0].includes('#5') && run.lines[0].includes('1 birleşti'));
+  assert.ok(run.lines.some((l) => l.includes('15:04:05') && l.includes('x birleştirildi')));
+  for (const status of ['completed', 'stopped', 'blocked', 'timeout', 'interrupted']) {
+    const m = runStatusModel({ status, items, current: 0, merged: 0, stopReason: 'neden' });
+    assert.equal(m.running, false, status);
+    assert.ok(m.title && !m.title.includes('undefined'), status);
+  }
+  assert.equal(runStatusModel({ status: 'blocked', items }).resumable, true);
+  assert.equal(runStatusModel({ status: 'completed', items }).resumable, false);
+  assert.equal(runStatusModel(null), null);
+  assert.equal(runStatusModel({ status: 'running', items, current: 99, merged: 0 }).lines[0].includes('2/2'), true, 'out-of-range index is clamped');
+});
+
+test('offline engine run: needs the fingerprint, merges the green prefix, stops at the first problem and never waits', () => {
+  const eng = loadEngine();
+  assert.equal(eng.queueRunPlan().startable, false, 'first PR (#421) conflicts');
+  const plan = eng.queueRunPlan(['br-open-424', 'br-open-422']);
+  assert.equal(plan.startable, true);
+  assert.throws(() => eng.queueRun(['br-open-424', 'br-open-422'], 'yanlis'), /onaylanmadı/);
+  assert.throws(() => eng.queueRun(['br-open-424', 'br-open-422'], ''), /onaylanmadı/);
+  assert.equal(eng.queueRunStatus(), null, 'rejected start creates no run');
+  // 424: CI sürüyor → bekleme yok, zaman aşımı gibi durur, hiçbir şey birleşmez
+  const waiting = eng.queueRun(['br-open-424', 'br-open-422'], plan.fingerprint);
+  assert.equal(waiting.status, 'timeout');
+  assert.equal(waiting.merged, 0);
+  // 424 yeşile dönünce: 424 birleşir, 422 (CI kırmızı) engel
+  eng.fixCI('br-open-424');
+  const plan2 = eng.queueRunPlan(['br-open-424', 'br-open-422']);
+  const run = eng.queueRun(['br-open-424', 'br-open-422'], plan2.fingerprint);
+  assert.equal(run.status, 'blocked');
+  assert.equal(run.merged, 1);
+  assert.match(run.stopReason, /CI başarısız/);
+  assert.equal(eng.queueRunStatus().id, run.id);
+  assert.throws(() => eng.queueRunStop(), /çalışan/);
+});
