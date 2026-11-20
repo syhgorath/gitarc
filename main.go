@@ -100,6 +100,20 @@ var noProjectAllowed = map[string]bool{
 	"/api/logs/clear":             true,
 }
 
+// repoBindingHeader: istemcinin (sekmenin) gösterdiği projenin kimliği. Sunucuda "etkin proje" tek ve geneldir; başka bir
+// sekme projeyi değiştirdiyse eski sekmedeki bir işlem (dal sil, merge, commit...) sessizce ÖTEKİ projeye giderdi.
+const repoBindingHeader = "X-GitArc-Repo"
+
+// repoBindingExempt: projeyi değiştiren/seçen ya da projeden bağımsız uçlar bağlamadan muaftır (anlık görüntü ve yoklama
+// da: sekme yeni etkin projeyi bunlarla öğrenir).
+func repoBindingExempt(path string) bool {
+	switch path {
+	case "/api/snapshot", "/api/repo/switch", "/api/repo/add", "/api/repo/remove":
+		return true
+	}
+	return strings.HasPrefix(path, "/api/system/")
+}
+
 func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// DNS rebinding guard
@@ -120,6 +134,18 @@ func (a *App) guard(next http.HandlerFunc) http.HandlerFunc {
 			}
 			if o := r.Header.Get("Origin"); o != "" && o != "http://"+a.host {
 				writeJSONError(w, http.StatusForbidden, "yasak Origin")
+				return
+			}
+		}
+		// Proje bağlama: başlık varsa ve sunucudaki etkin projeyle uyuşmuyorsa işlem YAPILMAZ. Başlık yoksa (CLI, testler,
+		// eski istemci) bağlama uygulanmaz.
+		if want := r.Header.Get(repoBindingHeader); want != "" && !repoBindingExempt(r.URL.Path) {
+			if active := a.mgr.ActiveRepoID(); want != active {
+				writeJSON(w, http.StatusConflict, map[string]string{
+					"error":        "Proje değişti: bu sekme başka bir projeyi gösteriyor, sunucuda farklı bir proje açık. İşlem yapılmadı; sayfa yenileniyor.",
+					"code":         "repo_mismatch",
+					"activeRepoId": active,
+				})
 				return
 			}
 		}

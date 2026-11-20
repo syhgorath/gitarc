@@ -23,7 +23,8 @@ async function step(name, fn) {
 }
 const expect = async (cond, what, timeout = 12000) => { if (!(await b.waitFor(cond, timeout))) throw new Error(what); };
 const noConsoleErrors = () => {
-  const real = b.errors.filter((e) => !/favicon/i.test(e));
+  // Proje bağlama adımı BİLEREK 409 üretir (başka projeyi gösteren sekme taklidi); başka hiçbir 409'a izin yok.
+  const real = b.errors.filter((e) => !/favicon/i.test(e) && !/status of 409.*\/api\/branch\/delete/.test(e));
   if (real.length) throw new Error(`konsol hatası: ${real.slice(0, 2).join(' | ')}`);
 };
 
@@ -77,6 +78,17 @@ try {
     await expect(hidden('#btn-enable-protection'), 'uygulanacak bir şey kalmadı, Uygula düğmesi gizlenmeliydi');
     await click('#sec-close');
     await expect(hidden('#security-update-modal'), 'Koruma penceresi kapanmadı');
+  });
+  await step('Proje bağlama: başka projeyi gösteren sekmenin değiştirici isteği 409 ile REDDEDİLİR', async () => {
+    // Gerçek tarayıcıda: sunucudaki etkin projeden farklı bir kimlikle gelen istek işlem yapmamalı ve etkin projeyi bildirmeli.
+    await expect(`(async()=>{
+      const m = await import('/modules/state.js');
+      const r = await fetch('/api/branch/delete', { method: 'POST', credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'gitarc', 'Content-Type': 'application/json', 'X-GitArc-Repo': 'baska-bir-proje' },
+        body: JSON.stringify({ branchId: 'x' }) });
+      const j = await r.json();
+      return r.status === 409 && j.code === 'repo_mismatch' && j.activeRepoId === m.state.snapshot.repo.id;
+    })()`, 'yanlış proje kimliğiyle gelen istek 409 repo_mismatch ile reddedilmedi');
   });
   await step('Çakışma Stüdyosu radar kartından açılır ve kapanır', async () => {
     await expect(`[...document.querySelectorAll('.radar-card button')].some((x) => x.textContent.includes('Çakışma Stüdyosu'))`, 'radarda çakışma kartı yok');
