@@ -150,9 +150,16 @@ func listTools() []toolDefinition {
 	}
 	base := []toolDefinition{
 		{
-			Name:        "gitarc_status",
-			Description: "GitArc kokpitindeki anlık tam durumu, aktif HEAD dalını, çalışma alanı kirli dosyalarını, açık PR'ları (başlık ve açıklamalarıyla), yerel dalları ve son birleşmiş PR'ları detaylıca döndürür.",
-			InputSchema: emptySchema,
+			Name: "gitarc_status",
+			Description: "GitArc kokpitinin anlık durumu. VARSAYILAN (detail=compact) KISA bir özet döner (birkaç yüz–birkaç bin karakter): aktif dal, kirli dosya sayısı/adları, koruma ve main CI, açık PR'lar için tek satır (CI, inceleme, geride/ileride, çakışma), yerel dallar, tanılama özeti, varsa çalışan kuyruk koşusu. " +
+				"Tek bir dalın ayrıntısı (PR gövdesi, değişen dosyalar, taslak PR metni, önerilen komut) için branch=<dal adı> verin. Bugünkü tam döküm için detail=full (çok büyük olabilir; çoğu iş için gerekmez).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"detail": map[string]any{"type": "string", "enum": []string{"compact", "full"}, "description": "compact (varsayılan): kısa özet; full: tam döküm."},
+					"branch": map[string]any{"type": "string", "description": "Yalnızca bu dalın ayrıntısı (ad ya da kimlik)."},
+				},
+			},
 		},
 		{
 			Name:        "gitarc_check_conflicts",
@@ -289,11 +296,27 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 		return callProposeCommit(params.Arguments, mgr)
 
 	case "gitarc_status":
+		detail, _ := params.Arguments["detail"].(string)
+		branch, _ := params.Arguments["branch"].(string)
+		detail = strings.ToLower(strings.TrimSpace(detail))
+		if detail != "" && detail != "compact" && detail != "full" {
+			return errResult(`detail "compact" ya da "full" olmalıdır`)
+		}
 		snap, err := mgr.Snapshot()
 		if err != nil {
 			return errResult(err.Error())
 		}
-		return jsonTextResult(buildStatusPayload(snap))
+		if strings.TrimSpace(branch) != "" {
+			payload, ok := buildBranchDetailPayload(snap, strings.TrimSpace(branch))
+			if !ok {
+				return errResult("dal bulunamadı: " + branch + " (adları görmek için gitarc_status'u dal parametresiz çağırın)")
+			}
+			return jsonTextResult(payload)
+		}
+		if detail == "full" {
+			return jsonTextResult(buildStatusPayload(snap))
+		}
+		return jsonTextResult(buildCompactStatusPayload(snap))
 
 	case "gitarc_check_conflicts":
 		snap, err := mgr.Snapshot()
@@ -729,6 +752,178 @@ func buildStatusPayload(snap model.CockpitSnapshot) map[string]any {
 		"diagnostics": snap.Diagnostics,
 		"logs":        snap.Logs,
 	}
+}
+
+// ---- gitarc_status: kısa özet (varsayılan) ve tek dal ayrıntısı ----
+// Tam döküm bir ajanın bağlamına ~14–66 bin karakter yazıyordu (PR gövdeleri, değişen dosyalar, günlükler, tekrarlı listeler).
+// Kısa özet, "şu an durum ne?" sorusunun cevabıdır; ayrıntı isteğe bağlıdır (branch / detail=full).
+
+const (
+	compactMaxDirtyFiles  = 20
+	compactMaxDiagnostics = 10
+	compactMaxTitle       = 80
+)
+
+func clip(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n-1]) + "…"
+}
+
+func buildCompactStatusPayload(snap model.CockpitSnapshot) map[string]any {
+	type prLine struct {
+		Number       int    `json:"number"`
+		Branch       string `json:"branch"`
+		Title        string `json:"title,omitempty"`
+		CI           string `json:"ci"`
+		Review       string `json:"review,omitempty"`
+		Ahead        int    `json:"ahead,omitempty"`
+		Behind       int    `json:"behind,omitempty"`
+		Conflict     bool   `json:"conflict,omitempty"`
+		CrossPRs     int    `json:"crossPrs,omitempty"`
+		ChangedFiles int    `json:"changedFiles,omitempty"`
+	}
+	type localLine struct {
+		Name        string `json:"name"`
+		IsHEAD      bool   `json:"isHead,omitempty"`
+		Ahead       int    `json:"ahead,omitempty"`
+		Behind      int    `json:"behind,omitempty"`
+		Uncommitted int    `json:"uncommitted,omitempty"`
+		LastCommit  string `json:"lastCommit,omitempty"`
+	}
+	type diagLine struct {
+		Kind     string `json:"kind"`
+		Severity string `json:"severity,omitempty"`
+		Branch   string `json:"branch,omitempty"`
+		Title    string `json:"title"`
+	}
+	openPRs := []prLine{}
+	locals := []localLine{}
+	localCount, mergedCount := 0, 0
+	current := snap.Repo.DefaultBranch
+	var dirtyFiles []string
+	for _, b := range snap.Branches {
+		if b.IsHEAD {
+			current = b.Name
+		}
+		if (b.ID == "local-wip-working-tree" || (b.IsHEAD && b.UncommittedCount > 0)) && len(dirtyFiles) == 0 {
+			dirtyFiles = b.ChangedFiles
+		}
+		if b.State == "merged" || b.OriginGone {
+			mergedCount++
+		}
+		if b.State == "open" && b.PR != nil && b.PR.Number > 0 && b.PR.ReviewState != "MERGED" {
+			ci := "bilinmiyor"
+			if b.PR.CI != nil && b.PR.CI.State != "" {
+				ci = b.PR.CI.State
+			}
+			openPRs = append(openPRs, prLine{
+				Number: b.PR.Number, Branch: b.Name, Title: clip(b.PR.Title, compactMaxTitle), CI: ci, Review: b.PR.ReviewState,
+				Ahead: b.AheadMain, Behind: b.BehindMain, Conflict: b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved,
+				CrossPRs: len(b.CrossPR), ChangedFiles: len(b.ChangedFiles),
+			})
+		}
+		if b.HasLocal && !strings.HasPrefix(b.ID, "gh-merged-") {
+			localCount++
+			if b.ID != "local-wip-working-tree" && b.State == "open" {
+				locals = append(locals, localLine{Name: b.Name, IsHEAD: b.IsHEAD, Ahead: b.AheadMain, Behind: b.BehindMain, Uncommitted: b.UncommittedCount, LastCommit: clip(b.LastCommitMsg, compactMaxTitle)})
+			}
+		}
+	}
+	more := 0
+	if len(dirtyFiles) > compactMaxDirtyFiles {
+		more = len(dirtyFiles) - compactMaxDirtyFiles
+		dirtyFiles = dirtyFiles[:compactMaxDirtyFiles]
+	}
+	diags := []diagLine{}
+	for i, d := range snap.Diagnostics {
+		if i >= compactMaxDiagnostics {
+			break
+		}
+		diags = append(diags, diagLine{Kind: d.Kind, Severity: d.Severity, Branch: d.BranchName, Title: clip(d.Title, 120)})
+	}
+	mode := snap.Repo.Mode
+	if mode == "" {
+		mode = "live"
+	}
+	r := snap.Repo
+	repo := map[string]any{
+		"name": r.Name, "defaultBranch": r.DefaultBranch, "ahead": r.Ahead, "behind": r.Behind, "dirtyCount": r.DirtyCount,
+		"branchProtected": r.BranchProtected, "protectionState": r.ProtectionState, "strictUpToDate": r.StrictUpToDate,
+	}
+	if r.MainCI != nil {
+		repo["mainCI"] = map[string]string{"state": r.MainCI.State, "sha": r.MainCI.SHA, "workflow": r.MainCI.Workflow}
+	}
+	if r.QueueRun != nil {
+		repo["queueRun"] = r.QueueRun
+	}
+	active := map[string]any{
+		"currentBranch": current, "defaultBranch": r.DefaultBranch, "isWorkingTreeClean": r.DirtyCount == 0, "dirtyCount": r.DirtyCount,
+		"dirtyFiles": dirtyFiles, "openPRs": openPRs, "localBranches": locals,
+	}
+	if more > 0 {
+		active["dirtyFilesMore"] = more
+	}
+	if snap.PendingProposal != nil {
+		active["pendingProposal"] = map[string]any{"id": snap.PendingProposal.ID, "branch": snap.PendingProposal.BranchName, "title": clip(snap.PendingProposal.Message, compactMaxTitle)}
+	}
+	return map[string]any{
+		"mode":             mode,
+		"detail":           "compact",
+		"summary":          fmt.Sprintf("%s (%s): %d açık PR, %d yerel dal, %d birleşmiş/temizleme adayı", r.Name, mode, len(openPRs), localCount, mergedCount),
+		"openPRCount":      len(openPRs),
+		"localBranchCount": localCount,
+		"mergedCount":      mergedCount,
+		"repo":             repo,
+		"activeContext":    active,
+		"diagnostics":      diags,
+		"diagnosticsTotal": len(snap.Diagnostics),
+		"next":             "Kısa özet. Bir dalın ayrıntısı (PR gövdesi, değişen dosyalar, taslak PR, önerilen komut) için gitarc_status'u branch=<ad> ile çağırın; tam döküm için detail=full.",
+	}
+}
+
+// buildBranchDetailPayload: tek dalın tam bilgisi (ad ya da kimlik; aynı adlı birden çok kayıtta açık olan tercih edilir).
+func buildBranchDetailPayload(snap model.CockpitSnapshot, name string) (map[string]any, bool) {
+	var pick *model.BranchArc
+	for i := range snap.Branches {
+		b := &snap.Branches[i]
+		if b.ID == name || b.Name == name {
+			if pick == nil || (b.State == "open" && pick.State != "open") {
+				pick = b
+			}
+		}
+	}
+	if pick == nil {
+		return nil, false
+	}
+	b := *pick
+	diags := []model.DiagnosticItem{}
+	for _, d := range snap.Diagnostics {
+		if d.BranchID == b.ID || d.BranchName == b.Name {
+			diags = append(diags, d)
+		}
+	}
+	out := map[string]any{
+		"detail": "branch", "name": b.Name, "id": b.ID, "state": b.State, "hemisphere": b.Hemisphere, "isHead": b.IsHEAD,
+		"hasLocal": b.HasLocal, "hasRemote": b.HasRemote, "originGone": b.OriginGone,
+		"aheadMain": b.AheadMain, "behindMain": b.BehindMain, "uncommittedCount": b.UncommittedCount,
+		"lastCommitMsg": b.LastCommitMsg, "changedFiles": b.ChangedFiles, "draftPrTitle": b.DraftPRTitle, "draftPrBody": b.DraftPRBody,
+		"suggestedCmd": b.SuggestedCmd, "hasConflict": b.Conflict != nil && b.Conflict.HasConflict && !b.Conflict.Resolved,
+		"crossPR": b.CrossPR, "diagnostics": diags,
+	}
+	if b.Conflict != nil && len(b.Conflict.Files) > 0 {
+		out["conflictFiles"] = b.Conflict.Files
+	}
+	if b.PR != nil {
+		pr := map[string]any{"number": b.PR.Number, "title": b.PR.Title, "body": b.PR.Body, "author": b.PR.Author, "url": b.PR.URL, "reviewState": b.PR.ReviewState}
+		if b.PR.CI != nil {
+			pr["ci"] = map[string]any{"state": b.PR.CI.State, "workflow": b.PR.CI.Workflow, "failedStep": b.PR.CI.FailedStep}
+		}
+		out["pr"] = pr
+	}
+	return out, true
 }
 
 func buildConflictsPayload(snap model.CockpitSnapshot, mgr *gitengine.Manager) map[string]any {

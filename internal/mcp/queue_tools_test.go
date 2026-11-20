@@ -1,10 +1,13 @@
 package mcp
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"gitarc/internal/gitengine"
+	"gitarc/internal/model"
 )
 
 func TestQueuePlanToolIsListedAndReadOnly(t *testing.T) {
@@ -257,5 +260,118 @@ func TestQueueRunEnabledStillNeedsTheFingerprint(t *testing.T) {
 	}
 	if st, _ := callTyped(t, mgr, "gitarc_queue_run_status", map[string]any{}); st["run"] != nil {
 		t.Fatalf("reddedilen başlatma koşu oluşturmamalı: %+v", st)
+	}
+}
+
+// ---- gitarc_status: kısa özet (varsayılan), tek dal ayrıntısı, tam döküm ----
+
+func statusText(t *testing.T, mgr *gitengine.Manager, args map[string]any) (string, toolResult) {
+	t.Helper()
+	res := callTool(toolCallParams{Name: "gitarc_status", Arguments: args}, mgr)
+	if len(res.Content) == 0 {
+		t.Fatalf("boş yanıt: %+v", res)
+	}
+	return res.Content[0].Text, res
+}
+
+func TestStatusIsCompactByDefaultAndMuchSmallerThanFull(t *testing.T) {
+	mgr := gitengine.NewManager("sim")
+	def, res := statusText(t, mgr, nil)
+	if res.IsError {
+		t.Fatalf("hata: %s", def)
+	}
+	full, _ := statusText(t, mgr, map[string]any{"detail": "full"})
+	if len(def)*3 > len(full) {
+		t.Fatalf("varsayılan çıktı tam dökümün en çok üçte biri olmalı: varsayılan %d, tam %d", len(def), len(full))
+	}
+	for _, must := range []string{`"detail": "compact"`, `"activeContext"`, `"openPRs"`, `"openPRCount"`, `"summary"`, `"next"`} {
+		if !strings.Contains(def, must) {
+			t.Fatalf("kısa özet %s içermeli:\n%s", must, def)
+		}
+	}
+	// ağır alanlar yalnızca tam dökümde
+	for _, heavy := range []string{"metricsGlossary", `"branches"`, `"logs"`, "draftPrBody", "suggestedCmd", "recentMergedPRs"} {
+		if strings.Contains(def, heavy) {
+			t.Fatalf("kısa özet %s içermemeli", heavy)
+		}
+		if heavy != "draftPrBody" && heavy != "suggestedCmd" && !strings.Contains(full, heavy) {
+			t.Fatalf("tam döküm %s içermeye devam etmeli (geriye uyumlu)", heavy)
+		}
+	}
+	// açık PR'lar tek satır: CI, geride/ileride ve çakışma bilgisi var, PR gövdesi yok
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(def), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	prs := parsed["activeContext"].(map[string]any)["openPRs"].([]any)
+	if len(prs) == 0 {
+		t.Fatal("demo verisinde açık PR'lar olmalı")
+	}
+	first := prs[0].(map[string]any)
+	for _, k := range []string{"number", "branch", "ci"} {
+		if _, ok := first[k]; !ok {
+			t.Fatalf("açık PR satırında %q olmalı: %+v", k, first)
+		}
+	}
+	if _, has := first["body"]; has {
+		t.Fatal("kısa özette PR gövdesi olmamalı")
+	}
+}
+
+func TestStatusBranchDetailAndInvalidArguments(t *testing.T) {
+	mgr := gitengine.NewManager("sim")
+	txt, res := statusText(t, mgr, map[string]any{"branch": "br-open-424"})
+	if res.IsError || !strings.Contains(txt, `"detail": "branch"`) || !strings.Contains(txt, `"pr"`) || !strings.Contains(txt, `"changedFiles"`) {
+		t.Fatalf("tek dal ayrıntısı PR ve dosyaları içermeli: %s", txt)
+	}
+	if _, res := statusText(t, mgr, map[string]any{"branch": "yok-boyle-dal"}); !res.IsError {
+		t.Fatal("bilinmeyen dal hata vermeli")
+	}
+	if _, res := statusText(t, mgr, map[string]any{"detail": "garip"}); !res.IsError {
+		t.Fatal("geçersiz detail hata vermeli")
+	}
+	// çıplak argümanlar: hepsi kabul edilir
+	for _, a := range []map[string]any{nil, {}, {"detail": ""}, {"detail": "COMPACT"}} {
+		if _, res := statusText(t, mgr, a); res.IsError {
+			t.Fatalf("%v kabul edilmeli", a)
+		}
+	}
+}
+
+func TestCompactStatusCapsDirtyFilesAndTitles(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	files := make([]string, 50)
+	for i := range files {
+		files[i] = fmt.Sprintf("dosya-%d.go", i)
+	}
+	snap := model.CockpitSnapshot{
+		Repo: model.RepoMeta{Name: "r", Mode: "live", DefaultBranch: "main", DirtyCount: 50, StrictUpToDate: true},
+		Branches: []model.BranchArc{{ID: "b1", Name: "feat/b", State: "open", HasLocal: true, IsHEAD: true, UncommittedCount: 50, ChangedFiles: files,
+			PR: &model.PRStatus{Number: 3, Title: long, Body: long}}},
+	}
+	raw, err := json.Marshal(buildCompactStatusPayload(snap))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p map[string]any
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatal(err)
+	}
+	active := p["activeContext"].(map[string]any)
+	if got := len(active["dirtyFiles"].([]any)); got != compactMaxDirtyFiles {
+		t.Fatalf("kirli dosyalar %d ile sınırlı olmalı: %d", compactMaxDirtyFiles, got)
+	}
+	if active["dirtyFilesMore"] != float64(50-compactMaxDirtyFiles) {
+		t.Fatalf("kalan dosya sayısı bildirilmeli: %v", active["dirtyFilesMore"])
+	}
+	title := active["openPRs"].([]any)[0].(map[string]any)["title"].(string)
+	if n := len([]rune(title)); n > compactMaxTitle {
+		t.Fatalf("PR başlığı %d karakterle sınırlı olmalı: %d", compactMaxTitle, n)
+	}
+	if strings.Contains(string(raw), long) {
+		t.Fatal("uzun metin kırpılmadan sızmamalı")
+	}
+	if repo := p["repo"].(map[string]any); repo["strictUpToDate"] != true {
+		t.Fatalf("koruma bilgisi özette olmalı: %+v", repo)
 	}
 }

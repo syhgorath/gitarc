@@ -101,7 +101,7 @@ Demo verisi yalnızca bilerek istenince açılır: `./gitarc -repo sim`. Demo de
 
 | Araç | Ne yapar |
 | :--- | :--- |
-| `gitarc_status` | Topoloji, açık/birleşmiş dallar ve teşhis özeti |
+| `gitarc_status` | Kokpit durumu. **Varsayılan KISA özet** (`detail=compact`: aktif dal, kirli dosyalar, koruma/main CI, açık PR başına tek satır, tanılama, çalışan kuyruk koşusu; ~2 bin karakter). Tek dalın ayrıntısı için `branch=<ad>` (PR gövdesi, dosyalar, taslak PR); bugünkü tam döküm için `detail=full` (~11 kat büyük) |
 | `gitarc_check_conflicts` | `git merge-tree` çakışma ve Cross-PR kesişim raporu |
 | `gitarc_ci_failure_digest` | Gürültüsüz CI hata özeti ve yerel repro komutu |
 | `gitarc_sync_main` | Çalışma dizinini bozmadan `origin/main` eşitleme |
