@@ -263,7 +263,7 @@ func (m *Manager) GetPendingProposal() *model.CommitProposal {
 }
 
 func proposalFilePath(repoPath string) string {
-	return filepath.Join(repoPath, ".git", "gitarc_proposal.json")
+	return filepath.Join(gitDirOrDefault(repoPath), "gitarc_proposal.json")
 }
 
 func saveProposalToFile(repoPath string, prop model.CommitProposal) error {
