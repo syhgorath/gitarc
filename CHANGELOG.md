@@ -4,6 +4,12 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ## [Yayımlanmamış]
 
+### Belgeler
+- **README görselleri yenilendi:** Tüm ekran görüntüleri güncel arayüzle (demo verisiyle) yeniden çekildi ve tarayıcı penceresi çerçevesine alınmış tek dosyalık SVG oldu (`scripts/ekran-cercevesi.py`; çekim: `tests/e2e/ekran-goruntuleri.mjs`). Eski `.webp` görüntüler kişisel tarayıcı sekmelerini/yer imlerini gösteriyordu; kaldırıldı. Merge Kuyruğu, Dal koruması ve MCP pencereleri için yeni görseller; "Kuyrukta biri kırmızı yandı" senaryosu eklendi.
+
+### Düzeltilenler
+- **Sürüm rozeti başlığı yukarı itiyordu:** `topbar.js` düğmenin `className`'ini yeniden yazdığı için `.brand-ver` sınıf kuralı hiç uygulanmıyordu (rozet 28 px, başlık çubuğun kenarına yapışıyordu); kural konuma (`.brand-sub-row > button`) bağlandı.
+
 ### Değişenler
 - **Üst çubuk kompakt:** Başlık `GitArc` (Arc yeşil, "SVG" kaldırıldı); sürüm rozeti başlığın altına taşındı; `Proje Ekle`, `Birleşmiş Paraboller`, `Tur` kısaltıldı: 1280 px'te sığar.
 - **MCP penceresi artık gerçek yapılandırmayı üretir:** `command` açık projenin klasörü yerine çalışan GitArc ikilisinin yolu (`RepoMeta.execPath`) olur (eskiden başka bir proje açıkken var olmayan `<proje>/gitarc` yazılıyordu); uzağa yazan 5 aracın her biri için onay kutusu var, işaretlenenler yapılandırmaya `env` olarak girer (varsayılan hepsi kapalı).

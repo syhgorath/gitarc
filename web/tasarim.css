@@ -251,8 +251,9 @@ body {
 }
 
 /* Sürüm düğmesi başlığın altında, küçük bir rozet gibi durur (sürüm/güncelleme/Team penceresini açar). */
-.brand-sub-row .brand-ver {
-  height: auto;
+.brand-copy .brand-sub-row > button { /* topbar.js sınıf adını yeniden yazar: sınıfa değil konuma bağla */
+  height: 15px;
+  min-height: 0;
   padding: 0 5px;
   font-size: 9.5px;
   line-height: 14px;

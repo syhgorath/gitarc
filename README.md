@@ -2,7 +2,7 @@
 
 **GitArc**, düz `git log` ağaçları yerine Git ve GitHub yaşam döngüsünü **parabolik ray topolojisiyle** gösteren, sıfır bağımlılıklı bir yerel kokpittir. Yerel dallarınızı (`HEAD`, uncommitted dosyalar, `origin` farkları) ile GitHub Remote, Pull Request, Review ve GitHub Actions CI durumlarını tek bir SVG tuvalinde birleştirir. [KeyLab (`sshpocket`)](https://github.com/syhgorath/keylab) tasarım ve güvenlik DNA'sını paylaşan bağımsız bir kardeş projedir.
 
-![GitArc kokpiti: parabolik raylar, KPI çipleri ve alt çekmece](docs/screenshots/kokpit.png)
+![GitArc kokpiti: parabolik raylar, KPI çipleri ve alt çekmece](docs/screenshots/kokpit.svg)
 
 ## Parabolik metafor
 
@@ -32,17 +32,18 @@ Korumalı `main`'de ("dal güncel olmalı" + zorunlu CI) AI ajanlarının veya e
 
 Kartlarda koşudaki PR'lar `🚦 Kuyrukta 2/5` / `⏳ İşleniyor · CI bekleniyor` etiketi taşır; işlenen PR'a sarı kesik bir "birleşecek" oku çizilir. CI bilinmiyorsa yeşil **varsayılmaz**; koruma atlatılmaz (`--admin` yok).
 
-![Kuyruk koşusu: işlenen PR'da etiket ve "birleşecek" hedef çizgisi](docs/screenshots/kuyruk-isleniyor.webp)
+![Merge Kuyruğu penceresi: plan, çakışma ve CI durumu PR başına](docs/screenshots/kuyruk.svg)
 
 **Tekil PR için de aynı yol:** `⏳ CI Bitince Merge Et` artık sunucuda 1 PR'lık bir koşu başlatır (sayfayı yenileseniz de sürer; ikinci tıklama durdurur). Dal `main`'in gerisinde kaldıysa düğme `↻ Güncelle & Birleştir` olur ve aynı 1 PR'lık koşuyu planlar. Koşu yalnızca **merge commit** yapar.
 
 ### Dal koruması (`main Korumalı`)
 `🛡 main Korumalı` düğmesi korumanın durumunu (`Aktif` / `Korumasız` / `Bilinmiyor`) ayrı ayrı gösterir; okunamayan koruma "yok" sayılmaz. Plan **yalnızca güçlendirir**, yönetmediği alanları korur, parmak iziyle onaylanınca uygular.
 
+![Dal koruması penceresi: Şu an → Profil → Değişecekler](docs/screenshots/koruma.svg)
+
 ### Yerel kalıntılar ve yeni yerel dallar
 Pushlanmamış yeni dal alt yarı-kürede mor kesikli yay olarak durur (`Yarım Parabol · Local`, `🚀 Push & PR`). Uzakta birleşmiş ama yerelde duran dallar `💻 Local` rozetiyle ve `🧹` düğmesiyle kalıntı olarak işaretlenir; tamamen temiz yeşil kapsüllerde temizleme düğmesi gösterilmez.
 
-![Yerel yarım parabol, Push & PR ve yerel kalıntı kapsülü](docs/screenshots/yerel-dal-ve-kalinti.webp)
 
 ### Son İşlemler ve işlem hataları
 Alt çekmecedeki **Son İşlemler** sekmesi başarıyla tamamlanan işlemleri, **Hata Radarı** ise reddedilen yazan işlemleri (ör. `Merge başarısız`) kapatılabilir kartlar olarak, tekrar sayacıyla gösterir. Kuyruk koşusunun durması kritik karttır.
@@ -55,7 +56,7 @@ CI hatası, çakışma, Cross-PR dosya çarpışması ve `origin: gone` kalınt�
 ### Birleşmiş PR'ın tam detayı ve dosya dosya diff
 Birleşmiş bir dalı seçince GitHub'daki gerçek PR başlığı, açıklaması ve yazarı görünür; **Değişen Dosyalar** kartı her dosyayı durumu (`A`/`M`/`D`) ve `+eklenen / -silinen` satırlarıyla listeler. Bir dosyaya tıklamak, birleşme commit'inin getirdiği değişiklikleri dosya dosya gösteren tam diff penceresini açar (dal çoktan silinmiş olsa bile).
 
-![Birleşmiş PR detayı ve değişen dosyalar](docs/screenshots/birlesmis-pr-detay.png)
+![Birleşmiş PR detayı ve değişen dosyalar](docs/screenshots/birlesmis-pr-detay.svg)
 
 ### Merge sonrası `main` testleri
 Üst çubuktaki `main CI` rozeti, birleştirdikten sonra omurgada çalışan testin sonucunu gösterir (`⏳ koşuyor` / `✓` / `❌ kırık`). Kırılırsa Hata Radarı'nda kritik bir kart belirir. Veri okunamıyorsa rozet gizlenir; GitArc hiçbir yerde sahte yeşil göstermez.
@@ -63,17 +64,17 @@ Birleşmiş bir dalı seçince GitHub'daki gerçek PR başlığı, açıklaması
 ### Çakışma Çözüm Stüdyosu
 Çakışan dosyalar sol tarafta (**şu an olan**) gerçek 3 yollu `git merge-file` blokları, sağ tarafta (**olacak olan**) canlı önizleme olarak yan yana gösterilir. Dosya türüne göre `★ ÖNERİLEN` strateji sunulur: `union`, `ours`, `theirs` veya elle/AI düzenleme. Çözüm, çalışma ağacınıza dokunmadan geçici bir `git worktree` içinde uygulanır; `go.mod` varsa `go vet ./...` geçmeden pushlanmaz.
 
-![Çakışma Çözüm Stüdyosu](docs/screenshots/cakisma-studyosu.png)
+![Çakışma Çözüm Stüdyosu](docs/screenshots/cakisma-studyosu.svg)
 
 ### Etkileşimli tur
 `🎓 Tur` düğmesi, kokpitin bölümlerini adım adım tanıtan 5 adımlı bir rehber açar.
 
-![Kokpit turu](docs/screenshots/kokpit-turu.png)
+![Kokpit turu](docs/screenshots/kokpit-turu.svg)
 
 ### Açık ve koyu tema
 `◐` düğmesi temayı değiştirir; tüm paneller, stüdyo ve terminal kutuları iki temada da okunur.
 
-![Açık tema](docs/screenshots/acik-tema.png)
+![Açık tema](docs/screenshots/acik-tema.svg)
 
 ### Diğer yetenekler
 - **Omurga dalı seçimi:** Varsayılan dal `origin/HEAD`'den bulunur (git-flow'da `develop` olabilir); yanlışsa `⚙` ile elle seçilir ve projeye kaydedilir.
@@ -95,6 +96,8 @@ Birleşmiş bir dalı seçince GitHub'daki gerçek PR başlığı, açıklaması
 **1. Günlük tek geliştirici akışı.** Klasörde `./gitarc` çalıştırın. Kirli dosyalarla bir dal açıp commit mesajı, PR başlığı ve açıklamasıyla `Push & PR` basın; GitArc önce commit atar, `go vet` gibi yerel doğrulamayı çalıştırır, boş dalı göndermez. PR'ın CI'ı sürerken `⏳ CI Bitince Merge Et` deyip başka işe geçin; CI yeşil olunca birleşir.
 
 **2. AI ajanları PR yağdırıyor (korumalı repo).** Ajanlar 5 PR açtı; her biri `main`'in gerisinde ve CI bekliyor. `🚦 Kuyruk` → PR'ları seçin → planı okuyun (çakışan varsa nedeniyle birlikte görünür) → `▶ Kuyruğu çalıştır` ve onaylayın. Sunucu sırayla günceller, CI'ı bekler, birleştirir; çakışma ya da kırmızı CI'da durup Hata Radarı'nda size söyler. Siz sadece planı onaylarsınız.
+
+**2b. Kuyrukta biri kırmızı yandı.** Koşu o PR'a sıra gelince durur (öncekiler zaten birleşmiştir); `Kuyruk` penceresi nedeni yazar, Hata Radarı'nda kritik kart düşer. `🔍 CI Hatasını Gör` ile ayıklanmış log ve yerel repro komutunu görün (AI ajanında `gitarc_ci_failure_digest`), kırmızı PR'ın dalına geçip düzeltmeyi push edin (ya da geçici bir hataysa GitHub'da CI'ı yeniden çalıştırın). Sonra `🚦 Kuyruk`'u açın: düzelttiyseniz PR seçili kalsın; beklemeden devam etmek istiyorsanız kutusunu kaldırıp kalanlarla `▶ Kuyruğu çalıştır`. Her birleşme sonrası sıradaki PR `main`'in gerisinde kalıp yeniden güncellenir ve CI yeniden koşar; kırmızı PR güncelleyince yeşile dönebilir.
 
 **3. Tek bir PR geride kaldı.** Başka bir PR birleşince sizin PR'ınız "dal güncel olmalı" yüzünden birleşemez. Kartta `↻ Güncelle & Birleştir` çıkar: tek onayla dal `main`'e göre güncellenir, CI beklenir, birleştirilir.
 
@@ -140,6 +143,10 @@ Başlangıçta GitArc, bulunduğunuz klasörün ait olduğu Git deposunu açar; 
 Demo verisi yalnızca bilerek istenince açılır: `./gitarc -repo sim`. Demo depolar **GitArc Sandbox** (temel) ve **MegaCorp Platform** (50 geliştirici, 4 ana hat, kurumsal senaryo); açıkken tuvalde belirgin bir **DEMO · sahte veri** şeridi durur ve üst çubuktaki depo seçiciden geçiş yapılabilir.
 
 ## MCP entegrasyonu (AI ajanları)
+
+Arayüzdeki `🔌 MCP` düğmesi yapılandırmayı (çalışan GitArc ikilisinin yoluyla) üretir; uzağa yazan araçları onay kutusuyla açıp `env` olarak ekleyebilirsiniz:
+
+![MCP penceresi: yapılandırma ve araç grupları](docs/screenshots/mcp.svg)
 
 `./gitarc -mcp -repo .` komutu, sıfır bağımlılıklı bir `stdio` JSON-RPC 2.0 sunucusu açar (Claude Code, Cursor, Antigravity vb.):
 
