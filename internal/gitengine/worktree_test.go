@@ -54,3 +54,23 @@ func TestWorktreeFolderIsTreatedAsRepo(t *testing.T) {
 	}
 	_ = main
 }
+
+// MCP yapılandırması için anlık görüntü, AÇIK PROJENİN değil çalışan ikilinin yolunu taşır.
+func TestSnapshotCarriesExecutablePathNotRepoPath(t *testing.T) {
+	dir, _ := newTempRepo(t)
+	m := NewManager(dir)
+	snap, err := m.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe, _ := os.Executable()
+	if snap.Repo.ExecPath == "" || !filepath.IsAbs(snap.Repo.ExecPath) {
+		t.Fatalf("execPath mutlak yol olmalı: %q", snap.Repo.ExecPath)
+	}
+	if strings.HasPrefix(snap.Repo.ExecPath, dir) {
+		t.Fatalf("execPath açık projenin klasöründe olamaz: %q (proje %q)", snap.Repo.ExecPath, dir)
+	}
+	if filepath.Base(snap.Repo.ExecPath) != filepath.Base(exe) {
+		t.Fatalf("execPath çalışan ikili olmalı: %q vs %q", snap.Repo.ExecPath, exe)
+	}
+}

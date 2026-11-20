@@ -217,6 +217,18 @@ func isGitDir(p string) bool {
 	return gitDirOf(p) != ""
 }
 
+// executablePath: çalışan ikilinin sembolik bağları çözülmüş mutlak yolu; bulunamazsa "".
+func executablePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		return r
+	}
+	return exe
+}
+
 // gitDirOrDefault: gitDirOf, depo değilse (henüz oluşmamış yol) eski `<p>/.git` varsayımı.
 func gitDirOrDefault(p string) string {
 	if d := gitDirOf(p); d != "" {
@@ -391,6 +403,7 @@ func (m *Manager) Snapshot() (model.CockpitSnapshot, error) {
 	m.mu.RLock()
 	snap.Repo.TeamMode = m.teamMode
 	snap.Repo.AppVersion = AppVersion
+	snap.Repo.ExecPath = executablePath()
 	snap.Repo.LatestVersion = m.latestVer
 	snap.Repo.UpdateAvailable = m.updateAvail
 	m.mu.RUnlock()

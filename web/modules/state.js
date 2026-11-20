@@ -63,7 +63,7 @@ export function initElements() {
     'studio-file-tabs', 'studio-guide-box', 'studio-guide-text', 'studio-strategy-bar',
     'studio-line-badge', 'studio-mode-badge', 'studio-left-conflict', 'studio-right-preview',
     'studio-error-banner', 'studio-error-text', 'studio-run-vet', 'studio-apply',
-    'mcp-connect-modal', 'mcp-config-snippet',
+    'mcp-connect-modal', 'mcp-config-snippet', 'mcp-gated',
     'btn-queue', 'queue-modal', 'queue-candidates', 'queue-result',
     'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'loading-hint', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
@@ -149,6 +149,7 @@ export function initElements() {
   el.studioRunVet = el['studio-run-vet'];
   el.studioApplyBtn = el['studio-apply'];
   el.mcpModal = el['mcp-connect-modal'];
+  el.mcpGated = el['mcp-gated'];
   el.mcpConfigSnippet = el['mcp-config-snippet'];
   el.btnQueue = el['btn-queue'];
   el.queueModal = el['queue-modal'];

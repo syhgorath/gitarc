@@ -86,6 +86,8 @@ type RepoMeta struct {
 	// SyncSteps: veri toplama adımlarının (git fetch, PR listesi, koruma...) son durumu.
 	SyncSteps []SyncStep `json:"syncSteps,omitempty"`
 	AppVersion        string `json:"appVersion,omitempty"`
+	// ExecPath: çalışan GitArc ikilisinin mutlak yolu (MCP yapılandırması `command` için; açık projenin klasörü DEĞİL).
+	ExecPath string `json:"execPath,omitempty"`
 	LatestVersion     string `json:"latestVersion,omitempty"`
 	UpdateAvailable   bool   `json:"updateAvailable,omitempty"`
 	CacheHits         int      `json:"cacheHits,omitempty"`
