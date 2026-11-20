@@ -324,7 +324,7 @@ func (m *Manager) StartQueueRun(branchIDs []string, confirm string) (*model.Queu
 			remote = "origin"
 		}
 		fctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		out, _, ferr := runCmd(fctx, live.path, "git", "fetch", remote)
+		out, ferr := gitFetchRetry(fctx, live.path, remote)
 		cancel()
 		if ferr != nil {
 			err := fmt.Errorf("uzak depo okunamadı (git fetch): %s", shortErr(out, ferr))

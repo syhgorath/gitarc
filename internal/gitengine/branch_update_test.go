@@ -38,8 +38,16 @@ func newUpdateWorld(t *testing.T) *updateWorld {
 	return w
 }
 
-// pushToOrigin: ikinci klondan origin'e commit atar (branch üzerinde).
+// pushToOrigin: ikinci klondan origin'e commit atar (branch üzerinde) ve yerel klonu tazeler.
 func (w *updateWorld) pushToOrigin(branch, file, body string) {
+	w.t.Helper()
+	w.pushFromOther(branch, file, body)
+	w.run("fetch", "-q", "origin")
+}
+
+// pushFromOther: yalnızca "başkasının push'u" (ikinci klon); yerel klona DOKUNMAZ. Arka planda kendi fetch'ini çalıştıran
+// bir koşu varken kullanılır (eşzamanlı iki fetch aynı uzak-izleme ref kilidi için yarışır).
+func (w *updateWorld) pushFromOther(branch, file, body string) {
 	w.t.Helper()
 	isoGit(w.t, w.other, "fetch", "-q", "origin")
 	isoGit(w.t, w.other, "checkout", "-q", "-B", branch, "origin/"+branch)
@@ -49,7 +57,6 @@ func (w *updateWorld) pushToOrigin(branch, file, body string) {
 	isoGit(w.t, w.other, "add", "-A")
 	isoGit(w.t, w.other, "commit", "-qm", "other: "+file)
 	isoGit(w.t, w.other, "push", "-q", "origin", branch)
-	w.run("fetch", "-q", "origin")
 }
 
 func (w *updateWorld) remoteTip(branch string) string {
