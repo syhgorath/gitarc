@@ -45,6 +45,7 @@
         </label>
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-main-ci" hidden title="Merge sonrası omurga testleri">main CI</button>
+        <button type="button" class="btn ghost" id="btn-queue" title="Merge kuyruğu planı: PR'ları sırayla main'e birleştirmenin salt okunur önizlemesi">🚦 Kuyruk</button>
         <button type="button" class="btn ghost" id="btn-protect-branch" title="GitHub main dal koruma ve güvenlik durumu">🛡️ Koruma</button>
         <button type="button" class="btn ghost mono" id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v0.10.0</button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP</button>
@@ -421,13 +422,31 @@
           <div class="layer-line">Antigravity Global (<code>~/.gemini/config/mcp_config.json</code>), Claude Code, Cursor veya Windsurf içine aşağıdaki bloğu ekleyerek GitArc'ı doğrudan AI aracınıza bağlayabilirsiniz:</div>
           <pre class="terminal-box studio-mcp-json" id="mcp-config-snippet"></pre>
           <div class="diag-card">
-            <h4>Etkin MCP Araçları (13 Araç)</h4>
-            <div class="layer-line"><code>gitarc_status</code> · <code>gitarc_check_conflicts</code> · <code>gitarc_ci_failure_digest</code> · <code>gitarc_sync_main</code> · <code>gitarc_conflict_plan</code> (salt okunur) · <code>gitarc_propose_commit</code> · <code>gitarc_cleanup_candidates</code> · <code>gitarc_scan_secrets</code> · <code>gitarc_audit_log</code></div>
+            <h4>Etkin MCP Araçları (14 Araç)</h4>
+            <div class="layer-line"><code>gitarc_status</code> · <code>gitarc_check_conflicts</code> · <code>gitarc_ci_failure_digest</code> · <code>gitarc_sync_main</code> · <code>gitarc_conflict_plan</code> (salt okunur) · <code>gitarc_queue_plan</code> (salt okunur) · <code>gitarc_propose_commit</code> · <code>gitarc_cleanup_candidates</code> · <code>gitarc_scan_secrets</code> · <code>gitarc_audit_log</code></div>
             <div class="layer-line">Yazan ve geri alınması zor araçlar <strong>varsayılan kapalıdır</strong>: <code>gitarc_resolve_conflict</code> (yerel dalı günceller ve uzağa push eder; açmak için <code>"env": {"GITARC_MCP_ALLOW_RESOLVE": "1"}</code>). Dal koruması: <code>gitarc_protection_status</code> · <code>gitarc_protection_plan</code> (salt okunur) · <code>gitarc_protection_apply</code> (<strong>varsayılan kapalı</strong>: yalnızca yapılandırmaya <code>"env": {"GITARC_MCP_ALLOW_PROTECTION": "1"}</code> eklerseniz açılır; yalnızca güçlendirir)</div>
           </div>
           <div class="modal-foot">
             <button type="button" class="btn primary" id="mcp-copy-json">📋 Konfigürasyonu Kopyala</button>
             <button type="button" class="btn ghost" id="mcp-close-btn">Kapat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: MERGE KUYRUĞU PLANI (SALT OKUNUR) -->
+    <div class="modal-backdrop" id="queue-modal" hidden>
+      <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="queue-modal-title">
+        <div class="modal-head">
+          <h3 id="queue-modal-title"><span class="modal-dot"></span>🚦 Merge Kuyruğu Planı <span class="chip ok">salt okunur</span></h3>
+          <button type="button" class="icon-close" id="queue-close" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="layer-line">PR'ları aşağıdaki sırayla <code>main</code>'e <strong>sırayla</strong> birleştirmiş gibi bellekte denenir: her PR, kuyruktaki öncekiler birleşmiş olarak test edilir (tek başına temiz bir PR, bir öncekinden sonra çakışabilir). Hiçbir şey birleştirilmez, güncellenmez ya da push edilmez.</div>
+          <div class="queue-candidates" id="queue-candidates" aria-label="Kuyruğa girecek PR'lar"></div>
+          <div class="queue-result" id="queue-result" aria-live="polite"></div>
+          <div class="modal-foot">
+            <button type="button" class="btn ghost" id="queue-close-btn">Kapat</button>
           </div>
         </div>
       </div>

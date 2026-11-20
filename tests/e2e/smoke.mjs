@@ -60,9 +60,17 @@ try {
   await step('MCP penceresi açılır ve kapanır', async () => {
     await click('#btn-mcp-connect');
     await expect(visible('#mcp-connect-modal'), 'MCP penceresi açılmadı');
-    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('13 Araç')`, 'MCP penceresi koruma araçlarını/13 araç sayısını göstermiyor');
+    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('14 Araç')`, 'MCP penceresi koruma araçlarını/14 araç sayısını göstermiyor');
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
+  });
+  await step('Merge kuyruğu planı penceresi: PR\'lar listelenir, plan hesaplanır, kapanır', async () => {
+    await click('#btn-queue');
+    await expect(visible('#queue-modal'), 'Kuyruk penceresi açılmadı');
+    await expect(`document.querySelectorAll('#queue-candidates .queue-row').length > 0`, 'kuyruğa girecek PR satırları görünmüyor');
+    await expect(`document.querySelectorAll('#queue-result .queue-step').length > 0 && !!document.querySelector('#queue-result .queue-summary')`, 'plan adımları/özet görünmüyor');
+    await click('#queue-close');
+    await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });
   await step('Koruma penceresi: plan görünür, "Temel" uygulanınca depo korumalı olur, pencere kapanır', async () => {
     await click('#btn-protect-branch');

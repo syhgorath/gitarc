@@ -176,3 +176,45 @@ func TestRepoBindingFollowsSwitches(t *testing.T) {
 		t.Fatalf("etkin A iken A kimliği kabul edilmeli: %d", code)
 	}
 }
+
+// /api/queue/plan: seçilen dalları sırayla main'e birleştirilmiş gibi simüle eden SALT OKUNUR uç; depoya dokunmaz.
+func TestQueuePlanEndpointOnRealRepo(t *testing.T) {
+	h := t.TempDir()
+	t.Setenv("HOME", h)
+	t.Setenv("USERPROFILE", h)
+	dir := tempRepo(t)
+	write := func(body string) {
+		if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("base\n")
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-qm", "base")
+	for _, b := range []struct{ name, body string }{{"feat/a", "A\n"}, {"feat/b", "B\n"}} {
+		gitRun(t, dir, "checkout", "-q", "-b", b.name, "main")
+		write(b.body)
+		gitRun(t, dir, "commit", "-qam", b.name)
+		gitRun(t, dir, "checkout", "-q", "main")
+	}
+	before := branchExists(t, dir, "feat/a") && branchExists(t, dir, "feat/b")
+	c := newAPIClient(t, gitengine.NewManager(dir))
+
+	rec := c.do(http.MethodPost, "/api/queue/plan", `{"branchIds":["feat/a","feat/b"]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("plan: %d %s", rec.Code, rec.Body)
+	}
+	var plan model.QueuePlan
+	if err := json.Unmarshal(rec.Body.Bytes(), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.Mode != "live" || len(plan.Items) != 2 || plan.Items[0].Status != "clean" || plan.Items[1].Status != "conflict" || plan.StopsAt != 2 || plan.Mergeable != 1 {
+		t.Fatalf("a temiz, b a'dan sonra çakışmalı: %+v", plan)
+	}
+	if !before || !branchExists(t, dir, "feat/a") || !branchExists(t, dir, "feat/b") {
+		t.Fatal("plan dalları değiştirmemeli")
+	}
+	if rec := c.do(http.MethodPost, "/api/queue/plan", `{"branchIds":["feat/yok"]}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bilinmeyen dal 400 vermeli: %d", rec.Code)
+	}
+}
