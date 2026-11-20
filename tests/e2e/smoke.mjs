@@ -67,6 +67,9 @@ try {
     await expect(visible('#security-update-modal'), 'Koruma penceresi açılmadı');
     await expect(`document.querySelectorAll('#prot-changes li').length > 0`, 'plan satırları görünmüyor');
     await click('input[name="prot-profile"][value="temel"]');
+    // Düğme plan gelene kadar gizlidir: GÖRÜNÜR olmasını beklemek, "Temel" planının geldiğinin kanıtıdır (önceki profilin
+    // eski düğmesine tıklayıp yarışa girmeyelim).
+    await expect(visible('#btn-enable-protection'), 'Uygula düğmesi görünmedi');
     await expect(`document.getElementById('btn-enable-protection').textContent.includes('Değişikliği Uygula') && !document.getElementById('btn-enable-protection').disabled`, 'Uygula düğmesi açılmadı');
     await click('#btn-enable-protection');
     await expect(`document.getElementById('btn-protect-branch').textContent.includes('Korumalı')`, 'uygulama sonrası düğme "Korumalı" olmadı');

@@ -11,7 +11,10 @@ export const PROTECTION_PROFILES = [
   { id: 'siki', title: 'Sıkı', desc: 'CI zorunlu + 1 onay + yöneticiler dahil. Tek geliştiricide kendi PR\'ınızı birleştirmenizi engeller.' },
 ];
 
-const view = { profile: 'ci', checks: new Set(), plan: null, seq: 0 };
+const view = { profile: 'ci', checks: new Set(), plan: null, planKey: '', seq: 0 };
+
+// Planın hangi seçim için istendiğini ayırt eden anahtar: bayat bir plan (profil/kontrol sonradan değişti) uygulanmasın.
+const selectionKey = () => `${view.profile}|${[...view.checks].sort().join(',')}`;
 
 /** Planın "Değişecekler" satırları: [{label, from, to}]. */
 export function changeRows(plan) {
@@ -137,14 +140,17 @@ export async function refreshProtectionPlan() {
   renderProfiles();
   if (el.btnEnableProtection) el.btnEnableProtection.hidden = true;
   try {
+    const key = selectionKey();
     const plan = await planCall(view.profile, [...view.checks]);
     if (my !== view.seq) return;
     view.plan = plan;
+    view.planKey = key;
     renderChecks(plan);
     renderPlan(plan);
   } catch (err) {
     if (my !== view.seq) return;
     view.plan = null;
+    view.planKey = '';
     if (el.protChanges) el.protChanges.textContent = '';
     if (el.protNotes) {
       el.protNotes.textContent = '';
@@ -160,7 +166,8 @@ export async function refreshProtectionPlan() {
 /** "Uygula": yalnızca ekranda gösterilen planı (parmak iziyle) onaylayıp uygular. */
 export async function applyShownProtection(applySnapshot) {
   const plan = view.plan;
-  if (!canApplyPlan(plan)) return;
+  // Ekrandaki plan, şu anki seçimin planı değilse (yeni plan yoldayken) hiçbir şey uygulanmaz.
+  if (!canApplyPlan(plan) || view.planKey !== selectionKey()) return;
   try {
     const snap = await applyCall(view.profile, [...view.checks], plan.fingerprint);
     applySnapshot(snap);
