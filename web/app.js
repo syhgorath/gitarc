@@ -22,6 +22,7 @@ import {
 import { startCockpitTour, closeTour, nextTourStep, prevTourStep } from './modules/tour.js';
 import { openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText } from './modules/mcp-modal.js';
 import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modules/diff-viewer.js';
+import { refreshProtectionPlan, applyShownProtection } from './modules/protection.js';
 
 // Central Branch Selection
 export function selectBranch(branchId) {
@@ -341,10 +342,6 @@ function renderSecurityUpdateModal() {
     el.secProtSummary.textContent = snap.repo.protectionSummary
       || (prot.state === 'active' ? 'Korumalı' : prot.state === 'unknown' ? 'Koruma durumu okunamadı' : 'Doğrudan push açık');
   }
-  if (el.btnEnableProtection) {
-    // Yalnızca "Korumasız" kesinse öner; "Bilinmiyor"da (yetki yok) koruma açmaya çalışmak anlamsız.
-    el.btnEnableProtection.hidden = !prot.canEnable;
-  }
   if (el.secTeamChip) {
     el.secTeamChip.hidden = !snap.repo.teamMode;
   }
@@ -475,19 +472,14 @@ async function bootstrap() {
   el.btnProtectBranch?.addEventListener('click', () => {
     if (el.securityUpdateModal) el.securityUpdateModal.hidden = false;
     renderSecurityUpdateModal();
+    refreshProtectionPlan();
   });
-  document.getElementById('sec-modal-close')?.addEventListener('click', () => {
-    if (el.securityUpdateModal) el.securityUpdateModal.hidden = true;
+  ['sec-close', 'sec-close-btn'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      if (el.securityUpdateModal) el.securityUpdateModal.hidden = true;
+    });
   });
-  el.btnEnableProtection?.addEventListener('click', async () => {
-    try {
-      const snap = await apiCall('/api/repo/protect', 'POST', {});
-      applySnapshot(snap);
-      showToast('🛡️ main dalı başarıyla korumaya alındı!', 'ok');
-    } catch (err) {
-      showToast(err.message, 'danger');
-    }
-  });
+  el.btnEnableProtection?.addEventListener('click', () => applyShownProtection(applySnapshot));
 
   // MCP Connect Modal Events
   document.getElementById('btn-mcp-connect')?.addEventListener('click', openMCPConnectModal);

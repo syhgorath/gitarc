@@ -62,6 +62,17 @@ try {
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
   });
+  await step('Koruma penceresi: plan görünür, "Temel" uygulanınca depo korumalı olur, pencere kapanır', async () => {
+    await click('#btn-protect-branch');
+    await expect(visible('#security-update-modal'), 'Koruma penceresi açılmadı');
+    await expect(`document.querySelectorAll('#prot-changes li').length > 0`, 'plan satırları görünmüyor');
+    await click('input[name="prot-profile"][value="temel"]');
+    await expect(`document.getElementById('btn-enable-protection').textContent.includes('Değişikliği Uygula') && !document.getElementById('btn-enable-protection').disabled`, 'Uygula düğmesi açılmadı');
+    await click('#btn-enable-protection');
+    await expect(`document.getElementById('btn-protect-branch').textContent.includes('Korumalı')`, 'uygulama sonrası düğme "Korumalı" olmadı');
+    await click('#sec-close');
+    await expect(hidden('#security-update-modal'), 'Koruma penceresi kapanmadı');
+  });
   await step('Çakışma Stüdyosu radar kartından açılır ve kapanır', async () => {
     await expect(`[...document.querySelectorAll('.radar-card button')].some((x) => x.textContent.includes('Çakışma Stüdyosu'))`, 'radarda çakışma kartı yok');
     await b.eval(`[...document.querySelectorAll('.radar-card button')].find((x) => x.textContent.includes('Çakışma Stüdyosu')).click()`);

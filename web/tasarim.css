@@ -4110,3 +4110,16 @@ body.no-project .loading-hint {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Dal koruması penceresi: profil seçimi, kontrol listesi, değişiklik planı */
+.prot-profiles { display: grid; gap: 6px; margin: 10px 0; }
+.prot-profile { display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; gap: 8px; padding: 8px 10px; border: 1px solid var(--line, rgba(128,128,128,.3)); border-radius: 8px; cursor: pointer; }
+.prot-profile.active { border-color: var(--accent, #4aa3ff); }
+.prot-profile span { opacity: .75; font-size: 12px; }
+.prot-checks { display: grid; gap: 4px; margin: 6px 0 10px; }
+.prot-checks-head { font-size: 12px; opacity: .8; }
+.prot-check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.prot-changes { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.prot-changes li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.prot-arrow { font-family: var(--mono, ui-monospace, monospace); opacity: .85; }
+.prot-note { font-size: 12px; opacity: .8; margin: 4px 0; }

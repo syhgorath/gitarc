@@ -805,12 +805,9 @@ func TestMegaRepoCacheTeamModeAndProtection(t *testing.T) {
 	if simSnap.Repo.BranchProtected {
 		t.Fatalf("expected simulation initial BranchProtected == false")
 	}
-	protSnap, err := simMgr.ProtectDefaultBranch()
-	if err != nil {
-		t.Fatalf("ProtectDefaultBranch failed: %v", err)
-	}
+	protSnap := applyProfile(t, simMgr, "temel", nil)
 	if !protSnap.Repo.BranchProtected {
-		t.Fatalf("expected BranchProtected == true after ProtectDefaultBranch")
+		t.Fatalf("expected BranchProtected == true after ApplyProtection")
 	}
 	updRes, err := simMgr.CheckForUpdates()
 	if err != nil {

@@ -371,30 +371,6 @@ func TestDeleteBranchLiveClosesOpenPR(t *testing.T) {
 	}
 }
 
-func TestProtectDefaultBranchLiveViaGH(t *testing.T) {
-	gh := newGHStub(t)
-	dir, _ := newGitHubLikeRepo(t)
-	mgr := switchLive(t, dir)
-
-	if _, err := mgr.ProtectDefaultBranch(); err != nil {
-		t.Fatalf("ProtectDefaultBranch: %v", err)
-	}
-	if !gh.called("api -X PUT", "branches/main/protection", "--input -") {
-		t.Fatalf("protection PUT not issued: %v", gh.calls())
-	}
-	body := gh.stdin("api_protection_put")
-	for _, want := range []string{`"required_status_checks"`, `"strict":true`, `"required_approving_review_count":1`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("payload missing %s: %s", want, body)
-		}
-	}
-
-	gh.set("api_protection_put", "Resource not accessible", 1)
-	if _, err := mgr.ProtectDefaultBranch(); err == nil || !strings.Contains(err.Error(), "Branch Protection API hatası") {
-		t.Fatalf("API failure must be reported, got %v", err)
-	}
-}
-
 func TestNonGitHubRemoteNeverCallsGH(t *testing.T) {
 	gh := newGHStub(t)
 	dir, run := newTempRepo(t)

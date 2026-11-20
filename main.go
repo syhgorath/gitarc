@@ -210,6 +210,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/logs/clear", a.guard(a.handleClearLogs))
 	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
+	mux.HandleFunc("/api/repo/protection/plan", a.guard(a.handleProtectionPlan))
 	mux.HandleFunc("/api/system/choose-folder", a.guard(a.handleChooseFolder))
 	mux.HandleFunc("/api/system/git-status-ping", a.guard(a.handleGitStatusPing))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
@@ -671,16 +672,37 @@ func (a *App) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleProtectBranch(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSONError(w, http.StatusMethodNotAllowed, "POST bekleniyor")
+	var req struct {
+		Profile string   `json:"profile"`
+		Checks  []string `json:"checks"`
+		Confirm string   `json:"confirm"`
+	}
+	if !decodePOST(w, r, &req) {
 		return
 	}
-	snap, err := a.mgr.ProtectDefaultBranch()
+	snap, err := a.mgr.ApplyProtection(req.Profile, req.Checks, req.Confirm)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// handleProtectionPlan: koruma profilinin ne değiştireceğini döndürür; hiçbir şey uygulamaz.
+func (a *App) handleProtectionPlan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Profile string   `json:"profile"`
+		Checks  []string `json:"checks"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	plan, err := a.mgr.ProtectionPlan(req.Profile, req.Checks)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
 }
 
 func (a *App) handleResetSimulation(w http.ResponseWriter, r *http.Request) {

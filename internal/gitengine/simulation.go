@@ -1,11 +1,9 @@
 package gitengine
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -82,6 +80,8 @@ type simWorkspace struct {
 	repo     model.RepoMeta
 	nodes    []model.CommitNode
 	branches []model.BranchArc
+	// protection: demo deponun dal koruması; nil = korumasız. Plan/uygulama canlı motorla aynı mantığı kullanır.
+	protection *model.ProtectionSettings
 }
 
 // NewManager initializes the GitArc engine.
@@ -1512,43 +1512,6 @@ func compareSemver(a, b string) int {
 		}
 	}
 	return 0
-}
-
-// ProtectDefaultBranch enables main/default branch protection in simulation or via GitHub API.
-func (m *Manager) ProtectDefaultBranch() (model.CockpitSnapshot, error) {
-	if live, ok := m.activeLiveRepo(); ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		defBranch := detectDefaultBranch(ctx, live.path)
-		if _, err := exec.LookPath("gh"); err != nil {
-			err := fmt.Errorf("Branch Protection etkinleştirmek için gh CLI gereklidir")
-			m.recordLog("error", "Branch Protection", defBranch, err.Error(), "")
-			return model.CockpitSnapshot{}, err
-		}
-		payload := `{"required_status_checks":{"strict":true,"contexts":[]},"enforce_admins":false,"required_pull_request_reviews":{"dismiss_stale_reviews":true,"required_approving_review_count":1},"restrictions":null}`
-		cmd := exec.CommandContext(ctx, "gh", "api", "-X", "PUT", fmt.Sprintf("repos/:owner/:repo/branches/%s/protection", defBranch), "--input", "-")
-		cmd.Dir = live.path
-		cmd.Stdin = strings.NewReader(payload)
-		var outBuf bytes.Buffer
-		cmd.Stdout = &outBuf
-		cmd.Stderr = &outBuf
-		if err := cmd.Run(); err != nil {
-			msg := strings.TrimSpace(outBuf.String())
-			errOut := fmt.Errorf("Branch Protection API hatası (%s): %s", defBranch, msg)
-			m.recordLog("error", "Branch Protection", defBranch, errOut.Error(), fmt.Sprintf("gh api -X PUT repos/:owner/:repo/branches/%s/protection", defBranch))
-			return model.CockpitSnapshot{}, errOut
-		}
-		InvalidateGHCache(live.path)
-		m.recordLog("ok", "Branch Protection", defBranch, fmt.Sprintf("%s dalı korumaya alındı (PR + strict status checks)", defBranch), "")
-		return m.Snapshot()
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.simRepo.repo.BranchProtected = true
-	m.simRepo.repo.ProtectionSummary = "PR Zorunlu + CI Status Checks + Force-Push Kilitli"
-	m.recordLogLocked("ok", "Branch Protection", m.simRepo.repo.DefaultBranch, "main dalı korumaya alındı (PR + CI + Force-Push kilitli)", "")
-	return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 }
 
 // simSyncSteps, simülasyon modunda canlı motordaki SyncSteps şeklini (hepsi "ok") taklit eder.

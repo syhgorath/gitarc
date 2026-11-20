@@ -1,0 +1,171 @@
+// web/modules/protection.js - Dal koruması penceresi: profil seç → planı gör → onayla ve uygula.
+// Plan sunucuda (internal/gitengine/protection.go) hesaplanır; burada yalnızca gösterilir ve onaylanır.
+// GitHub'dan gelen kontrol adları güvenilmeyen metindir: yalnızca textContent / DOM API ile yazılır.
+import { state, el } from './state.js';
+import { apiCall } from './api.js';
+import { showToast } from './utils.js';
+
+export const PROTECTION_PROFILES = [
+  { id: 'temel', title: 'Temel', desc: 'PR zorunlu; force-push ve dal silme kapalı.' },
+  { id: 'ci', title: 'CI zorunlu', desc: 'Temel + dal güncel olmalı + seçtiğiniz CI kontrolleri geçmeden merge yok.' },
+  { id: 'siki', title: 'Sıkı', desc: 'CI zorunlu + 1 onay + yöneticiler dahil. Tek geliştiricide kendi PR\'ınızı birleştirmenizi engeller.' },
+];
+
+const view = { profile: 'ci', checks: new Set(), plan: null, seq: 0 };
+
+/** Planın "Değişecekler" satırları: [{label, from, to}]. */
+export function changeRows(plan) {
+  return (plan?.changes || []).map((c) => ({ label: c.label, from: c.from, to: c.to }));
+}
+
+/** Uygula düğmesi: yalnızca uygulanabilir ve değişecek bir şey varsa açık. */
+export function canApplyPlan(plan) {
+  return Boolean(plan && plan.applicable && plan.fingerprint && (plan.changes || []).length > 0);
+}
+
+export function applyLabel(plan) {
+  if (!plan) return '🛡️ Planı Uygula';
+  const n = (plan.changes || []).length;
+  return n > 0 ? `🛡️ ${n} Değişikliği Uygula` : '🛡️ Değişecek Bir Şey Yok';
+}
+
+async function planCall(profile, checks) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.protectionPlan(profile, checks);
+  return apiCall('/api/repo/protection/plan', 'POST', { profile, checks });
+}
+
+async function applyCall(profile, checks, confirm) {
+  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.applyProtection(profile, checks, confirm);
+  return apiCall('/api/repo/protect', 'POST', { profile, checks, confirm });
+}
+
+function renderProfiles() {
+  const box = el.protProfiles;
+  if (!box) return;
+  box.textContent = '';
+  PROTECTION_PROFILES.forEach((p) => {
+    const label = document.createElement('label');
+    label.className = 'prot-profile' + (view.profile === p.id ? ' active' : '');
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'prot-profile';
+    input.value = p.id;
+    input.checked = view.profile === p.id;
+    input.addEventListener('change', () => { view.profile = p.id; refreshProtectionPlan(); });
+    const title = document.createElement('b');
+    title.textContent = p.title;
+    const desc = document.createElement('span');
+    desc.textContent = p.desc;
+    label.append(input, title, desc);
+    box.appendChild(label);
+  });
+}
+
+function renderChecks(plan) {
+  const box = el.protChecks;
+  if (!box) return;
+  box.textContent = '';
+  const needs = view.profile === 'ci' || view.profile === 'siki';
+  box.hidden = !needs || !plan?.applicable;
+  if (box.hidden) return;
+  const head = document.createElement('div');
+  head.className = 'prot-checks-head';
+  head.textContent = 'Zorunlu yapılacak CI kontrolleri (varsayılan dalın son çalışmasından):';
+  box.appendChild(head);
+  const names = plan.availableChecks || [];
+  if (!names.length) {
+    const none = document.createElement('div');
+    none.className = 'prot-note';
+    none.textContent = 'Seçilebilir kontrol bulunamadı (henüz CI çalışmamış olabilir). Yalnızca “dal güncel olmalı” eklenebilir.';
+    box.appendChild(none);
+    return;
+  }
+  const already = new Set(plan.current?.checks || []);
+  names.forEach((name) => {
+    const label = document.createElement('label');
+    label.className = 'prot-check';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = view.checks.has(name) || already.has(name);
+    input.disabled = already.has(name); // mevcut zorunlu kontrol gevşetilemez
+    input.addEventListener('change', () => {
+      if (input.checked) view.checks.add(name); else view.checks.delete(name);
+      refreshProtectionPlan();
+    });
+    const text = document.createElement('span');
+    text.textContent = already.has(name) ? `${name} (zaten zorunlu)` : name;
+    label.append(input, text);
+    box.appendChild(label);
+  });
+}
+
+function renderPlan(plan) {
+  const list = el.protChanges;
+  if (list) {
+    list.textContent = '';
+    changeRows(plan).forEach((r) => {
+      const li = document.createElement('li');
+      const label = document.createElement('b');
+      label.textContent = r.label;
+      const arrow = document.createElement('span');
+      arrow.className = 'prot-arrow';
+      arrow.textContent = `${r.from} → ${r.to}`;
+      li.append(label, arrow);
+      list.appendChild(li);
+    });
+  }
+  if (el.protNotes) {
+    el.protNotes.textContent = '';
+    (plan?.notes || []).forEach((n) => {
+      const p = document.createElement('div');
+      p.className = 'prot-note';
+      p.textContent = n;
+      el.protNotes.appendChild(p);
+    });
+  }
+  if (el.btnEnableProtection) {
+    el.btnEnableProtection.hidden = false;
+    el.btnEnableProtection.disabled = !canApplyPlan(plan);
+    el.btnEnableProtection.textContent = applyLabel(plan);
+  }
+}
+
+/** Planı sunucudan yeniden ister ve çizer. Eski yanıt (hızlı tıklama) yenisini ezmez. */
+export async function refreshProtectionPlan() {
+  const my = ++view.seq;
+  renderProfiles();
+  if (el.btnEnableProtection) el.btnEnableProtection.disabled = true;
+  try {
+    const plan = await planCall(view.profile, [...view.checks]);
+    if (my !== view.seq) return;
+    view.plan = plan;
+    renderChecks(plan);
+    renderPlan(plan);
+  } catch (err) {
+    if (my !== view.seq) return;
+    view.plan = null;
+    if (el.protChanges) el.protChanges.textContent = '';
+    if (el.protNotes) {
+      el.protNotes.textContent = '';
+      const p = document.createElement('div');
+      p.className = 'prot-note';
+      p.textContent = err.message || String(err);
+      el.protNotes.appendChild(p);
+    }
+    if (el.btnEnableProtection) { el.btnEnableProtection.disabled = true; el.btnEnableProtection.textContent = applyLabel(null); }
+  }
+}
+
+/** "Uygula": yalnızca ekranda gösterilen planı (parmak iziyle) onaylayıp uygular. */
+export async function applyShownProtection(applySnapshot) {
+  const plan = view.plan;
+  if (!canApplyPlan(plan)) return;
+  try {
+    const snap = await applyCall(view.profile, [...view.checks], plan.fingerprint);
+    applySnapshot(snap);
+    showToast(`🛡️ ${plan.branch} dalı korumaya alındı`, 'ok');
+  } catch (err) {
+    showToast(err.message, 'danger');
+  }
+  refreshProtectionPlan();
+}
