@@ -270,7 +270,7 @@ func (m *Manager) updateBranchLive(live *repoEntry, branchID, confirm string) (m
 
 	// Uzak referansları tazele: plan, uzaktaki GÜNCEL uçlara göre yeniden hesaplanır. Uzak dal planla onay arasında
 	// değiştiyse parmak izi tutmaz ve işlem reddedilir.
-	if out, _, err := runCmd(ctx, live.path, "git", "fetch", remoteName); err != nil {
+	if out, err := gitFetchRetry(ctx, live.path, remoteName); err != nil {
 		return fail(b.Name, fmt.Errorf("uzak depo okunamadı (git fetch): %s", shortErr(out, err)))
 	}
 	plan := buildLiveBranchUpdatePlan(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, *b)

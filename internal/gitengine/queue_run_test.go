@@ -466,9 +466,11 @@ func TestQueueRunLiveStopsWhenSomeoneElsePushesWhileWaitingForCI(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(150 * time.Millisecond) // koşu bekleme döngüsünde
-	w.pushToOrigin("feat/x", "baskasi.txt", "b\n")
+	w.pushFromOther("feat/x", "baskasi.txt", "b\n") // koşu kendi fetch'ini çalıştırıyor: yerel klona dokunma
 	final := waitRunDone(t, mgr)
-	if final.Status != "blocked" || !strings.Contains(final.StopReason, "onaylanandan farklı") {
+	// Dışarıdan push iki yoldan fark edilir (hangisi önce olduğu zamanlamaya bağlı): koşunun kendi yenilediği uç onaylanandan
+	// farklı ("onaylanandan farklı") ya da GitHub'ın bildirdiği uç yerel kayıttan ileride ("yerel uzak kaydından farklı").
+	if final.Status != "blocked" || !(strings.Contains(final.StopReason, "onaylanandan farklı") || strings.Contains(final.StopReason, "yerel uzak kaydından farklı")) {
 		t.Fatalf("dışarıdan push'ta durmalı: %+v", final)
 	}
 	if w.gh.called("pr merge") {

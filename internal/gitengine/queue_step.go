@@ -326,7 +326,7 @@ func (m *Manager) queueStepApplyLive(live *repoEntry, branchID, confirm string) 
 	defer cancel()
 
 	// Uzak referansları tazele ve planı GÜNCEL duruma göre yeniden hesapla; durum değiştiyse parmak izi tutmaz.
-	if out, _, err := runCmd(ctx, live.path, "git", "fetch", remoteName); err != nil {
+	if out, err := gitFetchRetry(ctx, live.path, remoteName); err != nil {
 		return fail(b.Name, fmt.Errorf("uzak depo okunamadı (git fetch): %s", shortErr(out, err)))
 	}
 	plan := buildLiveQueueStepPlan(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, *b)
@@ -357,6 +357,25 @@ func (m *Manager) queueStepApplyLive(live *repoEntry, branchID, confirm string) 
 	InvalidateGHCache(live.path)
 	m.recordLog("ok", "Kuyruk Adımı", b.Name, fmt.Sprintf("PR #%d birleştirildi (merge commit, dal ucu %s)", plan.PR, shortSHA(plan.HeadSHA)), "")
 	return m.Snapshot()
+}
+
+// gitFetchRetry: `git fetch` aynı depoda eşzamanlı çalışan başka bir fetch'le (arka plan senkronu, kullanıcının kendi fetch'i)
+// uzak-izleme ref kilidi yüzünden geçici olarak başarısız olabilir ("cannot lock ref"). Otomatik koşu bu yüzden DURMAMALI:
+// kısa aralıklarla birkaç kez yeniden dener; kalıcı hata (ağ, yetki) yine de ilk denemenin çıktısıyla bildirilir.
+func gitFetchRetry(ctx context.Context, dir, remote string) (string, error) {
+	var out string
+	var err error
+	for attempt := 0; attempt < 4; attempt++ {
+		if out, _, err = runCmd(ctx, dir, "git", "fetch", remote); err == nil {
+			return out, nil
+		}
+		select {
+		case <-ctx.Done():
+			return out, err
+		case <-time.After(time.Duration(attempt+1) * 250 * time.Millisecond):
+		}
+	}
+	return out, err
 }
 
 func shortSHA(s string) string {
