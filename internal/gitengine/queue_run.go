@@ -238,7 +238,7 @@ func queueRunKey(live *repoEntry, isLive bool) string {
 }
 
 func queueRunFile(repoPath string) string {
-	return filepath.Join(repoPath, ".git", "gitarc_queue_run.json")
+	return filepath.Join(gitDirOrDefault(repoPath), "gitarc_queue_run.json")
 }
 
 func persistQueueRun(live *repoEntry, isLive bool, run *model.QueueRun) {
