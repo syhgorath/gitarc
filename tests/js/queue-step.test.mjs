@@ -147,3 +147,41 @@ test('offline engine run: needs the fingerprint, merges the green prefix, stops 
   assert.equal(eng.queueRunStatus().id, run.id);
   assert.throws(() => eng.queueRunStop(), /çalışan/);
 });
+
+// ---- koşu paneli: adım görünümü, kompakt satır, kaydırılabilir pencere ----
+test('run steps: finished PRs are done, the current one is highlighted, the stop point is marked, the rest wait', () => {
+  const items = [{ pr: 10, branch: 'feat/j' }, { pr: 11, branch: 'feat/k' }, { pr: 12, branch: 'feat/l' }];
+  const states = (run) => runStatusModel({ items, ...run }).steps.map((s) => s.state).join(',');
+  assert.equal(states({ status: 'running', merged: 1, current: 1 }), 'done,current,waiting');
+  assert.equal(states({ status: 'completed', merged: 3, current: 3 }), 'done,done,done');
+  assert.equal(states({ status: 'blocked', merged: 1 }), 'done,failed,waiting');
+  assert.equal(states({ status: 'timeout', merged: 0 }), 'failed,waiting,waiting');
+  assert.equal(states({ status: 'stopped', merged: 2 }), 'done,done,stopped');
+  assert.equal(states({ status: 'interrupted', merged: 0 }), 'stopped,waiting,waiting');
+  assert.equal(runStatusModel({ items, status: 'running', merged: 99 }).steps.length, 3, 'merged is clamped');
+  assert.equal(runStatusModel({ items, status: 'running', merged: 0 }).counter, '0/3');
+});
+
+test('run phase follows the current PR\'s last event and the log is capped', () => {
+  const items = [{ pr: 10, branch: 'feat/j' }, { pr: 11, branch: 'feat/k' }];
+  const ev = (kind, branch) => ({ time: '2026-11-20T19:42:22+03:00', kind, branch, message: `${kind} ${branch}` });
+  assert.equal(runStatusModel({ items, status: 'running', merged: 0, events: [ev('info', '')] }).phase, 'planlanıyor');
+  assert.equal(runStatusModel({ items, status: 'running', merged: 1, events: [ev('merge', 'feat/j'), ev('update', 'feat/k')] }).phase, 'CI bekleniyor');
+  assert.equal(runStatusModel({ items, status: 'completed', merged: 2 }).phase, '', 'only a running run has a phase');
+  const many = Array.from({ length: 500 }, (_, i) => ev('wait', `b${i}`));
+  assert.equal(runStatusModel({ items, status: 'running', merged: 0, events: many }).events.length, 60, 'log is capped (scrolls inside its box)');
+});
+
+test('compact line for a finished run is short and names the result', () => {
+  const m = runStatusModel({ items: [{ pr: 7, branch: 'a' }, { pr: 8, branch: 'b' }, { pr: 9, branch: 'c' }], status: 'completed', merged: 3, events: [{ time: '2026-11-20T19:43:56+03:00', kind: 'stop', message: 'bitti' }] });
+  assert.match(m.compactLine, /^Son koşu: Koşu bitti · 3\/3 PR · 19:43:56$/);
+});
+
+test('queue modal never outgrows the screen: body scrolls inside the card, head and close stay reachable', () => {
+  const css = readFileSync(new URL('../../web/tasarim.css', import.meta.url), 'utf8');
+  assert.match(css, /#queue-modal \.modal-card\s*\{[^}]*max-height:\s*calc\(100vh/);
+  assert.match(css, /#queue-modal \.modal-card\s*\{[^}]*box-sizing:\s*border-box/, 'padding/border must be inside max-height (content-box overflowed by 38px)');
+  assert.match(css, /#queue-modal \.modal-body\s*\{[^}]*overflow-y:\s*auto/);
+  assert.match(css, /#queue-modal \.modal-foot\s*\{[^}]*position:\s*sticky/);
+  assert.match(css, /\.queue-run-log\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/, 'the event log scrolls inside its own box');
+});

@@ -73,26 +73,54 @@ const RUN_TITLES = {
   blocked: '⛔ Koşu ilk sorunda durdu', timeout: '⏱ Koşu zaman aşımında durdu', interrupted: '⚠ Koşu yarım kaldı',
 };
 
-/** Koşu durumunun görünümü (saf model). Son olaylar yeni → eski değil, kronolojik (son 8). */
+/** Koşu durumunun görünümü (saf model). `lines` düz metin özeti, `steps` PR başına adım durumu, `events` zaman çizelgesi. */
 export function runStatusModel(run) {
   if (!run) return null;
-  const total = (run.items || []).length;
+  const items = run.items || [];
+  const total = items.length;
+  const merged = Math.min(run.merged || 0, total);
   const lines = [];
   if (run.status === 'running' && total) {
     const idx = Math.min(run.current || 0, total - 1);
-    const cur = run.items[idx];
+    const cur = items[idx];
     lines.push(`İşlenen: ${idx + 1}/${total} · #${cur.pr} ${cur.branch} · ${run.merged || 0} birleşti`);
   } else {
     lines.push(`${run.merged || 0}/${total} PR birleştirildi`);
   }
   if (run.stopReason) lines.push(run.stopReason);
-  (run.events || []).slice(-8).forEach((e) => lines.push(`${(e.time || '').slice(11, 19)} ${e.message}`.trim()));
+  const events = (run.events || []).slice(-60).map((e) => ({ time: (e.time || '').slice(11, 19), kind: e.kind || 'info', message: e.message || '', branch: e.branch || '' }));
+  events.slice(-8).forEach((e) => lines.push(`${e.time} ${e.message}`.trim()));
+
+  // Adım görünümü: sıra sıralı ilerlediği için ilk `merged` PR bitmiştir, `merged`. PR şu anki/duran PR'dır.
+  const status = run.status;
+  const steps = items.map((it, i) => {
+    let st = 'waiting';
+    if (i < merged) st = 'done';
+    else if (i === merged && status === 'running') st = 'current';
+    else if (i === merged && (status === 'blocked' || status === 'timeout')) st = 'failed';
+    else if (i === merged && (status === 'stopped' || status === 'interrupted')) st = 'stopped';
+    return { label: `${it.pr > 0 ? `#${it.pr} ` : ''}${it.branch}`, branch: it.branch, state: st };
+  });
+  // Şu anki PR'ın aşaması: son olayına bakılır
+  let phase = '';
+  if (status === 'running' && steps[merged]) {
+    const last = [...events].reverse().find((e) => e.branch === steps[merged].branch && e.kind !== 'info');
+    phase = !last ? 'planlanıyor' : (last.kind === 'update' || last.kind === 'wait') ? 'CI bekleniyor' : 'planlanıyor';
+  }
+  const lastEv = events[events.length - 1];
   return {
-    title: RUN_TITLES[run.status] || run.status,
-    tone: RUN_TONES[run.status] ?? '',
-    running: run.status === 'running',
+    title: RUN_TITLES[status] || status,
+    tone: RUN_TONES[status] ?? '',
+    status,
+    running: status === 'running',
+    counter: `${run.merged || 0}/${total}`,
     lines,
-    resumable: ['blocked', 'timeout', 'interrupted', 'stopped'].includes(run.status),
+    steps,
+    phase,
+    events,
+    stopReason: run.stopReason || '',
+    compactLine: `Son koşu: ${(RUN_TITLES[status] || status).replace(/^\S+\s/, '')} · ${run.merged || 0}/${total} PR${lastEv && lastEv.time ? ` · ${lastEv.time}` : ''}`,
+    resumable: ['blocked', 'timeout', 'interrupted', 'stopped'].includes(status),
   };
 }
 
@@ -250,7 +278,7 @@ async function showStepPlan(it, step) {
   }
 }
 
-const run = { timer: null, panel: null, active: false, seq: 0 };
+const run = { timer: null, panel: null, active: false, seq: 0, dismissed: new Set(), expanded: new Set(), shownId: '' };
 
 function ensureRunPanel() {
   if (run.panel && run.panel.isConnected) return run.panel;
@@ -286,18 +314,81 @@ function stopRunPolling() {
   run.timer = null;
 }
 
-/** Koşu durumunu çizer; sürüyorsa 3 sn'de bir yeniler, bitince anlık görüntüyü ve planı tazeler. */
-function renderRun(runObj) {
+const EVENT_ICONS = { update: '↻', merge: '✓', wait: '⏳', stop: '■', info: '•' };
+const STEP_MARKS = { done: '✓', current: '⏳', waiting: '○', failed: '✗', stopped: '■' };
+
+/** Koşu durumunu çizer. Biten koşu (yeni oturumda) tek satıra iner; dikkat isteyen durumlar tam gösterilir. */
+function renderRun(runObj, opts = {}) {
   const panel = ensureRunPanel();
   const m = runStatusModel(runObj);
+  // Poll her 3 sn yeniden çizer: günlüğün kaydırma konumunu koru (altındaysa altta kal).
+  const oldLog = panel.querySelector('.queue-run-log');
+  const atBottom = !oldLog || oldLog.scrollTop + oldLog.clientHeight >= oldLog.scrollHeight - 8;
+  const oldTop = oldLog ? oldLog.scrollTop : 0;
   panel.textContent = '';
-  if (!m) { run.active = false; return; }
+  if (!m || run.dismissed.has(runObj.id)) { run.active = false; return; }
   run.active = m.running;
+  run.shownId = runObj.id;
+
+  if (opts.compact && m.status === 'completed' && !run.expanded.has(runObj.id)) {
+    const row = document.createElement('div');
+    row.className = 'queue-run-compact';
+    appendText(row, 'span', `✓ ${m.compactLine}`, 'queue-run-compact-text');
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'btn ghost sm';
+    more.textContent = 'ayrıntı';
+    more.addEventListener('click', () => { run.expanded.add(runObj.id); renderRun(runObj, opts); });
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'btn ghost sm queue-run-dismiss';
+    x.textContent = '×';
+    x.setAttribute('aria-label', 'Son koşu bilgisini gizle');
+    x.addEventListener('click', () => { run.dismissed.add(runObj.id); renderRun(runObj, opts); });
+    row.append(more, x);
+    panel.appendChild(row);
+    return;
+  }
+
+  const card = document.createElement('div');
+  card.className = `queue-run-card ${m.tone}`.trim();
   const head = document.createElement('div');
-  head.className = 'queue-update-title';
-  head.textContent = m.title;
-  panel.appendChild(head);
-  m.lines.forEach((l) => appendText(panel, 'div', l, 'queue-detail'));
+  head.className = 'queue-run-head';
+  appendText(head, 'span', m.title, 'queue-update-title');
+  appendText(head, 'span', m.counter, `chip ${m.tone}`.trim());
+  card.appendChild(head);
+
+  // Adımlar: PR başına belirgin kutucuk (✓ bitti · ⏳ şimdi · ○ sırada · ✗ burada durdu)
+  const steps = document.createElement('div');
+  steps.className = 'queue-run-steps';
+  m.steps.forEach((st) => {
+    const pill = document.createElement('span');
+    pill.className = `queue-run-step ${st.state}`;
+    appendText(pill, 'span', STEP_MARKS[st.state] || '○', 'queue-run-mark');
+    appendText(pill, 'span', st.label, 'queue-run-label');
+    if (st.state === 'current' && m.phase) appendText(pill, 'span', m.phase, 'queue-run-phase');
+    steps.appendChild(pill);
+  });
+  card.appendChild(steps);
+  if (m.stopReason) appendText(card, 'div', m.stopReason, 'queue-run-reason');
+
+  // Olay günlüğü: kendi içinde kaydırılır (modalı büyütmez)
+  const log = document.createElement('div');
+  log.className = 'queue-run-log';
+  log.setAttribute('role', 'log');
+  m.events.forEach((e) => {
+    const row = document.createElement('div');
+    row.className = `queue-run-ev ${e.kind}`;
+    appendText(row, 'span', e.time, 'queue-run-time');
+    appendText(row, 'span', EVENT_ICONS[e.kind] || '•', 'queue-run-icon');
+    appendText(row, 'span', e.message, 'queue-run-msg');
+    log.appendChild(row);
+  });
+  card.appendChild(log);
+  log.scrollTop = atBottom ? log.scrollHeight : oldTop;
+
+  const actions = document.createElement('div');
+  actions.className = 'queue-run-actions';
   if (m.running) {
     const stop = document.createElement('button');
     stop.type = 'button';
@@ -307,8 +398,17 @@ function renderRun(runObj) {
       stop.disabled = true;
       try { renderRun(await runStopCall()); } catch (err) { showToast(err.message, 'danger'); }
     });
-    panel.appendChild(stop);
+    actions.appendChild(stop);
+  } else {
+    const hide = document.createElement('button');
+    hide.type = 'button';
+    hide.className = 'btn ghost sm queue-run-dismiss';
+    hide.textContent = 'Gizle';
+    hide.addEventListener('click', () => { run.dismissed.add(runObj.id); renderRun(runObj, opts); });
+    actions.appendChild(hide);
   }
+  card.appendChild(actions);
+  panel.appendChild(card);
 }
 
 async function pollRun() {
@@ -376,7 +476,7 @@ async function restoreRun() {
     const r = await runStatusCall();
     if (!r) { renderRun(null); return; }
     const recent = r.finishedAt ? (Date.now() - Date.parse(r.finishedAt)) < 30 * 60 * 1000 : true;
-    if (r.status === 'running' || recent) renderRun(r); else renderRun(null);
+    if (r.status === 'running' || recent) renderRun(r, { compact: true }); else renderRun(null);
     if (r.status === 'running') startRunPolling();
   } catch { /* koşu bilgisi yok */ }
 }
