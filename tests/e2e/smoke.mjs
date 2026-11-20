@@ -109,6 +109,24 @@ try {
     await expect(`!document.querySelector('.cap-queue-tag')`, 'durdurulan koşudan sonra rozet kalkmalı');
     await expect(`!document.querySelector('.svg-queue-target')`, 'durdurulan koşudan sonra hedef çizgisi kalkmalı');
   });
+  await step('Koşu sürerken kuyruk penceresi planı yeniden HESAPLAMAZ; seçim kilitli; durdurunca plan bir kez yenilenir', async () => {
+    const planCalls = `performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/queue/plan')).length`;
+    // #424'ün CI'ı sürüyor: koşu başlar ve bekler
+    await b.eval(`(async () => { const api = await import('/modules/api.js'); const plan = await api.apiCall('/api/queue/run/plan', 'POST', { branchIds: ['br-open-424'] }); await api.apiCall('/api/queue/run/start', 'POST', { branchIds: ['br-open-424'], confirm: plan.fingerprint }); })()`);
+    const before = await b.eval(planCalls);
+    await click('#btn-queue');
+    await expect(visible('#queue-modal'), 'Kuyruk penceresi açılmadı');
+    await expect(`!!document.querySelector('.queue-run-note') && !!document.querySelector('.queue-run-stop')`, 'koşu sürerken plan yerine not + Durdur görünmeli');
+    await expect(`[...document.querySelectorAll('#queue-candidates input[type=checkbox]')].every((c) => c.disabled)`, 'koşu sürerken PR seçimi kilitli olmalı');
+    await b.sleep(800);
+    const during = await b.eval(planCalls);
+    if (during !== before) throw new Error(`koşu sürerken plan yeniden hesaplandı (${during - before} istek)`);
+    await click('.queue-run-stop');
+    await expect(`!!document.querySelector('#queue-result .queue-summary') && !document.querySelector('.queue-run-note')`, 'durdurunca plan yeniden gösterilmedi');
+    await expect(`[...document.querySelectorAll('#queue-candidates input[type=checkbox]')].every((c) => !c.disabled)`, 'durdurunca PR seçimi açılmalı');
+    await click('#queue-close');
+    await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
+  });
   await step('Kuyruğu çalıştır (3b): plan → onay → sunucu sırayla birleştirir → durum "Koşu bitti"', async () => {
     await b.eval(`(async () => { const m = await import('/modules/api.js'); await m.apiCall('/api/branch/fix-ci', 'POST', { branchId: 'br-open-424' }); })()`);
     await click('#btn-queue');

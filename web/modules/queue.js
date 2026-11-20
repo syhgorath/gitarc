@@ -156,6 +156,7 @@ function renderCandidates() {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = view.included.has(id);
+    cb.disabled = run.active; // koşu sürerken sıra/seçim değişmez (koşu başladığı plana göre ilerler)
     cb.setAttribute('aria-label', `${b.name} kuyrukta`);
     cb.addEventListener('change', () => { if (cb.checked) view.included.add(id); else view.included.delete(id); refreshQueuePlan(); });
     row.appendChild(cb);
@@ -176,8 +177,8 @@ function renderCandidates() {
       });
       row.appendChild(btn);
     };
-    mk('▲', -1, idx === 0);
-    mk('▼', 1, idx === view.order.length - 1);
+    mk('▲', -1, run.active || idx === 0);
+    mk('▼', 1, run.active || idx === view.order.length - 1);
     box.appendChild(row);
   });
 }
@@ -326,9 +327,11 @@ function renderRun(runObj, opts = {}) {
   const atBottom = !oldLog || oldLog.scrollTop + oldLog.clientHeight >= oldLog.scrollHeight - 8;
   const oldTop = oldLog ? oldLog.scrollTop : 0;
   panel.textContent = '';
-  if (!m || run.dismissed.has(runObj.id)) { run.active = false; return; }
+  if (!m || run.dismissed.has(runObj.id)) { const was = run.active; run.active = false; if (was) renderCandidates(); return; }
+  const wasActive = run.active;
   run.active = m.running;
   run.shownId = runObj.id;
+  if (wasActive !== run.active) renderCandidates();
 
   if (opts.compact && m.status === 'completed' && !run.expanded.has(runObj.id)) {
     const row = document.createElement('div');
@@ -396,7 +399,7 @@ function renderRun(runObj, opts = {}) {
     stop.textContent = '■ Durdur';
     stop.addEventListener('click', async () => {
       stop.disabled = true;
-      try { renderRun(await runStopCall()); } catch (err) { showToast(err.message, 'danger'); }
+      try { renderRun(await runStopCall()); await finishRunUI(); } catch (err) { showToast(err.message, 'danger'); }
     });
     actions.appendChild(stop);
   } else {
@@ -411,6 +414,12 @@ function renderRun(runObj, opts = {}) {
   panel.appendChild(card);
 }
 
+/** Koşu bitti/durdu: anlık görüntüyü tazele ve kuyruk planını BİR kez yeniden hesapla (koşu sürerken plan yenilenmez). */
+async function finishRunUI() {
+  try { const snap = await apiCall('/api/snapshot'); if (view.onApply) view.onApply(snap); } catch { /* çevrimdışı */ }
+  refreshQueuePlan();
+}
+
 async function pollRun() {
   const my = ++run.seq;
   try {
@@ -420,10 +429,7 @@ async function pollRun() {
     renderRun(r);
     if (r && r.status !== 'running') {
       stopRunPolling();
-      if (wasActive || r) {
-        try { const snap = await apiCall('/api/snapshot'); if (view.onApply) view.onApply(snap); } catch { /* çevrimdışı */ }
-        refreshQueuePlan();
-      }
+      if (wasActive || r) await finishRunUI();
     }
   } catch { /* geçici hata: sonraki turda yeniden denenir */ }
 }
@@ -455,7 +461,7 @@ async function showRunPlan() {
         try {
           const started = await runStartCall(ids, plan.fingerprint);
           renderRun(started);
-          if (started && started.status === 'running') startRunPolling(); else { try { const snap = await apiCall('/api/snapshot'); if (view.onApply) view.onApply(snap); } catch { /* çevrimdışı */ } refreshQueuePlan(); }
+          if (started && started.status === 'running') { startRunPolling(); refreshQueuePlan(); } else await finishRunUI();
           showToast('▶ Kuyruk koşusu başladı; ilk sorunda durur', 'ok');
         } catch (err) {
           showToast(err.message, 'danger');
@@ -487,12 +493,23 @@ async function planCall(ids) {
 }
 
 /** Seçili dalların planını sunucudan ister ve çizer. Eski yanıt (hızlı tıklama) yenisini ezmez. */
+/** Koşu sürerken plan alanında yalnızca kısa bir not (eski/bayat plan gösterilmez). */
+function renderRunNote() {
+  const box = el.queueResult;
+  if (!box) return;
+  box.textContent = '';
+  appendText(box, 'div', 'Koşu sürüyor: PR\'lar sırayla işleniyor. Kuyruk planı koşu bitince ya da durdurulunca yenilenir.', 'prot-note queue-run-note');
+}
+
 export async function refreshQueuePlan() {
   const my = ++view.seq;
   const pruned = pruneQueueView(view.order, view.included, state.snapshot);
   view.order = pruned.order;
   view.included = pruned.included;
   renderCandidates();
+  // Koşu sürerken plan HESAPLANMAZ: her birleşmeden sonra kuyruğu yeniden simüle etmek gereksiz ve yavaştı ("Plan
+  // hesaplanıyor…" altta takılı görünüyordu). Koşu bitince/durunca bir kez yenilenir (finishRunUI).
+  if (run.active) { renderRunNote(); return; }
   const ids = view.order.filter((id) => view.included.has(id));
   if (!ids.length) {
     renderPlan({ items: [], stopsAt: 0, notes: [] });
@@ -514,8 +531,8 @@ export function openQueueModal(onApplySnapshot = null) {
   view.included = new Set(view.order);
   if (el.queueModal) el.queueModal.hidden = false;
   renderCandidates();
-  refreshQueuePlan();
-  restoreRun();
+  // Önce süren bir koşu var mı bak: varsa plan hesaplanmaz (renderRunNote), yoksa bir kez hesaplanır.
+  restoreRun().then(() => refreshQueuePlan());
 }
 
 export function closeQueueModal() {
