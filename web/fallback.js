@@ -377,7 +377,7 @@
         else if (!it.ci) plan.notes.push(`${queueLabel(it)}: CI durumu bilinmiyor (yeşil varsayılmaz).`);
         if (it.behind > 0) plan.notes.push(`${queueLabel(it)}: ${baseBranch}'in ${it.behind} commit gerisinde.`);
       });
-      plan.notes.push('Plan metin düzeyindeki çakışmayı gösterir; anlamsal uyumsuzluğu güncellenmiş dalın CI\'ı yakalar. Hiçbir şey değiştirilmedi.');
+      plan.notes.push('Plan metin düzeyindeki çakışmayı gösterir; anlamsal uyumsuzluğu güncellenmiş dalın CI\'ı yakalar. Plan hiçbir şey değiştirmedi.');
       return plan;
     }
     function queuePlanBuild(branches, base, ids, strict) {

@@ -45,7 +45,7 @@
         </label>
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-main-ci" hidden title="Merge sonrası omurga testleri">main CI</button>
-        <button type="button" class="btn ghost" id="btn-queue" title="Merge kuyruğu planı: PR'ları sırayla main'e birleştirmenin salt okunur önizlemesi">🚦 Kuyruk</button>
+        <button type="button" class="btn ghost" id="btn-queue" title="Merge kuyruğu: PR'ları sırayla main'e birleştirmenin salt okunur planı ve onayınla uygulanan sıradaki adım">🚦 Kuyruk</button>
         <button type="button" class="btn ghost" id="btn-protect-branch" title="GitHub main dal koruma ve güvenlik durumu">🛡️ Koruma</button>
         <button type="button" class="btn ghost mono" id="btn-update-check" title="Sürüm, güncelleme ve Team modu">v0.10.0</button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP</button>
@@ -438,11 +438,11 @@
     <div class="modal-backdrop" id="queue-modal" hidden>
       <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="queue-modal-title">
         <div class="modal-head">
-          <h3 id="queue-modal-title"><span class="modal-dot"></span>🚦 Merge Kuyruğu Planı <span class="chip ok">salt okunur</span></h3>
+          <h3 id="queue-modal-title"><span class="modal-dot"></span>🚦 Merge Kuyruğu <span class="chip ok">plan salt okunur</span></h3>
           <button type="button" class="icon-close" id="queue-close" aria-label="Kapat">✕</button>
         </div>
         <div class="modal-body">
-          <div class="layer-line">PR'ları aşağıdaki sırayla <code>main</code>'e <strong>sırayla</strong> birleştirmiş gibi bellekte denenir: her PR, kuyruktaki öncekiler birleşmiş olarak test edilir (tek başına temiz bir PR, bir öncekinden sonra çakışabilir). Hiçbir şey birleştirilmez, güncellenmez ya da push edilmez.</div>
+          <div class="layer-line">PR'ları aşağıdaki sırayla <code>main</code>'e <strong>sırayla</strong> birleştirmiş gibi bellekte denenir: her PR, kuyruktaki öncekiler birleşmiş olarak test edilir (tek başına temiz bir PR, bir öncekinden sonra çakışabilir). Plan hiçbir şey birleştirmez, güncellemez ya da push etmez. Sıradaki PR için "Sıradaki adımı planla" ile gösterilen adım (dalı güncelle ya da birleştir) <strong>yalnızca senin onayınla</strong> uygulanır.</div>
           <div class="queue-candidates" id="queue-candidates" aria-label="Kuyruğa girecek PR'lar"></div>
           <div class="queue-result" id="queue-result" aria-live="polite"></div>
           <div class="modal-foot">

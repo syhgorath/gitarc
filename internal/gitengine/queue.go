@@ -225,7 +225,7 @@ func assembleQueuePlan(mode, baseBranch string, items []model.QueueItem, strict 
 			plan.Notes = append(plan.Notes, fmt.Sprintf("%s: %s'in %d commit gerisinde.", queueLabel(it), baseBranch, it.Behind))
 		}
 	}
-	plan.Notes = append(plan.Notes, "Plan metin düzeyindeki çakışmayı gösterir; anlamsal uyumsuzluğu güncellenmiş dalın CI'ı yakalar. Hiçbir şey değiştirilmedi.")
+	plan.Notes = append(plan.Notes, "Plan metin düzeyindeki çakışmayı gösterir; anlamsal uyumsuzluğu güncellenmiş dalın CI'ı yakalar. Plan hiçbir şey değiştirmedi.")
 	return plan
 }
 

@@ -14,6 +14,12 @@ export function queueCandidates(snap) {
     .sort((a, b) => a.pr.number - b.pr.number);
 }
 
+/** Birleşen/kapanan PR'ları sıradan ve seçimden çıkarır (aksi hâlde plan isteği artık açık olmayan dalı sorar ve 400 döner). */
+export function pruneQueueView(order, included, snap) {
+  const open = new Set(queueCandidates(snap).map((b) => b.id));
+  return { order: order.filter((id) => open.has(id)), included: new Set([...included].filter((id) => open.has(id))) };
+}
+
 /** Adımın görünümü: durum rozeti metni/tonu ve ayrıntı satırları (saf model, testlenebilir). */
 export function queueStepModel(it) {
   const status = it.status === 'clean'
@@ -29,20 +35,6 @@ export function queueStepModel(it) {
   details.push(it.ci ? `CI: ${it.ci}` : 'CI: bilinmiyor (yeşil varsayılmaz)');
   if (it.review) details.push(`İnceleme: ${it.review}`);
   return { status, details };
-}
-
-/** "Dalı güncelle" planının görünümü (saf model): başlık, satırlar ve uygulanabilir mi. */
-export function updatePlanModel(plan) {
-  const lines = [];
-  if (plan.reason) lines.push(plan.reason);
-  if (plan.status === 'conflict' && plan.conflictFiles?.length) lines.push(`Çakışan dosyalar: ${plan.conflictFiles.join(', ')}`);
-  if (plan.status === 'conflict') lines.push("Güncelleme yapılmaz: önce çakışmayı Çakışma Stüdyosu'ndan çözün.");
-  if (plan.status === 'ready') {
-    lines.push(`${plan.baseRef || 'ana dal'} dalın içine merge edilir (merge commit; rebase/force-push yok) ve UZAK PR dalına push edilir; CI yeniden başlar.`);
-  }
-  (plan.notes || []).forEach((n) => lines.push(n));
-  const title = { ready: '↻ Güncelleme planı', up_to_date: '✓ Zaten güncel', conflict: '⚠ Güncellenemez', blocked: '⛔ Güncellenemez' }[plan.status] || 'Güncelleme planı';
-  return { title, lines, canApply: plan.status === 'ready' && Boolean(plan.fingerprint) };
 }
 
 /** Kuyruk adımı planının görünümü (saf model): başlık, satırlar, uygulanabilir mi ve onay düğmesi metni. */
@@ -145,64 +137,9 @@ function renderPlan(plan, errorText) {
       stepBtn.addEventListener('click', () => showStepPlan(it, step));
       step.appendChild(stepBtn);
     }
-    if (it.behind > 0 && it.status !== 'unknown') {
-      const upd = document.createElement('button');
-      upd.type = 'button';
-      upd.className = 'btn ghost sm queue-update-btn';
-      upd.textContent = '↻ Dalı main\'e göre güncelle';
-      upd.addEventListener('click', () => showUpdatePlan(it, step));
-      step.appendChild(upd);
-    }
     box.appendChild(step);
   });
   (plan.notes || []).forEach((n) => appendText(box, 'div', n, 'prot-note'));
-}
-
-async function updatePlanCall(branchId) {
-  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.updateBranchPlan(branchId);
-  return apiCall('/api/branch/update/plan', 'POST', { branchId });
-}
-
-async function updateApplyCall(branchId, confirm) {
-  if (state.offlineMode && window.LocalFallbackEngine) return window.LocalFallbackEngine.updateBranch(branchId, confirm);
-  return apiCall('/api/branch/update', 'POST', { branchId, confirm });
-}
-
-/** Bir adımın altına güncelleme planını gösterir; "Onayla" yalnızca gösterilen planın parmak iziyle uygular. */
-async function showUpdatePlan(it, step) {
-  step.querySelector('.queue-update')?.remove();
-  const panel = document.createElement('div');
-  panel.className = 'queue-update';
-  step.appendChild(panel);
-  appendText(panel, 'div', '⏳ Güncelleme planı hesaplanıyor...', 'prot-note');
-  try {
-    const plan = await updatePlanCall(it.branchId);
-    const m = updatePlanModel(plan);
-    panel.textContent = '';
-    appendText(panel, 'div', m.title, 'queue-update-title');
-    m.lines.forEach((l) => appendText(panel, 'div', l, 'queue-detail'));
-    if (m.canApply) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn warn sm queue-update-confirm';
-      btn.textContent = 'Onayla: uzak PR dalına push et';
-      btn.addEventListener('click', async () => {
-        btn.disabled = true;
-        try {
-          const snap = await updateApplyCall(it.branchId, plan.fingerprint);
-          if (view.onApply) view.onApply(snap);
-          showToast(`↻ ${it.branch} ana dala göre güncellendi`, 'ok');
-        } catch (err) {
-          showToast(err.message, 'danger');
-        }
-        refreshQueuePlan();
-      });
-      panel.appendChild(btn);
-    }
-  } catch (err) {
-    panel.textContent = '';
-    appendText(panel, 'div', err.message || String(err), 'prot-note');
-  }
 }
 
 async function stepPlanCall(branchId) {
@@ -267,6 +204,10 @@ async function planCall(ids) {
 /** Seçili dalların planını sunucudan ister ve çizer. Eski yanıt (hızlı tıklama) yenisini ezmez. */
 export async function refreshQueuePlan() {
   const my = ++view.seq;
+  const pruned = pruneQueueView(view.order, view.included, state.snapshot);
+  view.order = pruned.order;
+  view.included = pruned.included;
+  renderCandidates();
   const ids = view.order.filter((id) => view.included.has(id));
   if (!ids.length) {
     renderPlan({ items: [], stopsAt: 0, notes: [] });

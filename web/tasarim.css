@@ -4143,4 +4143,4 @@ body.no-project .loading-hint {
 .queue-detail { font-size: 12px; opacity: .85; margin-top: 2px; }
 .queue-update { margin-top: 6px; padding: 8px 10px; border: 1px dashed var(--line, rgba(128,128,128,.4)); border-radius: 8px; display: grid; gap: 4px; }
 .queue-update-title { font-weight: 700; }
-.queue-update-btn { margin-top: 6px; }
+.queue-step-btn, .queue-step-recheck { margin-top: 6px; }
