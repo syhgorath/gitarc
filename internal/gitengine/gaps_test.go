@@ -86,10 +86,7 @@ func TestClearLogsEmptiesBufferAndFile(t *testing.T) {
 
 func TestProtectDefaultBranchSimulation(t *testing.T) {
 	mgr := NewManager("")
-	snap, err := mgr.ProtectDefaultBranch()
-	if err != nil {
-		t.Fatal(err)
-	}
+	snap := applyProfile(t, mgr, "temel", nil)
 	if !snap.Repo.BranchProtected || snap.Repo.ProtectionSummary == "" {
 		t.Fatalf("expected protected sim repo: %+v", snap.Repo)
 	}

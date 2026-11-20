@@ -49,6 +49,7 @@ case "$1" in
   api)
     case "$all" in
       *"-X PUT"*) key="api_protection_put"; cat > "$d/$key.stdin" ;;
+      *check-runs*) key="api_check_runs" ;;
       *rulesets*) key="api_rulesets" ;;
       *protection*) key="api_protection_get" ;;
     esac ;;

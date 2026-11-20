@@ -555,5 +555,9 @@ autoscaling:
 		},
 		nodes:    nodes,
 		branches: branches,
+		protection: &model.ProtectionSettings{
+			RequirePR: true, Approvals: 2, DismissStale: true, StrictUpToDate: true,
+			Checks: []string{"build", "test"}, BlockForcePush: true, BlockDeletion: true,
+		},
 	}
 }

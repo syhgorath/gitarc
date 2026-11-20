@@ -302,10 +302,7 @@ func TestSimulationSnapshotHasSyncStepsAndProtectionState(t *testing.T) {
 	if snap.Repo.ProtectionState != "none" {
 		t.Fatalf("sandbox demo repo is unprotected: %q", snap.Repo.ProtectionState)
 	}
-	prot, err := mgr.ProtectDefaultBranch()
-	if err != nil {
-		t.Fatal(err)
-	}
+	prot := applyProfile(t, mgr, "temel", nil)
 	if prot.Repo.ProtectionState != "active" || !prot.Repo.BranchProtected {
 		t.Fatalf("after protecting the demo repo the state must be active: %+v", prot.Repo)
 	}

@@ -232,6 +232,92 @@
       return SPINE_START_X + idx * SPINE_STEP_X;
     }
 
+    // Dal koruması planı: internal/gitengine/protection.go ile AYNI kurallar (yalnızca güçlendir, planı onaylayarak uygula).
+    function protCleanChecks(list) {
+      const out = [];
+      (list || []).forEach((c) => {
+        const v = String(c).trim();
+        if (!v) return;
+        if (v.length > 100 || /[\r\n\0]/.test(v)) throw new Error('geçersiz kontrol adı');
+        if (!out.includes(v)) out.push(v);
+      });
+      return out.sort();
+    }
+    function protProfileTarget(profile, checks) {
+      const t = { requirePR: true, approvals: 0, dismissStale: false, strictUpToDate: false, checks: [], enforceAdmins: false, blockForcePush: true, blockDeletion: true };
+      if (profile === 'temel') return t;
+      if (profile === 'ci' || profile === 'siki') {
+        t.strictUpToDate = true;
+        t.checks = checks;
+        if (profile === 'siki') { t.approvals = 1; t.dismissStale = true; t.enforceAdmins = true; }
+        return t;
+      }
+      throw new Error(`bilinmeyen koruma profili "${profile}" (temel, ci veya siki olmalı)`);
+    }
+    function protStrengthen(cur, want) {
+      const out = {
+        requirePR: cur.requirePR || want.requirePR,
+        approvals: Math.max(cur.approvals, want.approvals),
+        dismissStale: cur.dismissStale || want.dismissStale,
+        strictUpToDate: cur.strictUpToDate || want.strictUpToDate,
+        checks: protCleanChecks([...cur.checks, ...want.checks]),
+        enforceAdmins: cur.enforceAdmins || want.enforceAdmins,
+        blockForcePush: cur.blockForcePush || want.blockForcePush,
+        blockDeletion: cur.blockDeletion || want.blockDeletion,
+      };
+      if (!out.requirePR) { out.approvals = 0; out.dismissStale = false; }
+      return out;
+    }
+    const PROT_NONE = () => ({ requirePR: false, approvals: 0, dismissStale: false, strictUpToDate: false, checks: [], enforceAdmins: false, blockForcePush: false, blockDeletion: false });
+    function protDiff(cur, tgt) {
+      const yn = (b) => (b ? 'evet' : 'hayır');
+      const ck = (c) => (c.length ? c.join(', ') : 'yok');
+      const rows = [
+        ['requirePR', 'PR zorunlu', yn(cur.requirePR), yn(tgt.requirePR)],
+        ['approvals', 'Gereken onay', String(cur.approvals), String(tgt.approvals)],
+        ['dismissStale', 'Yeni commit eski onayı düşürür', yn(cur.dismissStale), yn(tgt.dismissStale)],
+        ['strictUpToDate', 'Dal güncel olmalı', yn(cur.strictUpToDate), yn(tgt.strictUpToDate)],
+        ['checks', 'Zorunlu CI kontrolleri', ck(cur.checks), ck(tgt.checks)],
+        ['enforceAdmins', 'Yöneticiler için de geçerli', yn(cur.enforceAdmins), yn(tgt.enforceAdmins)],
+        ['blockForcePush', 'Force-push kapalı', yn(cur.blockForcePush), yn(tgt.blockForcePush)],
+        ['blockDeletion', 'Dal silme kapalı', yn(cur.blockDeletion), yn(tgt.blockDeletion)],
+      ];
+      return rows.filter((r) => r[2] !== r[3]).map(([field, label, from, to]) => ({ field, label, from, to }));
+    }
+    function protSummary(s) {
+      const p = [];
+      if (s.requirePR) p.push(s.approvals > 0 ? `PR zorunlu (${s.approvals} onay)` : 'PR zorunlu');
+      if (s.strictUpToDate) p.push('dal güncel olmalı');
+      if (s.checks.length) p.push('CI: ' + s.checks.join(', '));
+      if (s.enforceAdmins) p.push('yöneticiler dahil');
+      if (s.blockForcePush) p.push('force-push kapalı');
+      if (s.blockDeletion) p.push('silme kapalı');
+      return p.length ? p.join(' · ') : 'Koruma var ama kısıtlama yok';
+    }
+    function protFingerprint(branch, t) {
+      const str = branch + JSON.stringify(t);
+      let h = 5381;
+      for (let i = 0; i < str.length; i += 1) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+      return h.toString(16);
+    }
+    function protPlan(profile, selected) {
+      const branch = sim.repo.defaultBranch || 'main';
+      const cur = sim.protection ? { ...sim.protection, checks: [...sim.protection.checks] } : PROT_NONE();
+      const state = sim.protection ? 'active' : 'none';
+      const checks = protCleanChecks(selected);
+      const target = protStrengthen(cur, protProfileTarget(profile, checks));
+      const changes = protDiff(cur, target);
+      const notes = [];
+      if ((profile === 'ci' || profile === 'siki') && !target.checks.length) {
+        notes.push('Zorunlu CI kontrolü seçilmedi: yalnızca “dal güncel olmalı” eklenir, CI geçmeden merge yine engellenmez. Aşağıdan en az bir kontrol seçin.');
+      }
+      if (profile === 'siki' && !cur.requirePR) {
+        notes.push('1 onay + yöneticiler dahil kuralı, tek geliştiricili depoda kendi PR\'ınızı birleştirmenizi engeller.');
+      }
+      if (!changes.length) notes.push('Koruma bu profili zaten karşılıyor; değişecek bir şey yok.');
+      return { branch, profile, state, applicable: true, current: cur, target, changes, availableChecks: ['build', 'lint', 'test'], notes, fingerprint: protFingerprint(branch, target) };
+    }
+
     function recompute() {
       const branches = sim.branches;
       const nodes = sim.nodes;
@@ -701,9 +787,16 @@
         sim.branches = next;
         return { snapshot: recompute(), removed };
       },
-      protectBranch() {
+      protectionPlan(profile, checks) {
+        return protPlan(profile, checks);
+      },
+      applyProtection(profile, checks, confirm) {
+        const plan = protPlan(profile, checks);
+        if (!plan.changes.length) throw new Error('koruma bu profili zaten karşılıyor; değişecek bir şey yok');
+        if (!confirm || confirm !== plan.fingerprint) throw new Error('koruma planı değişti veya onaylanmadı; planı yeniden inceleyip onaylayın');
+        sim.protection = plan.target;
         sim.repo.branchProtected = true;
-        sim.repo.protectionSummary = 'PR Zorunlu + CI Status Checks + Force-Push Kilitli';
+        sim.repo.protectionSummary = protSummary(plan.target);
         return recompute();
       },
       checkUpdates() {
