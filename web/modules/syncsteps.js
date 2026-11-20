@@ -139,6 +139,18 @@ export function queueRunBadge(snap, b) {
   return null;
 }
 
+// BİRLEŞME NİYETİ rozeti (tek dil): bir PR'ın "birleşecek" olduğunu gösteren her durum aynı görünümü alır.
+//  - kuyruk koşusunda (sunucu): "🚦 Kuyrukta 3/5" ya da "⏳ İşleniyor · CI bekleniyor" (queueRunBadge),
+//  - tekil "CI Bitince Merge Et" (bu sekme, pendingAutoMerge): "⏳ CI bitince birleşecek".
+// İkisi de tuvalde aynı köşe etiketini ve işlenen/bekleyen PR için "birleşecek" okunu çizer. Niyet yoksa null: sıradan açık PR'a
+// ok çekilmez. Kuyruk koşusu varsa o önceliklidir (aynı PR iki kez gösterilmez).
+export function mergeIntentBadge(snap, b, pending = {}) {
+  const q = queueRunBadge(snap, b);
+  if (q) return q;
+  if (!b || !pending || !pending[b.id]) return null;
+  return { text: '⏳ CI bitince birleşecek', tone: 'current', title: 'CI bitince otomatik birleştirilecek (bu sekmede; sayfa yenilenirse kaybolur)' };
+}
+
 // Koruma durumu: "Bilinmiyor", "Korumasız"tan ayrı gösterilir (yönetici olmayan kullanıcıya GitHub 404 verir).
 export function protectionView(repo) {
   const state = repo?.protectionState || (repo?.branchProtected ? 'active' : 'none');

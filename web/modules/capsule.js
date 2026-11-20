@@ -7,7 +7,7 @@
 import { state } from './state.js';
 import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H } from './constants.js';
 import { esc, truncate, svgEl, isWorkingTreeBranch, diffArgsFor, prHeadline } from './utils.js';
-import { queueRunBadge } from './syncsteps.js';
+import { mergeIntentBadge } from './syncsteps.js';
 
 export function capsulePositionForApex(b, apexX, apexY) {
   if (b.state === 'merged') {
@@ -383,7 +383,7 @@ export function buildCapsuleForeignObject(b, geom, isSelected, visible, tone, ca
     tone,
     isSelected,
     isQueued: Boolean(state.pendingAutoMerge[b.id]),
-    queueRun: queueRunBadge(snap, b),
+    queueRun: mergeIntentBadge(snap, b, state.pendingAutoMerge),
     pendingProposal: snap?.pendingProposal,
     currentUser: snap?.repo?.currentUser,
   }, callbacks));

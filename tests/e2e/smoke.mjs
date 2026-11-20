@@ -128,6 +128,16 @@ try {
     await click('#queue-close');
     await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });
+  await step('Tekil PR "CI bitince merge et": kuyrukla AYNI dil (köşe etiketi + "birleşecek" oku), iptalde kalkar', async () => {
+    const card = `[...document.querySelectorAll('.fo-capsule')].find((f) => f.textContent.includes('#424') && f.querySelector('[data-act="merge"]'))`;
+    // #424'ün CI'ı sürüyor: düğme "CI Bitince Merge Et"
+    await expect(`!!(${card}) && !document.querySelector('.cap-queue-tag')`, 'başlangıçta etiket olmamalı ve #424 kartı bulunmalı');
+    await b.eval(`${card}.querySelector('[data-act="merge"]').click()`);
+    await expect(`!!document.querySelector('.cap-queue-tag.current') && document.querySelector('.cap-queue-tag.current').textContent.includes('CI bitince birleşecek')`, 'tekil otomatik merge kartında köşe etiketi yok');
+    await expect(`!!document.querySelector('.svg-queue-target .svg-queue-target-path') && !!document.querySelector('.svg-queue-landing')`, 'tekil otomatik merge için "birleşecek" oku/hayalet düğüm yok');
+    await b.eval(`${card}.querySelector('[data-act="merge"]').click()`); // ikinci tıklama = İptal
+    await expect(`!document.querySelector('.cap-queue-tag') && !document.querySelector('.svg-queue-target')`, 'iptal edince etiket ve ok kalkmalı');
+  });
   await step('Kuyruğu çalıştır (3b): plan → onay → sunucu sırayla birleştirir → durum "Koşu bitti"', async () => {
     await b.eval(`(async () => { const m = await import('/modules/api.js'); await m.apiCall('/api/branch/fix-ci', 'POST', { branchId: 'br-open-424' }); })()`);
     await click('#btn-queue');
