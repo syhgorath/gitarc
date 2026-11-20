@@ -148,7 +148,7 @@ func listTools() []toolDefinition {
 		"type":       "object",
 		"properties": map[string]any{},
 	}
-	return []toolDefinition{
+	base := []toolDefinition{
 		{
 			Name:        "gitarc_status",
 			Description: "GitArc kokpitindeki anlık tam durumu, aktif HEAD dalını, çalışma alanı kirli dosyalarını, açık PR'ları (başlık ve açıklamalarıyla), yerel dalları ve son birleşmiş PR'ları detaylıca döndürür.",
@@ -263,12 +263,16 @@ func listTools() []toolDefinition {
 			},
 		},
 	}
+	return append(base, protectionToolDefs()...)
 }
 
 func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 	// Açık bir Git deposu yoksa araçlar sahte (demo) veri döndürmesin: net bir hata.
 	if mgr.NoProject() {
 		return errResult("Açık bir Git deposu yok: `gitarc -mcp -repo <depo-yolu>` ile bir depo klasörü verin")
+	}
+	if res, ok := callProtectionTool(params.Name, params.Arguments, mgr); ok {
+		return res
 	}
 	switch params.Name {
 	case "gitarc_propose_commit":
