@@ -63,6 +63,8 @@ type RepoMeta struct {
 	BaseBranchPinned bool `json:"baseBranchPinned,omitempty"`
 	// MainCI: omurga dalının son CI çalıştırması (merge sonrası testler). Okunamıyorsa/yoksa nil: "yeşil" varsayılmaz.
 	MainCI *MainCIStatus `json:"mainCI,omitempty"`
+	// QueueRun: çalışan (yalnızca "running") otomatik kuyruk koşusunun özeti; kartlardaki "kuyrukta" rozetini besler. Koşu yoksa/bittiyse nil.
+	QueueRun *QueueRunBrief `json:"queueRun,omitempty"`
 	// BaseCandidates: omurga olarak seçilebilecek yerel dallar (yalnızca canlı depoda dolu).
 	BaseCandidates []string `json:"baseCandidates,omitempty"`
 	RemoteName        string `json:"remoteName"`

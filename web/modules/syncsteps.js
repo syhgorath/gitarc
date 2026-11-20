@@ -125,6 +125,20 @@ export function mainCICardModel(snap, node) {
   return { text: badge.text, tone: badge.tone, rows, note, url: badge.url };
 }
 
+// Çalışan otomatik kuyruk koşusundaki PR'ın kart rozeti (saf model). Koşu yoksa/bittiyse ya da bu dal koşuda değilse null.
+// Bekleyen PR: "🚦 Kuyrukta 3/5"; şu an işlenen: "⏳ İşleniyor · CI bekleniyor"; bitenler zaten birleşmiş kapsüldür (rozet yok).
+export function queueRunBadge(snap, b) {
+  const q = snap?.repo?.queueRun;
+  if (!q || !Array.isArray(q.items) || !b) return null;
+  const i = q.items.findIndex((it) => it.branchId === b.id || it.branch === b.name);
+  if (i < 0) return null;
+  const it = q.items[i];
+  const pos = `${i + 1}/${q.total || q.items.length}`;
+  if (it.state === 'current') return { text: `⏳ İşleniyor · ${q.phase || 'planlanıyor'}`, tone: 'current', title: `Kuyruk koşusu ${pos}: bu PR şu an işleniyor (${q.phase || 'planlanıyor'})` };
+  if (it.state === 'waiting') return { text: `🚦 Kuyrukta ${pos}`, tone: 'waiting', title: `Kuyruk koşusunda sırada bekliyor (${pos}); önceki PR'lar bitince işlenecek` };
+  return null;
+}
+
 // Koruma durumu: "Bilinmiyor", "Korumasız"tan ayrı gösterilir (yönetici olmayan kullanıcıya GitHub 404 verir).
 export function protectionView(repo) {
   const state = repo?.protectionState || (repo?.branchProtected ? 'active' : 'none');

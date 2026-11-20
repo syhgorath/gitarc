@@ -185,3 +185,44 @@ test('queue modal never outgrows the screen: body scrolls inside the card, head 
   assert.match(css, /#queue-modal \.modal-foot\s*\{[^}]*position:\s*sticky/);
   assert.match(css, /\.queue-run-log\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/, 'the event log scrolls inside its own box');
 });
+
+// ---- kartlarda "kuyrukta" rozeti ----
+import { queueRunBadge } from '../../web/modules/syncsteps.js';
+import { openCardModel } from '../../web/modules/capsule.js';
+import { hasPendingCI } from '../../web/modules/polling.js';
+import { snapshotSignature } from '../../web/modules/utils.js';
+
+const qrSnap = (extra = {}) => ({ repo: { queueRun: { total: 3, merged: 1, current: 1, phase: 'CI bekleniyor', items: [
+  { branchId: 'a', branch: 'feat/a', pr: 1, state: 'done' }, { branchId: 'b', branch: 'feat/b', pr: 2, state: 'current' }, { branchId: 'c', branch: 'feat/c', pr: 3, state: 'waiting' }], ...extra } } });
+
+test('queue badge: waiting PRs show their place, the current one shows its phase, finished/other PRs show nothing', () => {
+  const snap = qrSnap();
+  assert.equal(queueRunBadge(snap, { id: 'c', name: 'feat/c' }).text, '🚦 Kuyrukta 3/3');
+  assert.equal(queueRunBadge(snap, { id: 'c', name: 'feat/c' }).tone, 'waiting');
+  const cur = queueRunBadge(snap, { id: 'b', name: 'feat/b' });
+  assert.equal(cur.text, '⏳ İşleniyor · CI bekleniyor');
+  assert.equal(cur.tone, 'current');
+  assert.equal(queueRunBadge(snap, { id: 'a', name: 'feat/a' }), null, 'merged PR is a merged pill, no tag');
+  assert.equal(queueRunBadge(snap, { id: 'z', name: 'feat/z' }), null, 'a PR outside the run gets nothing');
+  assert.equal(queueRunBadge({ repo: {} }, { id: 'c', name: 'feat/c' }), null, 'no run, no tag');
+  assert.equal(queueRunBadge(snap, null), null);
+  assert.equal(queueRunBadge(qrSnap({ phase: '' }), { id: 'b', name: 'feat/b' }).text, '⏳ İşleniyor · planlanıyor');
+  assert.equal(queueRunBadge(snap, { id: 'x', name: 'feat/c' }).text, '🚦 Kuyrukta 3/3', 'matched by branch name too');
+});
+
+test('open card carries the queue tag (escaped) only when a badge is given', () => {
+  const b = { id: 'c', name: 'feat/c', state: 'open', hasLocal: true, hasRemote: true, pr: { number: 3, ci: { state: 'SUCCESS' } } };
+  const base = { tone: 'emerald', isSelected: false, isQueued: false };
+  assert.ok(openCardModel(b, { ...base, queueRun: { text: '🚦 Kuyrukta 3/3', tone: 'waiting', title: 't' } }).html.includes('cap-queue-tag waiting'));
+  assert.ok(!openCardModel(b, { ...base, queueRun: null }).html.includes('cap-queue-tag'));
+  const evil = openCardModel(b, { ...base, queueRun: { text: '<img src=x onerror=1>', tone: 'waiting', title: '"><script>' } }).html;
+  assert.ok(!evil.includes('<img') && !evil.includes('<script'), 'untrusted text is escaped');
+});
+
+test('a running queue keeps polling fast and changes the snapshot signature (cards refresh while the modal is closed)', () => {
+  assert.equal(hasPendingCI(qrSnap()), true);
+  assert.equal(hasPendingCI({ repo: {}, branches: [] }), false);
+  const sigOf = (s) => snapshotSignature({ repo: { id: 'r', ...s.repo }, nodes: [], branches: [], logs: [] });
+  assert.notEqual(sigOf(qrSnap()), sigOf({ repo: {} }));
+  assert.notEqual(sigOf(qrSnap()), sigOf(qrSnap({ merged: 2, current: 2 })), 'progress changes the signature');
+});

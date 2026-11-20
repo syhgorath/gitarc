@@ -4202,3 +4202,13 @@ body.no-project .loading-hint {
 .queue-run-ev.wait .queue-run-icon, .queue-run-ev.wait .queue-run-msg { color: var(--warn); }
 .queue-run-ev.stop .queue-run-icon, .queue-run-ev.stop .queue-run-msg { font-weight: 700; }
 .queue-run-actions { display: flex; gap: 8px; }
+
+/* Çalışan kuyruk koşusundaki PR'ın kart rozeti: kartın üst kenarında köşe etiketi (yerleşimi etkilemez; .fo-capsule taşmaya izin verir) */
+.cap-card { position: relative; }
+.cap-queue-tag { position: absolute; top: -10px; left: 10px; padding: 1px 8px; border-radius: 999px; font-family: var(--mono); font-size: 10px; font-weight: 700; white-space: nowrap; background: var(--surface); border: 1px solid var(--border); z-index: 2; pointer-events: auto; }
+.cap-queue-tag.waiting { color: var(--sky); border-color: var(--sky-border); background: var(--sky-weak); }
+.cap-queue-tag.current { color: var(--warn); border-color: var(--warn); border-style: dashed; background: var(--warn-weak); }
+@media (prefers-reduced-motion: no-preference) {
+  .cap-queue-tag.current { animation: cap-queue-pulse 1.4s ease-in-out infinite; }
+}
+@keyframes cap-queue-pulse { 50% { opacity: .6; } }

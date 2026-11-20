@@ -492,3 +492,66 @@ func (m *Manager) StopQueueRun() (*model.QueueRun, error) {
 	}
 	return m.QueueRunStatus()
 }
+
+// queueRunStateFor: bellekteki ya da (başka süreçte, örn. MCP, çalışan koşu için) dosyadaki son koşu. Salt okunur; m.mu'ya DOKUNMAZ
+// (anlık görüntü oluşturulurken m.mu altında çağrılabilir).
+func (m *Manager) queueRunStateFor(key, repoPath string, isLive bool) (run *model.QueueRun, active bool) {
+	s := m.qr()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, active = s.state[key], s.active[key] != nil
+	if run == nil && isLive {
+		if b, err := os.ReadFile(queueRunFile(repoPath)); err == nil {
+			var r model.QueueRun
+			if json.Unmarshal(b, &r) == nil && r.ID != "" {
+				run = &r
+			}
+		}
+	}
+	return copyQueueRun(run), active
+}
+
+// queueRunBrief: yalnızca ÇALIŞAN koşunun kart rozeti özeti (bitmiş/durmuş koşu için nil). Başka süreçte sürüyorsa kalp atışı tazeyse sayılır.
+func (m *Manager) queueRunBrief(key, repoPath string, isLive bool) *model.QueueRunBrief {
+	run, active := m.queueRunStateFor(key, repoPath, isLive)
+	if run == nil || run.Status != "running" || (!active && queueRunStale(run)) {
+		return nil
+	}
+	total := len(run.Items)
+	merged := run.Merged
+	if merged > total {
+		merged = total
+	}
+	b := &model.QueueRunBrief{Total: total, Merged: merged, Current: merged, Phase: "planlanıyor"}
+	for i, it := range run.Items {
+		st := "waiting"
+		switch {
+		case i < merged:
+			st = "done"
+		case i == merged:
+			st = "current"
+		}
+		b.Items = append(b.Items, model.QueueRunBriefItem{BranchID: it.BranchID, Branch: it.Branch, PR: it.PR, State: st})
+	}
+	if merged < total {
+		cur := run.Items[merged].Branch
+		for i := len(run.Events) - 1; i >= 0; i-- {
+			if ev := run.Events[i]; ev.Branch == cur && ev.Kind != "info" {
+				if ev.Kind == "update" || ev.Kind == "wait" {
+					b.Phase = "CI bekleniyor"
+				}
+				break
+			}
+		}
+	}
+	return b
+}
+
+// queueRunSignature: koşu durumu değişince anlık görüntü imzası değişsin (arayüz kartları yenilesin).
+func (m *Manager) queueRunSignature(key, repoPath string, isLive bool) string {
+	run, _ := m.queueRunStateFor(key, repoPath, isLive)
+	if run == nil {
+		return ""
+	}
+	return fmt.Sprintf("qr:%s:%d:%d:%d", run.Status, run.Merged, run.Current, len(run.Events))
+}

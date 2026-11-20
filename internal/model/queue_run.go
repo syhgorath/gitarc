@@ -35,6 +35,23 @@ type QueueRunEvent struct {
 	Message string `json:"message"`
 }
 
+// QueueRunBriefItem: koşudaki bir PR'ın kart rozeti için durumu.
+type QueueRunBriefItem struct {
+	BranchID string `json:"branchId"`
+	Branch   string `json:"branch"`
+	PR       int    `json:"pr,omitempty"`
+	State    string `json:"state"` // "done" | "current" | "waiting"
+}
+
+// QueueRunBrief: çalışan koşunun anlık görüntüye giren kısa özeti (kuyruk penceresi kapalıyken de kartlar bilsin).
+type QueueRunBrief struct {
+	Total   int                 `json:"total"`
+	Merged  int                 `json:"merged"`
+	Current int                 `json:"current"` // şu an işlenen PR'ın 0 tabanlı sırası
+	Phase   string              `json:"phase"`   // "planlanıyor" | "CI bekleniyor"
+	Items   []QueueRunBriefItem `json:"items"`
+}
+
 // QueueRun: bir otomatik koşunun durumu (proje başına tek koşu; `.git/gitarc_queue_run.json` kalıcıdır).
 type QueueRun struct {
 	ID string `json:"id"`
