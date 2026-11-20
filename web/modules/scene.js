@@ -4,9 +4,9 @@
 // (saf `computeSceneBounds`), çizim sırası ve her katmanın (tanımlar, kılavuz çizgileri, yaylar, omurga,
 // düğümler) DOM'a yazılması var.
 import { state, el } from './state.js';
-import { XHTML_NS, MAIN_Y, LANE_BASE_OFFSET } from './constants.js';
+import { XHTML_NS, MAIN_Y, LANE_BASE_OFFSET, SPINE_STEP_X } from './constants.js';
 import { esc, truncate, svgEl } from './utils.js';
-import { mainCIBadge } from './syncsteps.js';
+import { mainCIBadge, queueRunBadge } from './syncsteps.js';
 import { filterContext, matchesBranchFilter } from './filters.js';
 import { buildCapsuleForeignObject } from './capsule.js';
 import {
@@ -96,6 +96,18 @@ export function remnantGeometry(b, geom) {
   return { mergeX, remX, remY, d: `M ${mergeX} ${MAIN_Y} C ${mergeX} ${MAIN_Y + 30}, ${remX - 16} ${remY}, ${remX} ${remY}` };
 }
 
+// Çalışan kuyruk koşusunda şu an işlenen PR'ın "birleşeceği yer": omurganın ucundaki hayalet düğüm ve ona giden sarı kesik ok.
+// Saf geometri (DOM yok). geom: computeBranchGeometry sonucu (apexX/apexY); lastSpineX: omurgadaki son düğümün x'i.
+export function queueLandingGeometry(geom, lastSpineX) {
+  const landingX = lastSpineX + SPINE_STEP_X * 0.7;
+  const sx = geom.apexX;
+  const sy = geom.apexY;
+  const dir = sy < MAIN_Y ? -1 : 1; // yay omurganın üstünde mi altında mı
+  const endY = MAIN_Y + dir * 8;     // hayalet düğümün hemen yanında biter (ok ucu düğüme değer)
+  const d = `M ${sx} ${sy} C ${sx + 60} ${sy}, ${landingX} ${sy + (endY - sy) * 0.55}, ${landingX} ${endY}`;
+  return { d, landingX, landingY: MAIN_Y };
+}
+
 // Omurgadaki bir commit düğümünün görünümü (DOM yok).
 export function nodeVisual(n, idx, total) {
   const isLatest = idx === total - 1;
@@ -133,6 +145,9 @@ function renderDefs() {
       <feGaussianBlur stdDeviation="4.5" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+    <marker id="queue-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M2 1L8 5L2 9" class="svg-queue-arrow-head"/>
+    </marker>
     <linearGradient id="main-rail-grad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#238636" stop-opacity="0.45"/>
       <stop offset="20%" stop-color="#3fb950" stop-opacity="0.95"/>
@@ -266,6 +281,23 @@ function renderSpineRail(sceneW, defBranch) {
   el.svg.appendChild(svgEl('text', { x: 22 + mainTagW / 2, y: MAIN_Y + 4, class: 'svg-main-tag-txt' }, defBranch));
 }
 
+// Çalışan koşuda "şu an işlenen" PR'ın yayından omurganın ucuna sarı kesik hedef çizgisi + hayalet düğüm.
+// Yalnızca koşu sürerken ve o PR çizimde görünürken; merge niyeti olmayan sıradan açık PR'lara çizgi çekilmez.
+function renderQueueTarget(snap, visibleBranches, layouts, nodes, arcLayer) {
+  if (!snap?.repo?.queueRun || !nodes.length) return;
+  const cur = visibleBranches.find((b) => b.state === 'open' && queueRunBadge(snap, b)?.tone === 'current');
+  if (!cur || !matchesFilter(cur)) return;
+  const geom = computeBranchGeometry(cur, null, null, layouts.apexLayout, layouts.branchCrowdLayout);
+  const lastX = xOfSpine(nodes[nodes.length - 1].spineIndex);
+  const t = queueLandingGeometry(geom, lastX);
+  const g = svgEl('g', { class: 'svg-queue-target', 'data-branch-id': cur.id });
+  g.appendChild(svgEl('title', {}, `Kuyruk koşusu: ${cur.name} sıradaki merge olarak ${snap.repo.defaultBranch || 'main'} ucuna birleşecek`));
+  g.appendChild(svgEl('path', { d: t.d, class: 'svg-queue-target-path', 'marker-end': 'url(#queue-arrow)' }));
+  g.appendChild(svgEl('circle', { cx: t.landingX, cy: t.landingY, r: 7, class: 'svg-queue-landing' }));
+  g.appendChild(svgEl('text', { x: t.landingX, y: t.landingY + 24, class: 'svg-queue-landing-txt' }, 'birleşecek'));
+  arcLayer.appendChild(g);
+}
+
 // Omurgadaki commit düğümleri
 function renderNodes(nodes, onSelectNode, ciBadge = null) {
   const nodeLayer = svgEl('g', { id: 'node-layer' });
@@ -374,6 +406,7 @@ export function renderSVG(callbacks = {}) {
   drawOrder(visibleBranches).forEach((b) => {
     renderBranchShapes(b, { apexLayout, branchCrowdLayout }, arcLayer, capsuleLayer, callbacks);
   });
+  renderQueueTarget(snap, visibleBranches, { apexLayout, branchCrowdLayout }, nodes, arcLayer);
   el.svg.appendChild(arcLayer);
 
   renderSpineRail(sceneW, snap.repo?.defaultBranch || 'main');

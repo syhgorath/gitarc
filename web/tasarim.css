@@ -4212,3 +4212,14 @@ body.no-project .loading-hint {
   .cap-queue-tag.current { animation: cap-queue-pulse 1.4s ease-in-out infinite; }
 }
 @keyframes cap-queue-pulse { 50% { opacity: .6; } }
+
+/* Çalışan koşuda işlenen PR'ın hedef çizgisi: yayından omurga ucuna sarı KESİK ok + hayalet düğüm (tıklamayı engellemez) */
+.svg-queue-target { pointer-events: none; }
+.svg-queue-target-path { fill: none; stroke: var(--warn); stroke-width: 2.2; stroke-dasharray: 6 6; stroke-linecap: round; opacity: .95; }
+.svg-queue-arrow-head { fill: none; stroke: var(--warn); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.svg-queue-landing { fill: var(--surface); stroke: var(--warn); stroke-width: 2; stroke-dasharray: 3 3; }
+.svg-queue-landing-txt { font-family: var(--mono); font-size: 9.5px; font-weight: 700; fill: var(--warn); text-anchor: middle; }
+@media (prefers-reduced-motion: no-preference) {
+  .svg-queue-target-path { animation: queue-target-flow 1.2s linear infinite; }
+}
+@keyframes queue-target-flow { to { stroke-dashoffset: -24; } }
