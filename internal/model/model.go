@@ -49,6 +49,8 @@ type RepoOption struct {
 	OpenPRs       int    `json:"openPRs"`
 	Ahead         int    `json:"ahead"`
 	Behind        int    `json:"behind"`
+	// PendingProposal: bu projede onay bekleyen bir öneri kartı var (proje seçicide 📥 rozeti).
+	PendingProposal bool `json:"pendingProposal,omitempty"`
 }
 
 // RepoMeta holds active repository metadata and spine sync status.

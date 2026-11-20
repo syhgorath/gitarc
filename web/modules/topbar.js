@@ -52,11 +52,17 @@ export function syncBadgeModel(repo) {
   return { text, isSynced, healthy, title, steps: sync.items, skewed: isSynced ? !healthy : true };
 }
 
+// Proje seçicideki etiket: onay bekleyen bir öneri kartı olan projenin önünde 📥 rozeti (o projede değilken de görünsün).
+export function repoOptionLabel(r) {
+  return `${r?.pendingProposal ? '📥 ' : ''}${r?.name || ''}`;
+}
+
 function renderRepoSelect(snap) {
   if (!el.repoSelect) return;
   const currentVal = snap.repo.id;
-  const existingOptions = Array.from(el.repoSelect.options).map((o) => o.value);
-  const newOptions = (snap.repos || []).map((r) => r.id);
+  // Değer VE etiket karşılaştırılır: yalnızca rozet değişince de seçici yeniden çizilir.
+  const existingOptions = Array.from(el.repoSelect.options).map((o) => `${o.value}|${o.textContent}`);
+  const newOptions = (snap.repos || []).map((r) => `${r.id}|${repoOptionLabel(r)}`);
   const needsRebuild = existingOptions.join(',') !== newOptions.join(',');
 
   if (needsRebuild || el.repoSelect.options.length === 0) {
@@ -64,7 +70,8 @@ function renderRepoSelect(snap) {
     (snap.repos || []).forEach((r) => {
       const opt = document.createElement('option');
       opt.value = r.id;
-      opt.textContent = r.name;
+      opt.textContent = repoOptionLabel(r);
+      if (r.pendingProposal) opt.title = 'Bu projede onay bekleyen bir öneri kartı var';
       if (r.id === snap.repo.id) opt.selected = true;
       el.repoSelect.appendChild(opt);
     });

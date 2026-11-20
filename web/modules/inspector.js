@@ -6,7 +6,7 @@ import { state, el } from './state.js';
 import { esc, isSecretFile, showToast, diffArgsFor, mergeCommitOf } from './utils.js';
 import { apiCall } from './api.js';
 import {
-  branchViewModel, isMergedRemnant, workingTreeDefaults, promoteDefaults,
+  branchViewModel, isMergedRemnant, workingTreeDefaults, promoteDefaults, findSelectedBranch, findSelectedNode,
 } from './inspector-model.js';
 import {
   nodeInspectorHtml, nodeStudioHtml, proposalCardHtml, branchHeaderHtml, layersHtml, conflictCardHtml,
@@ -179,7 +179,7 @@ export function renderInspector(callbacks = {}) {
   } = callbacks;
 
   if (state.selectedNodeSha) {
-    const node = snap.nodes.find((n) => n.shortSha === state.selectedNodeSha);
+    const node = findSelectedNode(snap, state.selectedNodeSha);
     if (node) {
       if (el.canvasInspector) el.canvasInspector.hidden = false;
       if (el.canvasInspectorTitle) el.canvasInspectorTitle.textContent = `Commit ${node.shortSha}`;
@@ -212,7 +212,7 @@ export function renderInspector(callbacks = {}) {
     ? proposalCardHtml(snap.pendingProposal, state.proposalDraftEdits)
     : '';
 
-  const b = snap.branches.find((x) => x.id === state.selectedBranchId);
+  const b = findSelectedBranch(snap, state.selectedBranchId);
   if (!b) {
     if (snap.pendingProposal) {
       if (el.canvasInspector) el.canvasInspector.hidden = false;
