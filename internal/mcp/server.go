@@ -267,7 +267,7 @@ func listTools() []toolDefinition {
 			},
 		},
 	}
-	return append(append(base, conflictToolDefs()...), protectionToolDefs()...)
+	return append(append(append(base, conflictToolDefs()...), protectionToolDefs()...), queueToolDefs()...)
 }
 
 func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
@@ -279,6 +279,9 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 		return res
 	}
 	if res, ok := callConflictTool(params.Name, params.Arguments, mgr); ok {
+		return res
+	}
+	if res, ok := callQueueTool(params.Name, params.Arguments, mgr); ok {
 		return res
 	}
 	switch params.Name {

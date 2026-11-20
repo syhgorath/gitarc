@@ -318,6 +318,103 @@
       return { branch, profile, state, applicable: true, current: cur, target, changes, availableChecks: ['build', 'lint', 'test'], notes, fingerprint: protFingerprint(branch, target) };
     }
 
+    // Merge kuyruğu planı: internal/gitengine/queue.go (QueuePlanFromSnapshotData / assembleQueuePlan) ile AYNI mantık ve metinler.
+    function queueUniqueSorted(list) {
+      return [...new Set(list)].sort();
+    }
+    function queueLabel(it) {
+      return it.pr > 0 ? `#${it.pr} ${it.branch}` : it.branch;
+    }
+    function queueRefs(list) {
+      return list.map((b) => (b.pr && b.pr.number > 0 ? `#${b.pr.number}` : b.name)).join(', ');
+    }
+    function queueSelect(branches, ids) {
+      const open = (b) => b.state === 'open' && !b.historyOnly;
+      if (!ids || !ids.length) {
+        return branches.filter((b) => open(b) && b.pr && b.pr.number > 0).sort((a, b) => a.pr.number - b.pr.number);
+      }
+      const out = [];
+      const seen = new Set();
+      ids.forEach((raw) => {
+        const id = String(raw).trim();
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        let found = null;
+        branches.forEach((b) => {
+          if ((b.id === id || b.name === id) && (!found || (open(b) && !open(found)))) found = b;
+        });
+        if (!found) throw new Error(`kuyruğa eklenemeyen dal: "${id}" bulunamadı`);
+        if (!open(found)) throw new Error(`kuyruğa eklenemeyen dal: "${found.name}" açık değil (birleşmiş ya da silinmiş)`);
+        out.push(found);
+      });
+      return out;
+    }
+    function queueAssemble(mode, baseBranch, items, strict) {
+      const plan = { mode, baseBranch, items, stopsAt: 0, mergeable: 0, strictUpToDate: strict, ciRounds: 1, notes: [] };
+      plan.items.forEach((it) => {
+        if (plan.stopsAt === 0 && it.status !== 'clean') plan.stopsAt = it.position;
+        else if (plan.stopsAt !== 0) it.afterBlocker = true;
+      });
+      plan.mergeable = plan.stopsAt !== 0 ? plan.stopsAt - 1 : plan.items.length;
+      if (strict === true) plan.ciRounds = plan.items.length;
+      if (!plan.items.length) {
+        plan.notes.push('Kuyruğa girecek açık PR/dal yok.');
+        return plan;
+      }
+      if (plan.stopsAt !== 0) {
+        const it = plan.items[plan.stopsAt - 1];
+        plan.notes.push(`Kuyruk ${plan.stopsAt}. sırada (${queueLabel(it)}) durur: ${it.reason}. Ondan sonrakiler, engel aşılana kadar bekler.`);
+      }
+      if (strict === true && plan.items.length > 1) {
+        plan.notes.push(`Korumada “dal güncel olmalı” açık: her birleşmeden sonra sıradaki dal main'e göre güncellenip CI yeniden koşar (≈ ${plan.ciRounds} ardışık CI turu).`);
+      }
+      if (strict === null || strict === undefined) {
+        plan.notes.push('Korumanın “dal güncel olmalı” kuralı okunamadı (yetki yok ya da gh yok); CI tur sayısı tahminidir.');
+      }
+      plan.items.forEach((it) => {
+        if (it.ci === 'FAILURE') plan.notes.push(`${queueLabel(it)}: CI kırmızı; birleşmeden önce düzeltilmeli.`);
+        else if (it.ci === 'RUNNING') plan.notes.push(`${queueLabel(it)}: CI sürüyor.`);
+        else if (!it.ci) plan.notes.push(`${queueLabel(it)}: CI durumu bilinmiyor (yeşil varsayılmaz).`);
+        if (it.behind > 0) plan.notes.push(`${queueLabel(it)}: ${baseBranch}'in ${it.behind} commit gerisinde.`);
+      });
+      plan.notes.push('Plan metin düzeyindeki çakışmayı gösterir; anlamsal uyumsuzluğu güncellenmiş dalın CI\'ı yakalar. Hiçbir şey değiştirilmedi.');
+      return plan;
+    }
+    function queuePlanBuild(branches, base, ids, strict) {
+      const sel = queueSelect(branches || [], ids);
+      const items = [];
+      const merged = [];
+      sel.forEach((b, i) => {
+        const it = {
+          position: i + 1, branchId: b.id, branch: b.name, pr: b.pr ? b.pr.number : 0, title: b.pr ? b.pr.title : '', url: b.pr ? b.pr.url : '',
+          behind: b.behindMain || 0, ci: b.pr && b.pr.ci ? b.pr.ci.state : '', review: b.pr ? b.pr.reviewState : '',
+        };
+        if (b.conflict && b.conflict.hasConflict) {
+          Object.assign(it, { status: 'conflict', conflictsOnMain: true, conflictFiles: [...(b.conflict.files || [])], reason: `kuyruğa girmeden önce de ${base} ile çakışıyor` });
+        } else {
+          const with_ = [];
+          let shared = [];
+          merged.forEach((p) => {
+            const set = new Set(p.changedFiles || []);
+            const common = (b.changedFiles || []).filter((f) => set.has(f));
+            if (common.length) { with_.push(p); shared = shared.concat(common); }
+          });
+          if (with_.length) {
+            Object.assign(it, {
+              status: 'conflict', conflictFiles: queueUniqueSorted(shared),
+              conflictsWithBranches: with_.map((p) => p.name), conflictsWith: with_.filter((p) => p.pr && p.pr.number > 0).map((p) => p.pr.number),
+              reason: `kuyrukta önceki ${queueRefs(with_)} ile aynı dosyaları değiştiriyor`,
+            });
+          } else {
+            Object.assign(it, { status: 'clean', reason: 'önceki kuyruk birleşmiş gibi temiz birleşir' });
+            merged.push(b);
+          }
+        }
+        items.push(it);
+      });
+      return queueAssemble('simulation', base, items, strict);
+    }
+
     function recompute() {
       const branches = sim.branches;
       const nodes = sim.nodes;
@@ -798,6 +895,14 @@
         sim.repo.branchProtected = true;
         sim.repo.protectionSummary = protSummary(plan.target);
         return recompute();
+      },
+      queuePlan(ids) {
+        recompute();
+        return queuePlanBuild(sim.branches, sim.repo.defaultBranch || 'main', ids, sim.protection ? Boolean(sim.protection.strictUpToDate) : false);
+      },
+      // Saf mantık (git/sim durumu olmadan): Go'daki QueuePlanFromSnapshotData ile birebir; testler bunu doğrudan çağırır.
+      queuePlanFromData(branches, ids, baseBranch, strict) {
+        return queuePlanBuild(branches, baseBranch || 'main', ids, strict);
       },
       checkUpdates() {
         return {

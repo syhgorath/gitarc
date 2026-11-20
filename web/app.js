@@ -23,6 +23,7 @@ import { startCockpitTour, closeTour, nextTourStep, prevTourStep } from './modul
 import { openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText } from './modules/mcp-modal.js';
 import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modules/diff-viewer.js';
 import { refreshProtectionPlan, applyShownProtection } from './modules/protection.js';
+import { openQueueModal, closeQueueModal } from './modules/queue.js';
 
 // Central Branch Selection
 export function selectBranch(branchId) {
@@ -487,6 +488,10 @@ async function bootstrap() {
     });
   });
   el.btnEnableProtection?.addEventListener('click', () => applyShownProtection(applySnapshot));
+
+  // Merge kuyruğu planı penceresi
+  el.btnQueue?.addEventListener('click', openQueueModal);
+  ['queue-close', 'queue-close-btn'].forEach((id) => document.getElementById(id)?.addEventListener('click', closeQueueModal));
 
   // MCP Connect Modal Events
   document.getElementById('btn-mcp-connect')?.addEventListener('click', openMCPConnectModal);

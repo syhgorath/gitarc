@@ -237,6 +237,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/repo/protection/plan", a.guard(a.handleProtectionPlan))
+	mux.HandleFunc("/api/queue/plan", a.guard(a.handleQueuePlan))
 	mux.HandleFunc("/api/system/choose-folder", a.guard(a.handleChooseFolder))
 	mux.HandleFunc("/api/system/git-status-ping", a.guard(a.handleGitStatusPing))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
@@ -712,6 +713,22 @@ func (a *App) handleProtectBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// handleQueuePlan: seçilen dalların sırayla main'e birleşmesinin SALT OKUNUR planı (boş liste = tüm açık PR'lar).
+func (a *App) handleQueuePlan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchIDs []string `json:"branchIds"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	plan, err := a.mgr.QueuePlan(req.BranchIDs)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
 }
 
 // handleProtectionPlan: koruma profilinin ne değiştireceğini döndürür; hiçbir şey uygulamaz.

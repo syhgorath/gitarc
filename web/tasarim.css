@@ -4126,3 +4126,18 @@ body.no-project .loading-hint {
 
 /* Öneri kartı: hangi projeye ait olduğu (yanlış projede onaylanmasın) */
 .proposal-project { margin: 6px 0 10px; padding: 6px 10px; border-radius: 8px; font-size: 12px; background: var(--chip-bg, rgba(74,163,255,.12)); border: 1px solid var(--accent, #4aa3ff); }
+
+/* Merge kuyruğu planı penceresi */
+.queue-candidates { display: grid; gap: 4px; margin: 10px 0; }
+.queue-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid var(--line, rgba(128,128,128,.3)); border-radius: 8px; }
+.queue-pr { font-weight: 700; }
+.queue-title { opacity: .75; font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-result { display: grid; gap: 8px; margin: 10px 0; }
+.queue-summary { font-weight: 700; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line, rgba(128,128,128,.3)); }
+.queue-summary.ok { border-color: var(--ok, #2ecc71); }
+.queue-summary.warn { border-color: var(--warn, #f59e0b); }
+.queue-step { padding: 8px 10px; border: 1px solid var(--line, rgba(128,128,128,.3)); border-radius: 8px; }
+.queue-step.after-blocker { opacity: .6; }
+.queue-step-head { display: flex; gap: 8px; align-items: center; }
+.queue-pos { opacity: .7; }
+.queue-detail { font-size: 12px; opacity: .85; margin-top: 2px; }

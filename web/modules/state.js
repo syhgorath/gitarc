@@ -62,6 +62,7 @@ export function initElements() {
     'studio-line-badge', 'studio-mode-badge', 'studio-left-conflict', 'studio-right-preview',
     'studio-error-banner', 'studio-error-text', 'studio-run-vet', 'studio-apply',
     'mcp-connect-modal', 'mcp-config-snippet',
+    'btn-queue', 'queue-modal', 'queue-candidates', 'queue-result',
     'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'loading-hint', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
     'sec-prot-summary', 'prot-profiles', 'prot-checks', 'prot-changes', 'prot-notes', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
@@ -147,6 +148,10 @@ export function initElements() {
   el.studioApplyBtn = el['studio-apply'];
   el.mcpModal = el['mcp-connect-modal'];
   el.mcpConfigSnippet = el['mcp-config-snippet'];
+  el.btnQueue = el['btn-queue'];
+  el.queueModal = el['queue-modal'];
+  el.queueCandidates = el['queue-candidates'];
+  el.queueResult = el['queue-result'];
   el.diffModal = el['diff-viewer-modal'];
   el.diffModalClose = el['diff-modal-close'];
   el.diffModalFootClose = el['diff-modal-foot-close'];

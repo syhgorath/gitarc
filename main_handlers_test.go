@@ -81,7 +81,7 @@ func TestPostOnlyEndpointsRejectGET(t *testing.T) {
 	c := newAPIClient(t, gitengine.NewManager(""))
 	for _, p := range []string{
 		"/api/spine/sync", "/api/sync-spine", "/api/logs/clear", "/api/system/update-check",
-		"/api/repo/protect", "/api/repo/protection/plan", "/api/simulation/reset", "/api/reset",
+		"/api/repo/protect", "/api/repo/protection/plan", "/api/queue/plan", "/api/simulation/reset", "/api/reset",
 		"/api/branch/create", "/api/branch/promote", "/api/working-tree/commit",
 		"/api/repo/remove", "/api/branch/delete", "/api/pr/edit",
 	} {

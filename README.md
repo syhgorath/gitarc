@@ -105,6 +105,7 @@ Demo verisi yalnızca bilerek istenince açılır: `./gitarc -repo sim`. Demo de
 | `gitarc_check_conflicts` | `git merge-tree` çakışma ve Cross-PR kesişim raporu |
 | `gitarc_ci_failure_digest` | Gürültüsüz CI hata özeti ve yerel repro komutu |
 | `gitarc_sync_main` | Çalışma dizinini bozmadan `origin/main` eşitleme |
+| `gitarc_queue_plan` | **Merge kuyruğu planı** (salt okunur): seçilen PR'ları verilen sırayla `main`'e birleştirilmiş gibi bellekte simüle eder; her PR öncekiler birleşmiş olarak denenir. Hangi PR'ın çakıştığını, nedenini, kuyruğun nerede durduğunu ve tahmini CI tur sayısını söyler; hiçbir şey birleştirmez/güncellemez/push etmez |
 | `gitarc_conflict_plan` | Bir daldaki çakışmayı salt okunur inceler: dosyalar, çakışma metni, stratejiler, riskler (salt okunur) |
 | `gitarc_resolve_conflict` | İzole worktree içinde doğrulamalı çakışma çözümü; yerel dalı günceller ve dalı uzağa **push eder**. **Varsayılan KAPALI**: yalnızca sunucu `GITARC_MCP_ALLOW_RESOLVE=1` ile başlatılırsa çalışır ve plandan alınan `fingerprint` ister |
 | `gitarc_propose_commit` | Commit & PR öneri kartı (arayüzde onay bekler, doğrudan commit etmez) |
