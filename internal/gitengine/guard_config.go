@@ -208,12 +208,36 @@ func StageSafeFiles(ctx context.Context, repoPath string, requestedFiles []strin
 
 	// 4. Stage each safe file explicitly using "git add -- <file>"
 	for _, sf := range safeFiles {
-		if out, _, err := runCmd(ctx, repoPath, "git", "add", "--", sf); err != nil {
-			return nil, fmt.Errorf("'%s' dosyası stage edilemedi: %s", sf, strings.TrimSpace(out))
+		if err := stagePath(ctx, repoPath, sf); err != nil {
+			return nil, err
 		}
 	}
 
 	return safeFiles, nil
+}
+
+// stagePath: tek bir yolu stage eder; SİLİNMİŞ dosyaları da. `git add -- <yol>` çalışma ağacında olmayan bir yol için
+// ("pathspec did not match") hata verir; silinmiş izlenen dosya `git add -A -- <yol>` ile, `git rm` ile zaten stage
+// edilmiş silme ise hiçbir şey yapmadan geçerli sayılır.
+func stagePath(ctx context.Context, repoPath, f string) error {
+	if _, err := os.Lstat(filepath.Join(repoPath, filepath.FromSlash(f))); err == nil {
+		if out, _, err := runCmd(ctx, repoPath, "git", "add", "--", f); err != nil {
+			return fmt.Errorf("'%s' dosyası stage edilemedi: %s", f, strings.TrimSpace(out))
+		}
+		return nil
+	}
+	// Çalışma ağacında yok: izlenen bir dosyanın silinmesi mi?
+	if _, _, err := runCmd(ctx, repoPath, "git", "ls-files", "--error-unmatch", "--", f); err == nil {
+		if out, _, err := runCmd(ctx, repoPath, "git", "add", "-A", "--", f); err != nil {
+			return fmt.Errorf("'%s' dosyasının silinmesi stage edilemedi: %s", f, strings.TrimSpace(out))
+		}
+		return nil
+	}
+	// İndekste de yok: `git rm` ile silme zaten stage edilmiş olabilir.
+	if out, _, err := runCmd(ctx, repoPath, "git", "diff", "--cached", "--name-only", "--diff-filter=D", "--", f); err == nil && strings.TrimSpace(out) != "" {
+		return nil
+	}
+	return fmt.Errorf("'%s' dosyası çalışma ağacında yok ve git tarafından izlenmiyor; commit'e eklenemez", f)
 }
 
 var (
