@@ -51,3 +51,105 @@ func TestQueuePlanToolRejectsUnknownBranchAndNeverDemoWithoutProject(t *testing.
 		t.Fatal("proje yokken demo veriyle çalışmamalı")
 	}
 }
+
+// ---- dalı ana dala göre güncelle (uzak PR dalına push eder: varsayılan KAPALI) ----
+
+func firstBehindBranch(t *testing.T, mgr *gitengine.Manager) string {
+	t.Helper()
+	snap, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range snap.Branches {
+		if b.State == "open" && b.BehindMain > 0 && (b.Conflict == nil || !b.Conflict.HasConflict) {
+			return b.ID
+		}
+	}
+	t.Skip("demo verisinde geride kalmış temiz dal yok")
+	return ""
+}
+
+func TestUpdateBranchToolsAreListed(t *testing.T) {
+	names := map[string]bool{}
+	for _, d := range listTools() {
+		names[d.Name] = true
+	}
+	for _, want := range []string{"gitarc_update_branch_plan", "gitarc_update_branch"} {
+		if !names[want] {
+			t.Fatalf("%s listede yok", want)
+		}
+	}
+}
+
+func TestUpdateBranchPlanIsReadOnlyAndExplainsHowToEnableApply(t *testing.T) {
+	t.Setenv(envAllowUpdate, "")
+	mgr := gitengine.NewManager("sim")
+	id := firstBehindBranch(t, mgr)
+	out, res := callTyped(t, mgr, "gitarc_update_branch_plan", map[string]any{"branchId": id})
+	if res.IsError {
+		t.Fatalf("plan izin gerektirmemeli: %s", res.Content[0].Text)
+	}
+	plan := out["plan"].(map[string]any)
+	if plan["status"] != "ready" || plan["fingerprint"] == "" || out["applyEnabled"] != false || !strings.Contains(out["next"].(string), envAllowUpdate) {
+		t.Fatalf("plan: %+v", out)
+	}
+	if again, _ := callTyped(t, mgr, "gitarc_update_branch_plan", map[string]any{"branchId": id}); again["plan"].(map[string]any)["status"] != "ready" {
+		t.Fatal("plan hiçbir şeyi güncellememeli")
+	}
+}
+
+func TestUpdateBranchApplyIsOffByDefaultEvenWithAValidFingerprint(t *testing.T) {
+	t.Setenv(envAllowUpdate, "")
+	mgr := gitengine.NewManager("sim")
+	id := firstBehindBranch(t, mgr)
+	pl, _ := callTyped(t, mgr, "gitarc_update_branch_plan", map[string]any{"branchId": id})
+	fp := pl["plan"].(map[string]any)["fingerprint"].(string)
+	_, res := callTyped(t, mgr, "gitarc_update_branch", map[string]any{"branchId": id, "confirm": fp})
+	if !res.IsError || !strings.Contains(res.Content[0].Text, envAllowUpdate) {
+		t.Fatalf("izinsiz güncelleme reddedilmeli ve nedenini söylemeli: %+v", res)
+	}
+	if after, _ := callTyped(t, mgr, "gitarc_update_branch_plan", map[string]any{"branchId": id}); after["plan"].(map[string]any)["status"] != "ready" {
+		t.Fatal("izin yokken dal güncellenmemeli")
+	}
+}
+
+func TestUpdateBranchApplyNeedsTheMatchingFingerprintWhenAllowed(t *testing.T) {
+	t.Setenv(envAllowUpdate, "1")
+	mgr := gitengine.NewManager("sim")
+	id := firstBehindBranch(t, mgr)
+	pl, _ := callTyped(t, mgr, "gitarc_update_branch_plan", map[string]any{"branchId": id})
+	fp := pl["plan"].(map[string]any)["fingerprint"].(string)
+
+	for i, args := range []map[string]any{
+		{"branchId": id},                      // confirm yok
+		{"branchId": id, "confirm": "yanlis"}, // yanlış parmak izi
+		{"confirm": fp},                       // branchId yok
+	} {
+		if _, res := callTyped(t, mgr, "gitarc_update_branch", args); !res.IsError {
+			t.Fatalf("kötü girdi #%d reddedilmeli", i)
+		}
+	}
+	if after, _ := callTyped(t, mgr, "gitarc_update_branch_plan", map[string]any{"branchId": id}); after["plan"].(map[string]any)["status"] != "ready" {
+		t.Fatal("reddedilen denemeler dalı güncellememeli")
+	}
+	out, res := callTyped(t, mgr, "gitarc_update_branch", map[string]any{"branchId": id, "confirm": fp})
+	if res.IsError || out["updated"] != true {
+		t.Fatalf("doğru parmak izi güncellemeli: %+v %+v", out, res)
+	}
+	if after, _ := callTyped(t, mgr, "gitarc_update_branch_plan", map[string]any{"branchId": id}); after["plan"].(map[string]any)["status"] != "up_to_date" {
+		t.Fatalf("güncellemeden sonra dal güncel olmalı: %+v", after)
+	}
+}
+
+func TestUpdateBranchToolsRefuseWithoutProjectAndUnknownBranch(t *testing.T) {
+	t.Setenv(envAllowUpdate, "1")
+	if _, res := callTyped(t, gitengine.NewManager("sim"), "gitarc_update_branch_plan", map[string]any{"branchId": "yok-boyle-dal"}); !res.IsError {
+		t.Fatal("bilinmeyen dal hata vermeli")
+	}
+	none := noProjectManager(t)
+	for _, name := range []string{"gitarc_update_branch_plan", "gitarc_update_branch"} {
+		if _, res := callTyped(t, none, name, map[string]any{"branchId": "x", "confirm": "x"}); !res.IsError {
+			t.Fatalf("%s proje yokken hata vermeli", name)
+		}
+	}
+}
