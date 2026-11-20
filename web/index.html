@@ -180,7 +180,6 @@
         <footer class="bottom-dock split-studio" id="bottom-dock" aria-label="GitArc Canlı Teşhis ve Kod Stüdyosu">
           <div class="dock-header">
             <div class="dock-tabs" role="tablist">
-              <span class="studio-brand-badge">⚡ TEŞHİS STÜDYOSU</span>
               <button type="button" class="dock-tab active" data-tab="radar" id="dock-tab-radar" role="tab" aria-selected="true">
                 🚨 Hata Radarı <span class="dock-badge" id="dock-radar-count">0</span>
               </button>
@@ -193,8 +192,8 @@
             </div>
             <div class="dock-tools">
               <span class="foot-ready" id="engine-status">● Hazır</span>
-              <button type="button" class="dock-tool-btn" id="dock-copy-btn" title="Görüntülenen tüm logları panoya kopyala">📋 Kopyala</button>
-              <button type="button" class="dock-tool-btn" id="dock-clear-btn" title="Logları temizle">🧹 Temizle</button>
+              <button type="button" class="dock-tool-btn" id="dock-copy-btn" title="Kopyala: görüntülenen tüm logları panoya kopyala" aria-label="Kopyala">📋</button>
+              <button type="button" class="dock-tool-btn" id="dock-clear-btn" title="Temizle: logları temizle" aria-label="Temizle">🧹</button>
               <button type="button" class="dock-tool-btn" id="dock-toggle-btn" title="Alt stüdyoyu daralt / genişlet">▼</button>
             </div>
           </div>
@@ -202,7 +201,7 @@
             <!-- Kolon 1 (%30): Seçili Dal / Commit & GitHub Actions Adımları -->
             <div class="studio-col studio-col-left" id="studio-col-left">
               <div class="studio-col-head">
-                <span class="studio-col-title">🎯 Dal &amp; CI/CD Adımları</span>
+                <span class="studio-col-title">🎯 Dal &amp; CI/CD</span>
                 <span class="studio-branch-chip" id="studio-branch-chip">Seçim Yok</span>
               </div>
               <div class="studio-col-scrollable" id="studio-branch-detail">
@@ -213,7 +212,7 @@
             <!-- Kolon 2 (%35): Akıllı Ayıklanmış Hata & Sistem Terminali -->
             <div class="studio-col studio-col-mid" id="studio-col-mid">
               <div class="studio-col-head">
-                <span class="studio-col-title">🚨 Hata Radarı &amp; Log Terminali</span>
+                <span class="studio-col-title">🚨 Radar &amp; Log</span>
                 <span class="studio-mid-status" id="studio-mid-status">Canlı Terminal</span>
               </div>
               <div class="studio-col-scrollable terminal-bg">
@@ -232,7 +231,7 @@
             <!-- Kolon 3 (%35): Canlı Satır İçi Diff & Kod İnceleyici -->
             <div class="studio-col studio-col-right" id="studio-col-right">
               <div class="studio-col-head">
-                <span class="studio-col-title">📄 Canlı Satır İçi Kod Diff</span>
+                <span class="studio-col-title">📄 Diff</span>
                 <div class="studio-diff-tools">
                   <span class="studio-diff-meta" id="studio-diff-meta"></span>
                   <button type="button" class="studio-btn-subtle" id="studio-diff-fullscreen" title="Diff'i tam ekran modalda aç">↗ Büyüt</button>
@@ -420,7 +419,7 @@
         <div class="modal-body">
           <div class="prot-intro">MCP, AI aracınızın (Claude Code, Cursor, Windsurf…) GitArc'ı doğrudan kullanmasını sağlar: durumu okur, planı çıkarır, size gösterir. <strong>Geri alınması zor işlemler varsayılan olarak kapalıdır.</strong></div>
 
-          <div class="prot-step">1 · Yapılandırmayı AI aracınıza ekleyin</div>
+          <div class="prot-step">1 · Yapılandırmayı AI aracınıza ekleyin (aşağıdan açılacak araçları seçince burası güncellenir)</div>
           <pre class="terminal-box studio-mcp-json" id="mcp-config-snippet"></pre>
           <div class="layer-line">Ekledikten sonra AI aracınızı (oturumu) yeniden başlatın; MCP süreci oturum başında açılır.</div>
 
@@ -435,14 +434,9 @@
           </div>
           <div class="diag-card mcp-group">
             <h4><span>🔒 Uzağa yazan işlemler</span><span class="chip warn">varsayılan KAPALI</span></h4>
-            <div class="layer-line">Her biri hem ortam değişkeni hem de plandan alınan <code>fingerprint</code> ister; durum değiştiyse hiçbir şey yapmaz. Açmak için yapılandırmadaki <code>"env"</code> alanına ekleyin.</div>
-            <div class="mcp-gated">
-              <div><code>gitarc_queue_run</code><span>PR'ları sırayla günceller + birleştirir, ilk sorunda durur</span><code>GITARC_MCP_ALLOW_QUEUE_RUN=1</code></div>
-              <div><code>gitarc_queue_step</code><span>Kuyruğun tek adımı: dalı günceller ya da birleştirir</span><code>GITARC_MCP_ALLOW_QUEUE=1</code></div>
-              <div><code>gitarc_update_branch</code><span>PR dalını main ile günceller (uzak dala push)</span><code>GITARC_MCP_ALLOW_UPDATE=1</code></div>
-              <div><code>gitarc_resolve_conflict</code><span>Çakışmayı çözer, dalı uzağa push eder</span><code>GITARC_MCP_ALLOW_RESOLVE=1</code></div>
-              <div><code>gitarc_protection_apply</code><span>Dal korumasını güçlendirir (gevşetmez)</span><code>GITARC_MCP_ALLOW_PROTECTION=1</code></div>
-            </div>
+            <div class="layer-line">Her biri plandan alınan <code>fingerprint</code> ister; durum değiştiyse hiçbir şey yapmaz. Açmak istediklerinizi işaretleyin:</div>
+            <div class="mcp-gated" id="mcp-gated"></div>
+            <div class="layer-line">İşaretlediğiniz araçlar yukarıdaki yapılandırmaya <code>env</code> olarak eklenir; hiçbiri işaretli değilse hepsi kapalı kalır.</div>
           </div>
           <div class="modal-foot">
             <button type="button" class="btn primary" id="mcp-copy-json">📋 Yapılandırmayı kopyala</button>

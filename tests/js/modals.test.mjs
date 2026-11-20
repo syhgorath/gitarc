@@ -32,9 +32,10 @@ test('tour steps are numbered consistently', () => {
 });
 
 test('MCP config uses the live repo path and never a personal path', () => {
-  state.snapshot = { repo: { mode: 'live', path: '/work/r/' } };
+  // command = çalışan GitArc ikilisi (snapshot.repo.execPath); açık projenin klasörü DEĞİL (başka projede ikili orada yok).
+  state.snapshot = { repo: { mode: 'live', path: '/work/r/', execPath: '/opt/gitarc/gitarc' } };
   const live = JSON.parse(buildMCPConfigText()).mcpServers.gitarc;
-  assert.equal(live.command, '/work/r/gitarc');
+  assert.equal(live.command, '/opt/gitarc/gitarc');
   assert.deepEqual(live.args, ['-mcp', '-repo', '/work/r/']);
   state.snapshot = null;
   assert.ok(!buildMCPConfigText().includes('/Users/'));

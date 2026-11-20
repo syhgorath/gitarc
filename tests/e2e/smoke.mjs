@@ -62,6 +62,12 @@ try {
     await click('#btn-mcp-connect');
     await expect(visible('#mcp-connect-modal'), 'MCP penceresi açılmadı');
     await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('Araçlar (22)') && document.getElementById('mcp-connect-modal').textContent.includes('varsayılan KAPALI')`, 'MCP penceresi koruma araçlarını/22 araç sayısını/kapalı grubu göstermiyor');
+    // Kapalı araç onay kutuları: varsayılan hiçbiri işaretli değil (env yok); işaretleyince yapılandırmaya env girer, kaldırınca çıkar.
+    await expect(`document.querySelectorAll('#mcp-gated input[type=checkbox]').length === 5 && ![...document.querySelectorAll('#mcp-gated input')].some((i) => i.checked) && !document.getElementById('mcp-config-snippet').textContent.includes('"env"')`, 'MCP kapalı araç listesi/varsayılan env yok kuralı bozuk');
+    await click('#mcp-gated input[type=checkbox]');
+    await expect(`document.getElementById('mcp-config-snippet').textContent.includes('GITARC_MCP_ALLOW_QUEUE_RUN')`, 'işaretlenen aracın env değeri yapılandırmaya girmedi');
+    await click('#mcp-gated input[type=checkbox]');
+    await expect(`!document.getElementById('mcp-config-snippet').textContent.includes('"env"')`, 'işaret kaldırılınca env yapılandırmadan çıkmadı');
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
   });
