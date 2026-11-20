@@ -6,7 +6,7 @@
 import { state, el } from './state.js';
 import { XHTML_NS, MAIN_Y, LANE_BASE_OFFSET, SPINE_STEP_X } from './constants.js';
 import { esc, truncate, svgEl } from './utils.js';
-import { mainCIBadge, queueRunBadge } from './syncsteps.js';
+import { mainCIBadge, mergeIntentBadge } from './syncsteps.js';
 import { filterContext, matchesBranchFilter } from './filters.js';
 import { buildCapsuleForeignObject } from './capsule.js';
 import {
@@ -281,21 +281,28 @@ function renderSpineRail(sceneW, defBranch) {
   el.svg.appendChild(svgEl('text', { x: 22 + mainTagW / 2, y: MAIN_Y + 4, class: 'svg-main-tag-txt' }, defBranch));
 }
 
-// Çalışan koşuda "şu an işlenen" PR'ın yayından omurganın ucuna sarı kesik hedef çizgisi + hayalet düğüm.
-// Yalnızca koşu sürerken ve o PR çizimde görünürken; merge niyeti olmayan sıradan açık PR'lara çizgi çekilmez.
+// Birleşme niyeti olan HER PR için ("şu an işlenen" kuyruk PR'ı ya da tekil "CI bitince merge et"): yayın tepe noktasından omurganın
+// ucuna sarı kesik hedef çizgisi + hayalet düğüm ("geliyor"); birleşince yay yeşile kapanır ("gitti"). Niyeti olmayan sıradan açık
+// PR'lara çizgi çekilmez; sırada bekleyen kuyruk PR'ları yalnızca etiket alır.
 function renderQueueTarget(snap, visibleBranches, layouts, nodes, arcLayer) {
-  if (!snap?.repo?.queueRun || !nodes.length) return;
-  const cur = visibleBranches.find((b) => b.state === 'open' && queueRunBadge(snap, b)?.tone === 'current');
-  if (!cur || !matchesFilter(cur)) return;
-  const geom = computeBranchGeometry(cur, null, null, layouts.apexLayout, layouts.branchCrowdLayout);
+  if (!nodes.length) return;
+  const intents = visibleBranches.filter((b) => b.state === 'open' && matchesFilter(b) && mergeIntentBadge(snap, b, state.pendingAutoMerge)?.tone === 'current');
+  if (!intents.length) return;
   const lastX = xOfSpine(nodes[nodes.length - 1].spineIndex);
-  const t = queueLandingGeometry(geom, lastX);
-  const g = svgEl('g', { class: 'svg-queue-target', 'data-branch-id': cur.id });
-  g.appendChild(svgEl('title', {}, `Kuyruk koşusu: ${cur.name} sıradaki merge olarak ${snap.repo.defaultBranch || 'main'} ucuna birleşecek`));
-  g.appendChild(svgEl('path', { d: t.d, class: 'svg-queue-target-path', 'marker-end': 'url(#queue-arrow)' }));
-  g.appendChild(svgEl('circle', { cx: t.landingX, cy: t.landingY, r: 7, class: 'svg-queue-landing' }));
-  g.appendChild(svgEl('text', { x: t.landingX, y: t.landingY + 24, class: 'svg-queue-landing-txt' }, 'birleşecek'));
-  arcLayer.appendChild(g);
+  let drewLanding = false;
+  intents.forEach((cur) => {
+    const geom = computeBranchGeometry(cur, null, null, layouts.apexLayout, layouts.branchCrowdLayout);
+    const t = queueLandingGeometry(geom, lastX);
+    const g = svgEl('g', { class: 'svg-queue-target', 'data-branch-id': cur.id });
+    g.appendChild(svgEl('title', {}, `${cur.name} sıradaki merge olarak ${snap.repo?.defaultBranch || 'main'} ucuna birleşecek`));
+    g.appendChild(svgEl('path', { d: t.d, class: 'svg-queue-target-path', 'marker-end': 'url(#queue-arrow)' }));
+    if (!drewLanding) { // birden çok niyet aynı hayalet düğüme gider
+      drewLanding = true;
+      g.appendChild(svgEl('circle', { cx: t.landingX, cy: t.landingY, r: 7, class: 'svg-queue-landing' }));
+      g.appendChild(svgEl('text', { x: t.landingX, y: t.landingY + 24, class: 'svg-queue-landing-txt' }, 'birleşecek'));
+    }
+    arcLayer.appendChild(g);
+  });
 }
 
 // Omurgadaki commit düğümleri

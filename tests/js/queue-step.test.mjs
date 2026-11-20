@@ -241,3 +241,19 @@ test('landing geometry: ghost node sits just right of the spine tip and the arro
   assert.ok(down.d.endsWith(`${down.landingX} ${MAIN_Y + 8}`), 'a lower arc ends just below the ghost node');
   assert.ok(!up.d.includes('NaN') && !down.d.includes('NaN'));
 });
+
+// ---- tek dil: tekil "CI bitince merge et" da aynı niyet rozeti + oku alır ----
+import { mergeIntentBadge } from '../../web/modules/syncsteps.js';
+
+test('merge intent badge: a single "CI bitince merge et" PR gets the same tag language as a queued PR; no intent, no tag', () => {
+  const b = { id: 'x', name: 'feat/x' };
+  const single = mergeIntentBadge({ repo: {} }, b, { x: { branchId: 'x' } });
+  assert.equal(single.tone, 'current', 'same tone as a queue run\'s processed PR (it also gets the arrow)');
+  assert.match(single.text, /CI bitince birleşecek/);
+  assert.equal(mergeIntentBadge({ repo: {} }, b, {}), null, 'an ordinary open PR gets nothing');
+  assert.equal(mergeIntentBadge({ repo: {} }, b, undefined), null);
+  assert.equal(mergeIntentBadge({ repo: {} }, null, { x: {} }), null);
+  // kuyruk koşusu önceliklidir: aynı PR iki rozet almaz
+  const inRun = mergeIntentBadge(qrSnap(), { id: 'c', name: 'feat/c' }, { c: { branchId: 'c' } });
+  assert.equal(inRun.text, '🚦 Kuyrukta 3/3');
+});
