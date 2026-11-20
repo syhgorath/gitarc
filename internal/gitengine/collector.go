@@ -971,6 +971,25 @@ func isSquashMerged(ctx context.Context, repoPath, branchName, defaultBranch, ba
 	return false
 }
 
+// isFreshLocalBranch: dal hiç "yaşanmamış" mı? Upstream'i yok ve reflog'unda yalnızca oluşturma kaydı ("branch: Created from")
+// var. Reflog okunamazsa (kapalı/süresi dolmuş) false döner: kanıt yoksa eski davranış (kalıntı sayılabilir) korunur.
+func isFreshLocalBranch(ctx context.Context, repoPath, name, upstream string) bool {
+	if upstream != "" {
+		return false
+	}
+	out, _, err := runCmd(ctx, repoPath, "git", "reflog", "show", "--format=%gs", "refs/heads/"+name)
+	if err != nil {
+		return false
+	}
+	var entries []string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			entries = append(entries, l)
+		}
+	}
+	return len(entries) == 1 && strings.HasPrefix(entries[0], "branch: Created from")
+}
+
 func isAncestor(ctx context.Context, repoPath, branchName, baseBranch string) bool {
 	if branchName == "" || baseBranch == "" || branchName == baseBranch {
 		return false
@@ -1059,7 +1078,11 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 		isAncest := isAncestor(ctx, repoPath, name, defaultBranch)
 		// Ucuz koşullar önce: `isSquashMerged` ağ çağrısı (gh) yapabilir; sonucu değişmeyen saf bir VEYA olduğundan
 		// sıra performans içindir, anlam aynıdır.
-		isActuallyMerged := isGHMerged || (isAncest && aheadMain == 0) || (originGone && aheadMain == 0) || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef))
+		// Taze yerel dal (AGENTS "Taze Yerel Dal Koruması"): ucu ana dalın atası ve 0 ileride olması TEK BAŞINA birleşmiş
+		// kalıntı kanıtı değildir; `main`'in ucunda yeni açılmış, hiç commit'i olmayan dal da böyle görünür. Kanıt: GitHub'da
+		// birleşmiş PR, uzakta silinmiş upstream ya da dalın geçmişinde oluşturmadan başka kayıt (gerçekten yaşanmış dal).
+		fresh := prPtr == nil && !isGHMerged && !originGone && isAncest && aheadMain == 0 && isFreshLocalBranch(ctx, repoPath, name, upstream)
+		isActuallyMerged := isGHMerged || (isAncest && aheadMain == 0 && !fresh) || (originGone && aheadMain == 0) || (originGone && isSquashMerged(ctx, repoPath, name, defaultBranch, baseRef))
 		if prPtr == nil && isActuallyMerged {
 			if archIdx, exists := mergedArchByName[name]; exists {
 				mergedArches[archIdx].HasLocal = true

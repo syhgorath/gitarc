@@ -146,6 +146,32 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 		}
 	}
 
+	// Yeni dal açıldıktan sonra stage/commit patlarsa işlem YARIM kalmamalı: eskiden boş bir dal geride kalıyor, HEAD ona
+	// taşınmış duruyor, yeniden deneme "dal zaten var/birleşmiş" diye engelleniyordu. Başlangıç noktası saklanır; yalnızca
+	// bu işlemin açtığı VE hiç commit atılmamış dal geri alınır (çalışma ağacı ve indeks korunur).
+	origBranch := curBranch
+	origSHA := ""
+	if out, _, err := runCmd(ctx, live.path, "git", "rev-parse", "HEAD"); err == nil {
+		origSHA = strings.TrimSpace(out)
+	}
+	createdBranch := false
+	rollbackBranch := func() string {
+		if !createdBranch {
+			return ""
+		}
+		back := []string{"switch", origBranch}
+		if origBranch == "" {
+			back = []string{"switch", "--detach", origSHA}
+		}
+		if _, _, err := runCmd(ctx, live.path, "git", back...); err != nil {
+			return " (açılan dal geri alınamadı; elle `git switch` gerekebilir)"
+		}
+		if _, _, err := runCmd(ctx, live.path, "git", "branch", "-d", branchName); err != nil {
+			return " (HEAD eski dala döndü ama açılan boş dal silinemedi)"
+		}
+		return " (açılan dal geri alındı, HEAD eski dalına döndü)"
+	}
+
 	if branchName != "" && branchName != curBranch {
 		if _, _, err := runCmd(ctx, live.path, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+branchName); err == nil {
 			if out, _, swErr := runCmd(ctx, live.path, "git", "switch", branchName); swErr != nil {
@@ -156,6 +182,7 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 			if cbErr != nil {
 				return model.CockpitSnapshot{}, fmt.Errorf("%s dalı açılamadı: %s", branchName, strings.TrimSpace(out))
 			}
+			createdBranch = true
 		}
 		curBranch = branchName
 	}
@@ -163,13 +190,14 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 	cfg := LoadGuardConfig(live.path)
 	stagedFiles, err := StageSafeFiles(ctx, live.path, explicitFiles, cfg)
 	if err != nil {
-		return model.CockpitSnapshot{}, err
+		return model.CockpitSnapshot{}, fmt.Errorf("%v%s", err, rollbackBranch())
 	}
 	_ = stagedFiles
 
 	if out, _, err := runCmd(ctx, live.path, "git", "commit", "-m", commitMsg); err != nil {
-		return model.CockpitSnapshot{}, fmt.Errorf("commit atılamadı: %s", strings.TrimSpace(out))
+		return model.CockpitSnapshot{}, fmt.Errorf("commit atılamadı: %s%s", strings.TrimSpace(out), rollbackBranch())
 	}
+	createdBranch = false // commit atıldı: dal artık gerçek iş taşıyor, bundan sonra geri alınmaz
 
 	if pushAndPR {
 		remoteName := "origin"
