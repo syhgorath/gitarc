@@ -192,8 +192,8 @@ type PRStatus struct {
 	Body        string    `json:"body,omitempty"`
 	Author      string    `json:"author"`
 	URL         string    `json:"url,omitempty"`
-	ReviewState string    `json:"reviewState"` // "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | "MERGED"
-	CI          *CIStatus `json:"ci,omitempty"`
+	ReviewState string    `json:"reviewState"` // "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | "MERGED" | "" (belirtilmemiş: inceleme zorunlu değil / henüz karar yok)
+	CI          *CIStatus `json:"ci,omitempty"` // nil = CI durumu bilinmiyor (kontrol yok/henüz raporlanmadı); yeşil/sürüyor uydurulmaz
 }
 
 // CIStatus holds GitHub Actions run status and extracted failure summaries.

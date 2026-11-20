@@ -2,7 +2,7 @@
 //
 // Hangi kartın/butonun/metnin gösterileceği buradaki fonksiyonlardan gelir; HTML basımı inspector-cards.js ve
 // studio.js'te, olay bağlama inspector.js / studio.js / proposal.js'te yapılır.
-import { truncate, isMergedOrGone, suggestUniqueBranchName } from './utils.js';
+import { truncate, isMergedOrGone, suggestUniqueBranchName, prHeadline } from './utils.js';
 
 // ---------------------------------------------------------------------------
 // CI kontrolleri: iki panelde (stüdyo ve inspector) tek sınıflandırma
@@ -83,7 +83,7 @@ export function branchViewModel(b, snap, st = {}) {
 // Üst ray (Remote/PR) ve alt ray (Local) akordeon başlıklarındaki özet metinler.
 export function layerSummaries(b, snap, { isVirtualWip, isRemoteOnly }) {
   const upperSummary = b.pr
-    ? `PR #${b.pr.number} · ${b.pr.reviewState}`
+    ? prHeadline(b.pr)
     : (isRemoteOnly ? `origin/${truncate(b.name, 16)}` : (b.originGone ? 'origin: gone' : 'PR Yok'));
 
   const lowerSummary = isVirtualWip

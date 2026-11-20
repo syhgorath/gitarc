@@ -2,7 +2,7 @@
 //
 // Şablon metinleri (boşluklar dahil) orijinal inspector.js'ten aynen taşınmıştır. Kararlar
 // inspector-model.js'te verilir; burada yalnızca basılır. Kullanıcı verisi HER ZAMAN esc() ile basılır.
-import { esc, truncate, isSecretFile } from './utils.js';
+import { esc, truncate, isSecretFile, prHeadline } from './utils.js';
 import { CHECK_INSPECTOR_VIEW, checkConclusion, classifyCheck } from './inspector-model.js';
 
 export function nodeInspectorHtml(node) {
@@ -160,6 +160,9 @@ export function branchHeaderHtml(v) {
               ? `<button type="button" class="btn warn sm ${isQueued ? 'running-pulse' : ''}" id="act-merge">${isQueued ? '⏳ CI Bekleniyor (İptal Et)' : '⏳ CI Bitince Otomatik Merge Et'}</button>`
               : `<button type="button" class="btn ok sm" id="act-merge" ${canMerge ? '' : 'disabled'}>⚡ Birleştir</button>`}
           </div>
+          ${!b.pr?.ci ? `
+            <div class="ci-merge-gate">CI durumu bilinmiyor (bu PR için kontrol bulunamadı); yeşil varsayılmaz. GitHub birleştirmeye izin veriyorsa birleştirilebilir.</div>
+          ` : ''}
           ${b.pr?.ci ? `
             <div class="ci-merge-gate ${isRunning ? 'running' : (b.pr.ci.state === 'FAILURE' ? 'fail' : 'ok')}">
               ${b.pr.ci.state === 'FAILURE' ? '❌ CI kontrolleri başarısız; merge kilidi aktif' : (isRunning ? '⏳ CI kontrolleri sürüyor; otomatik merge kuyrukta' : '✓ Tüm CI kontrolleri başarılı; güvenle birleştirilebilir')}
@@ -184,9 +187,9 @@ export function layersHtml(v) {
         </summary>
         <div class="layer-scroll-body">
           ${b.pr ? `
-            <div class="layer-line">PR #${b.pr.number} · ${esc(b.pr.reviewState)}</div>
+            <div class="layer-line">${esc(prHeadline(b.pr))}</div>
             <div class="layer-line">${esc(truncate(b.pr.title, 56))}</div>
-            ${b.pr.ci ? `<div class="layer-line">CI: ${esc(b.pr.ci.workflow || 'CI')} (${esc(b.pr.ci.duration || '—')})</div>` : ''}
+            ${b.pr.ci ? `<div class="layer-line">CI: ${esc(b.pr.ci.workflow || 'CI')} (${esc(b.pr.ci.duration || '—')})</div>` : (b.state === 'open' && b.pr.reviewState !== 'MERGED' ? '<div class="layer-line">CI: bilinmiyor (bu PR için kontrol bulunamadı)</div>' : '')}
           ` : `
             <div class="layer-line">${isRemoteOnly ? `Remote aktif: origin/${esc(b.name)}` : (b.originGone ? 'Remote silindi (origin: gone)' : 'Henüz PR / Remote yok')}</div>
             <div class="layer-line">${isRemoteOnly ? 'Yerelde kopyası silinmiş uzak dal' : 'Yerel çalışma (henüz uzakta yok)'}</div>
@@ -250,9 +253,10 @@ export function crossPrCardHtml(b) {
 export function ciCardHtml(b, ctx) {
   const { isLive, localRunOut } = ctx;
     const ci = b.pr.ci;
-    const ciState = ci.state || 'SUCCESS';
+    const ciState = ci.state || '';
     const isFailed = ciState === 'FAILURE';
     const isRunningCI = ciState === 'RUNNING';
+    const isUnknownCI = !ciState; // durum bilinmiyorsa yeşil gösterilmez
     const checks = ci.checks || [];
     const extracts = ci.extracts || [];
     
@@ -268,6 +272,10 @@ export function ciCardHtml(b, ctx) {
       cardModifier = 'ci-running';
       statusText = '⏳ Kontroller Devam Ediyor...';
       chipTone = 'warn';
+    } else if (isUnknownCI) {
+      cardModifier = '';
+      statusText = '? CI Durumu Bilinmiyor';
+      chipTone = '';
     }
 
     return `
