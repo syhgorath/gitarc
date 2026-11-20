@@ -80,3 +80,16 @@ test('step plan view model: apply only for update/merge with a fingerprint; unkn
   }
   assert.ok(stepPlanModel({ action: 'wait', ci: 'UNKNOWN' }).lines.some((l) => /yeşil varsayılmaz/.test(l)));
 });
+
+import { pruneQueueView } from '../../web/modules/queue.js';
+
+test('merged/closed PRs are dropped from the queue view so the next plan request never names a closed branch', () => {
+  const snap = { branches: [
+    { id: 'a', state: 'open', pr: { number: 1 } },
+    { id: 'b', state: 'merged', pr: { number: 2 } },
+    { id: 'c', state: 'open', pr: { number: 3 } },
+  ] };
+  const r = pruneQueueView(['a', 'b', 'c'], new Set(['a', 'b']), snap);
+  assert.equal(JSON.stringify(r.order), JSON.stringify(['a', 'c']));
+  assert.equal(JSON.stringify([...r.included]), JSON.stringify(['a']));
+});

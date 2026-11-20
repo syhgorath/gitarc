@@ -69,16 +69,24 @@ try {
     await expect(visible('#queue-modal'), 'Kuyruk penceresi açılmadı');
     await expect(`document.querySelectorAll('#queue-candidates .queue-row').length > 0`, 'kuyruğa girecek PR satırları görünmüyor');
     await expect(`document.querySelectorAll('#queue-result .queue-step').length > 0 && !!document.querySelector('#queue-result .queue-summary')`, 'plan adımları/özet görünmüyor');
-    // Geride kalmış temiz PR (#422): "Dalı güncelle" → plan → onay → uygulanır (sunucu bağlama başlığıyla birlikte) → düğme kalkar
-    await expect(`document.querySelectorAll('#queue-result .queue-update-btn').length > 0`, 'geride kalan PR için "Dalı güncelle" düğmesi yok');
-    await b.eval(`[...document.querySelectorAll('#queue-result .queue-step')].find((s) => s.textContent.includes('#422')).querySelector('.queue-update-btn').click()`);
-    await expect(`!!document.querySelector('.queue-update .queue-update-confirm')`, 'güncelleme planı onay düğmesi görünmedi');
-    await click('.queue-update .queue-update-confirm');
-    await expect(`!([...document.querySelectorAll('#queue-result .queue-step')].find((s) => s.textContent.includes('#422')) || document.body).querySelector('.queue-update-btn')`, 'güncellemeden sonra #422 için "Dalı güncelle" düğmesi kalkmalı');
-    // 3a: kuyruğun sıradaki dalı (çakışan #421) için adım planı: engel gösterilir, uygulama düğmesi YOK
+    // Eski ayrı "Dalı güncelle" düğmesi kalktı: güncelleme yalnızca kuyruğun adımı olarak yapılır
+    await expect(`document.querySelectorAll('#queue-result .queue-update-btn').length === 0`, 'ayrı "Dalı güncelle" düğmesi kalkmış olmalı');
+    // 3a: kuyruğun sıradaki dalı (çakışan #421): engel gösterilir, uygulama düğmesi YOK
     await expect(`document.querySelectorAll('#queue-result .queue-step-btn').length === 1`, 'yalnızca sıradaki (1.) adımda "Sıradaki adımı planla" düğmesi olmalı');
     await click('#queue-result .queue-step-btn');
     await expect(`!!document.querySelector('.queue-stepplan') && document.querySelector('.queue-stepplan').textContent.includes('Kuyruk burada durur') && !document.querySelector('.queue-step-confirm') && !!document.querySelector('.queue-step-recheck')`, 'engelli adım planı gösterilmedi ya da uygulama düğmesi göründü');
+    // #421'i kuyruktan çıkar, #422'nin CI'ını yeşile çevir (demo): sıradaki adım "güncelle", onaylanınca "birleştir"
+    await b.eval(`(async () => { const m = await import('/modules/api.js'); await m.apiCall('/api/branch/fix-ci', 'POST', { branchId: 'br-open-422' }); })()`);
+    await b.eval(`[...document.querySelectorAll('#queue-candidates .queue-row')].find((r) => r.textContent.includes('#421')).querySelector('input[type=checkbox]').click()`);
+    await expect(`!!document.querySelector('#queue-result .queue-step-btn') && document.querySelector('#queue-result .queue-step').textContent.includes('#422')`, '#422 kuyruğun başına geçmedi');
+    await click('#queue-result .queue-step-btn');
+    await expect(`!!document.querySelector('.queue-stepplan .queue-step-confirm') && document.querySelector('.queue-stepplan').textContent.includes('dalı güncelle')`, 'güncelleme adımı planı/onay düğmesi görünmedi');
+    await click('.queue-stepplan .queue-step-confirm');
+    await expect(`!document.querySelector('.queue-stepplan') && !!document.querySelector('#queue-result .queue-step-btn')`, 'güncellemeden sonra kuyruk yeniden çizilmedi');
+    await click('#queue-result .queue-step-btn');
+    await expect(`!!document.querySelector('.queue-stepplan .queue-step-confirm') && document.querySelector('.queue-stepplan').textContent.includes('birleştir')`, 'güncellemeden sonra birleştirme adımı planlanmadı');
+    await click('.queue-stepplan .queue-step-confirm');
+    await expect(`![...document.querySelectorAll('#queue-candidates .queue-row')].some((r) => r.textContent.includes('#422')) && !document.querySelector('#queue-result').textContent.includes('#422 ')`, 'birleşen #422 kuyruktan kalkmadı');
     await click('#queue-close');
     await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });

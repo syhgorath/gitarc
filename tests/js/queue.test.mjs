@@ -131,23 +131,6 @@ test('window model: candidates are open PRs by number; step badges, details and 
   assert.equal(queueSummaryText({ items: [{}, {}, {}], stopsAt: 2, mergeable: 1 }), '1 dal sorunsuz birleşir; kuyruk 2. sırada durur.');
 });
 
-import { updatePlanModel } from '../../web/modules/queue.js';
-
-test('update-plan window model: ready can be applied; conflict/up-to-date/blocked cannot and say why', () => {
-  const ready = updatePlanModel({ status: 'ready', reason: "origin/main'in 2 yeni commit'i temiz merge edilir", baseRef: 'origin/main', fingerprint: 'abc', notes: ['Not 1'] });
-  assert.equal(ready.canApply, true);
-  assert.ok(ready.lines.some((l) => l.includes('UZAK PR dalına push edilir')));
-  assert.ok(ready.lines.includes('Not 1'));
-  assert.equal(updatePlanModel({ status: 'ready', reason: 'x' }).canApply, false, 'no fingerprint, no apply');
-
-  const conflict = updatePlanModel({ status: 'conflict', reason: 'origin/main ile çakışıyor', conflictFiles: ['a.go', 'b.go'] });
-  assert.equal(conflict.canApply, false);
-  assert.ok(conflict.lines.includes('Çakışan dosyalar: a.go, b.go'));
-  assert.ok(conflict.lines.some((l) => l.includes("Çakışma Stüdyosu'ndan çözün")));
-  assert.equal(updatePlanModel({ status: 'up_to_date', reason: 'güncel' }).title, '✓ Zaten güncel');
-  assert.equal(updatePlanModel({ status: 'blocked', reason: 'dal uzakta yok' }).canApply, false);
-});
-
 // Go'daki simBranchUpdatePlanLocked / UpdateBranchFromBase ile AYNI kurallar (yedek motor eşliği).
 test('fallback engine: update plan, wrong/missing confirm refused, right confirm updates, conflict refused', () => {
   const eng = loadEngine();
