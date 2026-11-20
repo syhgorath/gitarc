@@ -67,7 +67,7 @@ export function initElements() {
     'btn-queue', 'queue-modal', 'queue-candidates', 'queue-result',
     'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'loading-hint', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
-    'sec-prot-summary', 'prot-profiles', 'prot-checks', 'prot-changes', 'prot-notes', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
+    'sec-prot-summary', 'prot-profiles', 'prot-checks', 'prot-now', 'prot-changes', 'prot-notes', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
     'sec-update-cmd', 'btn-add-project', 'btn-remove-project', 'add-project-modal',
     'add-project-form', 'project-path-input', 'project-name-input', 'add-proj-close',
     'add-proj-cancel', 'btn-start-tour', 'tour-backdrop', 'tour-card',
@@ -177,6 +177,7 @@ export function initElements() {
   el.secProtSummary = el['sec-prot-summary'];
   el.protProfiles = el['prot-profiles'];
   el.protChecks = el['prot-checks'];
+  el.protNow = el['prot-now'];
   el.protChanges = el['prot-changes'];
   el.protNotes = el['prot-notes'];
   el.btnEnableProtection = el['btn-enable-protection'];

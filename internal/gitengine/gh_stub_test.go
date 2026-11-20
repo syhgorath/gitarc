@@ -330,6 +330,21 @@ func TestMergeBranchLiveBlocksOnFailingCIAndSurfacesGHError(t *testing.T) {
 	}
 }
 
+// Korumalı dalda zorunlu kontrol bitmeden merge: ham `--auto/--admin` metni sızmaz, "CI Bitince Merge Et"e yönlendirilir.
+func TestMergeBlockedByPolicyGivesActionableTurkishError(t *testing.T) {
+	gh := newGHStub(t)
+	mgr, _ := prSetup(t, gh, "feat/policy")
+	gh.set("pr_merge", "X Pull request o/r#7 is not mergeable: the base branch policy prohibits the merge. To have the pull request merged after all the requirements have been met, add the `--auto` flag. To use administrator privileges to immediately merge the pull request, add the `--admin` flag.", 1)
+	_, err := mgr.MergeBranch("feat/policy", "merge")
+	if err == nil {
+		t.Fatal("merge must fail")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "CI Bitince Merge Et") || strings.Contains(msg, "--admin") || strings.Contains(msg, "--auto") {
+		t.Fatalf("error must be actionable Turkish without raw gh flags: %s", msg)
+	}
+}
+
 func TestUpdatePRMetaLiveCallsGHEdit(t *testing.T) {
 	gh := newGHStub(t)
 	mgr, _ := prSetup(t, gh, "feat/edit")
