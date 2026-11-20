@@ -1,6 +1,7 @@
 package gitengine
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -490,5 +491,68 @@ func TestIso_ProposalCarriesItsProjectName(t *testing.T) {
 	}
 	if prop.RepoName == "" || !strings.HasPrefix(prop.RepoName, "b") || !isoSame(prop.RepoPath, w.dirs["b"]) {
 		t.Fatalf("kart projesini taşımalı: name=%q path=%q", prop.RepoName, prop.RepoPath)
+	}
+}
+
+// Proje seçicideki 📥 rozeti: onay bekleyen öneri kartı olan proje işaretlenir (etkin olmasa da) ve kart başka projede
+// yazılıp silinince yoklama imzası değişir (arayüz rozeti yeniler).
+func TestIso_RepoSelectorFlagsProjectsWithAPendingProposal(t *testing.T) {
+	w := newIsoWorld(t, "a", "b")
+	w.switchTo(t, "a")
+	if err := os.WriteFile(filepath.Join(w.dirs["a"], "yeni.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.mgr.ProposeCommit("feat/rozet", "feat: rozet", []string{"yeni.txt"}, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	flags := func(s model.CockpitSnapshot) map[string]bool {
+		m := map[string]bool{}
+		for _, r := range s.Repos {
+			m[r.ID] = r.PendingProposal
+		}
+		return m
+	}
+
+	snapB := w.switchTo(t, "b") // kart a'da; etkin proje b
+	f := flags(snapB)
+	if !f[w.ids["a"]] || f[w.ids["b"]] {
+		t.Fatalf("yalnızca kartı olan proje (a) işaretlenmeli: %v", f)
+	}
+	if snapB.PendingProposal != nil {
+		t.Fatal("b'de kart görünmemeli (rozet yalnızca hangi projede kart beklediğini söyler)")
+	}
+
+	// Kart a'da silinince (başka süreçte onaylandı/reddedildi) imza değişir ve rozet kalkar; b hâlâ etkin.
+	sig1 := w.mgr.QuickRepoSignature()
+	if err := os.Remove(filepath.Join(w.dirs["a"], ".git", "gitarc_proposal.json")); err != nil {
+		t.Fatal(err)
+	}
+	if sig2 := w.mgr.QuickRepoSignature(); sig2 == sig1 {
+		t.Fatal("etkin olmayan projedeki kart silinince de yoklama imzası değişmeli")
+	}
+	if snap, _ := w.mgr.Snapshot(); flags(snap)[w.ids["a"]] {
+		t.Fatal("kart silinince rozet kalkmalı")
+	}
+}
+
+// Hiç dalı olmayan taze bir depo: dizi alanları JSON'da null değil boş dizi olmalı (arayüz dizi bekler; null olunca
+// renderInspector çöküp arayüzü sessizce Offline Simülasyon kipine düşürüyordu).
+func TestFreshRepoSnapshotHasEmptyArraysNotNull(t *testing.T) {
+	isoHome(t)
+	dir, _ := newTempRepo(t) // yalnızca main, tek commit
+	mgr := NewManager(dir)
+	snap, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Branches == nil {
+		t.Fatal("Branches nil: JSON'da null olur")
+	}
+	b, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), `"branches":null`) {
+		t.Fatal(`anlık görüntüde "branches":null var`)
 	}
 }

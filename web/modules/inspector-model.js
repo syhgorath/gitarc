@@ -9,6 +9,15 @@ import { truncate, isMergedOrGone, suggestUniqueBranchName } from './utils.js';
 // ---------------------------------------------------------------------------
 // Eskiden iki ayrı if-zinciri vardı ve tutarsızdı: `PENDING` durumu inspector'da 🟡 (devam ediyor), stüdyoda ise
 // "Başarılı" görünüyordu. Artık tek kural: ok | fail | running | skip.
+// Hiç dalı/commit'i olmayan taze bir depoda sunucu dizi yerine null gönderebilir; arayüz bu yüzden çökmemeli
+// (eskiden renderInspector `snap.branches.find` ile çöküp arayüzü sessizce Offline Simülasyon kipine düşürüyordu).
+export function findSelectedBranch(snap, branchId) {
+  return (snap?.branches || []).find((x) => x.id === branchId);
+}
+export function findSelectedNode(snap, shortSha) {
+  return (snap?.nodes || []).find((n) => n.shortSha === shortSha);
+}
+
 export function checkConclusion(chk) {
   return (chk.conclusion || chk.status || '').toUpperCase();
 }

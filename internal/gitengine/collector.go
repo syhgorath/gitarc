@@ -269,6 +269,11 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 		}
 	}
 
+	// Hiç dalı olmayan taze bir depoda nil dilim JSON'da null olurdu; arayüz dizi bekler.
+	if branches == nil {
+		branches = []model.BranchArc{}
+	}
+
 	markLongLived(branches, defaultBranch)
 	markPrunable(branches)
 	ComputeCrossPRCollisions(branches)

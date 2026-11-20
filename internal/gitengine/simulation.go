@@ -254,6 +254,8 @@ func (m *Manager) repoOptionsLocked() []model.RepoOption {
 			Path:          lr.path,
 			Mode:          "live",
 			DefaultBranch: "main",
+			// Kart dosyası projenin kendi .git'inde durur; etkin olmayan projelerin bekleyen kartı da görünsün.
+			PendingProposal: proposalFileSig(lr.path) != "",
 		})
 	}
 	return opts
@@ -294,8 +296,13 @@ func (m *Manager) QuickRepoSignature() string {
 	}
 
 	// bgVersion: arka plan fetch/gh sonuçları geldiğinde imza değişsin, arayüz taze veriyi çeksin.
-	// proposalFileSig: MCP'nin yazdığı öneri kartı değişince arayüz yeni anlık görüntüyü çekip kartı göstersin.
-	return fmt.Sprintf("%s:%d:%d:%d:%s", live.id, headMod, indexMod, bgVersion(live.path), proposalFileSig(live.path))
+	// Öneri kartı dosyaları (TÜM canlı projelerin): MCP bir kart yazınca/silince arayüz yeni anlık görüntüyü çekip kartı ve
+	// proje seçicideki 📥 rozetini göstersin; etkin olmayan bir projedeki kart da imzayı değiştirir.
+	var props []string
+	for _, lr := range m.liveRepos {
+		props = append(props, proposalFileSig(lr.path))
+	}
+	return fmt.Sprintf("%s:%d:%d:%d:%s", live.id, headMod, indexMod, bgVersion(live.path), strings.Join(props, ","))
 }
 
 // BackgroundVersion: etkin canlı deponun arka plan sonuçlarının (gh, fetch) sürümü; simülasyonda 0. Yoklama bunu ayrı
