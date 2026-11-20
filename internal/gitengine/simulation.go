@@ -129,7 +129,7 @@ func NewManager(extraRepoPath string) *Manager {
 		if abs, err := filepath.Abs(envRepo); err == nil && isGitDir(abs) {
 			already := false
 			for _, c := range candidates {
-				if filepath.Clean(c.path) == filepath.Clean(abs) {
+				if sameRepoPath(c.path, abs) {
 					already = true
 					break
 				}
@@ -154,7 +154,7 @@ func NewManager(extraRepoPath string) *Manager {
 	if wd := cwdRepo; wd != "" {
 		already := false
 		for _, c := range candidates {
-			if filepath.Clean(c.path) == filepath.Clean(wd) {
+			if sameRepoPath(c.path, wd) {
 				already = true
 				break
 			}
@@ -174,7 +174,7 @@ func NewManager(extraRepoPath string) *Manager {
 		if isGitDir(sp.Path) {
 			already := false
 			for _, c := range candidates {
-				if filepath.Clean(c.path) == filepath.Clean(sp.Path) {
+				if sameRepoPath(c.path, sp.Path) {
 					already = true
 					break
 				}

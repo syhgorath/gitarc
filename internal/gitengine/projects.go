@@ -2,6 +2,8 @@ package gitengine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -82,9 +84,10 @@ func (m *Manager) AddProject(repoPath, customName string) (model.CockpitSnapshot
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Aynı depo farklı yol yazımlarıyla (alt klasör, sembolik bağ, /var ↔ /private/var) ikinci kez eklenmez.
 	var existingID string
 	for _, lr := range m.liveRepos {
-		if filepath.Clean(lr.path) == filepath.Clean(abs) {
+		if sameRepoPath(lr.path, abs) {
 			existingID = lr.id
 			break
 		}
@@ -92,7 +95,9 @@ func (m *Manager) AddProject(repoPath, customName string) (model.CockpitSnapshot
 
 	targetID := existingID
 	if targetID == "" {
-		targetID = fmt.Sprintf("live-proj-%d", time.Now().UnixNano()%1000000)
+		// Kimlik yoldan türetilir: aynı depo kaldırılıp yeniden eklenince AYNI kimliği alır (arayüz son seçilen kimliği
+		// tarayıcıda hatırlar; rastgele kimlik yeniden eklemede onu geçersiz kılıyordu).
+		targetID = projectIDForPath(abs)
 		m.liveRepos = append(m.liveRepos, repoEntry{
 			id:   targetID,
 			name: name + " (Canlı)",
@@ -103,8 +108,9 @@ func (m *Manager) AddProject(repoPath, customName string) (model.CockpitSnapshot
 	saved := loadSavedProjects()
 	alreadySaved := false
 	for i, sp := range saved {
-		if filepath.Clean(sp.Path) == filepath.Clean(abs) {
+		if sameRepoPath(sp.Path, abs) {
 			saved[i].Name = name
+			saved[i].ID = targetID // kayıttaki kimlik bellektekiyle aynı kalsın (yeniden başlatınca arayüzün hatırladığı kimlik tutsun)
 			alreadySaved = true
 			break
 		}
@@ -163,7 +169,7 @@ func (m *Manager) RemoveProject(repoID string) (model.CockpitSnapshot, error) {
 		saved := loadSavedProjects()
 		updated := []SavedProject{}
 		for _, sp := range saved {
-			if filepath.Clean(sp.Path) != filepath.Clean(removedPath) {
+			if !sameRepoPath(sp.Path, removedPath) {
 				updated = append(updated, sp)
 			}
 		}
@@ -237,4 +243,15 @@ func (m *Manager) DiscardWorkingTree() (model.CockpitSnapshot, error) {
 
 	InvalidateGHCache(live.path)
 	return m.Snapshot()
+}
+
+// projectIDForPath: depo yolundan kararlı proje kimliği ("live-proj-" + yolun özetinin ilk 8 hex'i). Sembolik bağlar çözülür,
+// yani aynı depo hangi yazımla eklenirse eklensin aynı kimliği alır.
+func projectIDForPath(p string) string {
+	canon := filepath.Clean(p)
+	if r, err := filepath.EvalSymlinks(canon); err == nil {
+		canon = r
+	}
+	sum := sha256.Sum256([]byte(canon))
+	return "live-proj-" + hex.EncodeToString(sum[:4])
 }
