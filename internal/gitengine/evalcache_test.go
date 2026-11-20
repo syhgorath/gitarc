@@ -123,3 +123,41 @@ func TestStudioOpensEvenWhenCachedSnapshotMissedTheConflict(t *testing.T) {
 		t.Fatalf("çakışan dosya bekleniyordu: %+v", payload.Files)
 	}
 }
+
+// Çözüm de bayat "çakışma yok" önbelleğine güvenmemeli: eskiden bayrak yoksa sessizce "başarılı" dönüp hiçbir şey
+// yapmıyordu (MCP aracı buna "resolved: true" diyordu).
+func TestResolveConflictWorksEvenWhenCachedSnapshotMissedTheConflict(t *testing.T) {
+	dir, _, _, _, _ := conflictFixture(t)
+	mgr := switchLive(t, dir)
+
+	snap, err := mgr.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	for _, b := range snap.Branches {
+		if b.Name == "feat" {
+			id = b.ID
+		}
+	}
+	if id == "" {
+		t.Fatal("feat dalı anlık görüntüde yok")
+	}
+	evalCacheMu.Lock()
+	for k, v := range evalCache {
+		v.conflict = nil
+		evalCache[k] = v
+	}
+	evalCacheMu.Unlock()
+
+	if _, err := mgr.ResolveBranchConflict(id, "ours", nil, false); err != nil {
+		t.Fatalf("çözüm: %v", err)
+	}
+	// Dal artık main'i içermeli ve main ile birleştirilebilir olmalı (çakışma kalkmış).
+	if err := exec.Command("git", "-C", dir, "merge-base", "--is-ancestor", "main", "feat").Run(); err != nil {
+		t.Fatal("çözümden sonra feat dalı main'i içermeli (çözüm gerçekten uygulanmalı)")
+	}
+	if c := freshConflict(context.Background(), dir, "main", "feat"); c != nil {
+		t.Fatalf("çözümden sonra çakışma kalmamalı: %+v", c)
+	}
+}

@@ -171,7 +171,7 @@ func listTools() []toolDefinition {
 		},
 		{
 			Name:        "gitarc_resolve_conflict",
-			Description: "Seçili daldaki merge çakışmasını izole git worktree içinde (union, ours, theirs veya custom içerikle) çözer, go vet doğrulamasından geçirir ve commit/push yapar.",
+			Description: "Seçili daldaki merge çakışmasını izole git worktree içinde (union, ours, theirs veya custom) çözer, go.mod varsa go vet ile doğrular, yerel dalı günceller ve dalın uzaktaki hâline PUSH eder (açık bir PR'ı değiştirir). VARSAYILAN OLARAK KAPALIDIR: yalnızca MCP sunucusu GITARC_MCP_ALLOW_RESOLVE=1 ile başlatıldıysa çalışır. Önce gitarc_conflict_plan çağırıp kullanıcıya göstermeli ve dönen fingerprint'i confirm olarak vermelisiniz; çakışma değiştiyse reddedilir. ours/theirs bir tarafın değişikliğini ATAR. Sonuçtaki resolved yalnızca çakışma gerçekten kalktıysa true'dur.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -186,13 +186,17 @@ func listTools() []toolDefinition {
 					},
 					"customFiles": map[string]any{
 						"type":        "object",
-						"description": "Opsiyonel dosya yolu -> pencere içerik haritası (strategy='custom' iken kullanılır).",
+						"description": "strategy='custom' iken zorunlu: dosya yolu -> çözülmüş içerik haritası (çakışma işaretleri kalmamalı).",
 						"additionalProperties": map[string]any{
 							"type": "string",
 						},
 					},
+					"confirm": map[string]any{
+						"type":        "string",
+						"description": "gitarc_conflict_plan çıktısındaki fingerprint (aynen).",
+					},
 				},
-				"required": []string{"branchId", "strategy"},
+				"required": []string{"branchId", "strategy", "confirm"},
 			},
 		},
 		{
@@ -263,7 +267,7 @@ func listTools() []toolDefinition {
 			},
 		},
 	}
-	return append(base, protectionToolDefs()...)
+	return append(append(base, conflictToolDefs()...), protectionToolDefs()...)
 }
 
 func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
@@ -272,6 +276,9 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 		return errResult("Açık bir Git deposu yok: `gitarc -mcp -repo <depo-yolu>` ile bir depo klasörü verin")
 	}
 	if res, ok := callProtectionTool(params.Name, params.Arguments, mgr); ok {
+		return res
+	}
+	if res, ok := callConflictTool(params.Name, params.Arguments, mgr); ok {
 		return res
 	}
 	switch params.Name {
@@ -315,38 +322,6 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 			"ahead":         snap.Repo.Ahead,
 			"behind":        snap.Repo.Behind,
 			"nodeCount":     len(snap.Nodes),
-		})
-
-	case "gitarc_resolve_conflict":
-		branchID, _ := params.Arguments["branchId"].(string)
-		strategy, _ := params.Arguments["strategy"].(string)
-		if strings.TrimSpace(branchID) == "" || strings.TrimSpace(strategy) == "" {
-			return errResult("branchId ve strategy zorunludur")
-		}
-		var customFiles map[string]string
-		if rawMap, ok := params.Arguments["customFiles"].(map[string]any); ok && len(rawMap) > 0 {
-			customFiles = make(map[string]string, len(rawMap))
-			for k, v := range rawMap {
-				if s, ok := v.(string); ok {
-					customFiles[k] = s
-				}
-			}
-		}
-		snap, err := mgr.ResolveBranchConflict(branchID, strategy, customFiles, true)
-		if err != nil {
-			return errResult(err.Error())
-		}
-		mode := snap.Repo.Mode
-		if mode == "" {
-			mode = "live"
-		}
-		return jsonTextResult(map[string]any{
-			"mode":     mode,
-			"resolved": true,
-			"branchId": branchID,
-			"strategy": strategy,
-			"repo":     snap.Repo.Name,
-			"branches": buildStatusPayload(snap)["branches"],
 		})
 
 	case "gitarc_cleanup_candidates":

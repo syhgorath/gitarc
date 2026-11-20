@@ -62,8 +62,8 @@ func TestMCPServeStdioTools(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &r2); err != nil {
 		t.Fatal(err)
 	}
-	if len(r2.Result.Tools) != 12 {
-		t.Fatalf("expected 12 MCP tools, got %d", len(r2.Result.Tools))
+	if len(r2.Result.Tools) != 13 {
+		t.Fatalf("expected 13 MCP tools, got %d", len(r2.Result.Tools))
 	}
 
 	// Verify gitarc_status includes activeContext and openPRs for AI assistance
@@ -81,9 +81,9 @@ func TestMCPServeStdioTools(t *testing.T) {
 		t.Fatalf("expected clean CI failure digest, got: %s", lines[4])
 	}
 
-	// Verify gitarc_resolve_conflict resolved br-open-421
-	if !strings.Contains(lines[6], `\"resolved\": true`) || strings.Contains(lines[6], `"isError":true`) {
-		t.Fatalf("expected gitarc_resolve_conflict to resolve cleanly, got: %s", lines[6])
+	// gitarc_resolve_conflict varsayılan KAPALI: izin yokken reddedilir ve nedenini söyler.
+	if !strings.Contains(lines[6], `"isError":true`) || !strings.Contains(lines[6], envAllowResolve) {
+		t.Fatalf("expected gitarc_resolve_conflict to be refused without %s, got: %s", envAllowResolve, lines[6])
 	}
 
 	// Verify gitarc_cleanup_candidates
