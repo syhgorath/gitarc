@@ -240,6 +240,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/queue/plan", a.guard(a.handleQueuePlan))
 	mux.HandleFunc("/api/branch/update/plan", a.guard(a.handleBranchUpdatePlan))
 	mux.HandleFunc("/api/branch/update", a.guard(a.handleBranchUpdate))
+	mux.HandleFunc("/api/queue/step/plan", a.guard(a.handleQueueStepPlan))
+	mux.HandleFunc("/api/queue/step", a.guard(a.handleQueueStep))
 	mux.HandleFunc("/api/system/choose-folder", a.guard(a.handleChooseFolder))
 	mux.HandleFunc("/api/system/git-status-ping", a.guard(a.handleGitStatusPing))
 	mux.HandleFunc("/api/simulation/reset", a.guard(a.handleResetSimulation))
@@ -743,6 +745,39 @@ func (a *App) handleBranchUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap, err := a.mgr.UpdateBranchFromBase(req.BranchID, req.Confirm)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+// handleQueueStepPlan: kuyruğun bir dalı için sıradaki adımın (güncelle / birleştir / bekle / engel) SALT OKUNUR planı.
+func (a *App) handleQueueStepPlan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	plan, err := a.mgr.QueueStepPlan(req.BranchID)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// handleQueueStep: planın TEK adımını uygular (uzak PR dalına push ya da PR birleştirme); yalnızca planın parmak iziyle çalışır.
+func (a *App) handleQueueStep(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchID string `json:"branchId"`
+		Confirm  string `json:"confirm"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	snap, err := a.mgr.QueueStepApply(req.BranchID, req.Confirm)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return

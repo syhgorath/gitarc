@@ -60,7 +60,7 @@ try {
   await step('MCP penceresi açılır ve kapanır', async () => {
     await click('#btn-mcp-connect');
     await expect(visible('#mcp-connect-modal'), 'MCP penceresi açılmadı');
-    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('16 Araç')`, 'MCP penceresi koruma araçlarını/16 araç sayısını göstermiyor');
+    await expect(`document.getElementById('mcp-connect-modal').textContent.includes('gitarc_protection_apply') && document.getElementById('mcp-connect-modal').textContent.includes('18 Araç')`, 'MCP penceresi koruma araçlarını/16 araç sayısını göstermiyor');
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
   });
@@ -75,6 +75,10 @@ try {
     await expect(`!!document.querySelector('.queue-update .queue-update-confirm')`, 'güncelleme planı onay düğmesi görünmedi');
     await click('.queue-update .queue-update-confirm');
     await expect(`!([...document.querySelectorAll('#queue-result .queue-step')].find((s) => s.textContent.includes('#422')) || document.body).querySelector('.queue-update-btn')`, 'güncellemeden sonra #422 için "Dalı güncelle" düğmesi kalkmalı');
+    // 3a: kuyruğun sıradaki dalı (çakışan #421) için adım planı: engel gösterilir, uygulama düğmesi YOK
+    await expect(`document.querySelectorAll('#queue-result .queue-step-btn').length === 1`, 'yalnızca sıradaki (1.) adımda "Sıradaki adımı planla" düğmesi olmalı');
+    await click('#queue-result .queue-step-btn');
+    await expect(`!!document.querySelector('.queue-stepplan') && document.querySelector('.queue-stepplan').textContent.includes('Kuyruk burada durur') && !document.querySelector('.queue-step-confirm') && !!document.querySelector('.queue-step-recheck')`, 'engelli adım planı gösterilmedi ya da uygulama düğmesi göründü');
     await click('#queue-close');
     await expect(hidden('#queue-modal'), 'Kuyruk penceresi kapanmadı');
   });
