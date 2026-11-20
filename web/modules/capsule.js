@@ -6,7 +6,7 @@
 // boşluk düzeni etkiler).
 import { state } from './state.js';
 import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H } from './constants.js';
-import { esc, truncate, svgEl, isWorkingTreeBranch, diffArgsFor } from './utils.js';
+import { esc, truncate, svgEl, isWorkingTreeBranch, diffArgsFor, prHeadline } from './utils.js';
 
 export function capsulePositionForApex(b, apexX, apexY) {
   if (b.state === 'merged') {
@@ -71,7 +71,7 @@ export function badgeModel(b) {
   const f = branchFlags(b);
   let tone = 'sky';
   let pulse = false;
-  let text = b.pr ? `PR #${b.pr.number} · ${b.pr.reviewState}` : 'Remote Ray';
+  let text = b.pr ? prHeadline(b.pr) : 'Remote Ray';
   if (f.isFailed) {
     tone = 'danger';
     text = `PR #${b.pr.number} · CI Failed`;

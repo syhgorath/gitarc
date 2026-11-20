@@ -1,6 +1,12 @@
 // web/modules/utils.js - Shared formatting, DOM, security and naming helpers
 import { SVG_NS } from './constants.js';
 
+// PR başlığı: "PR #12 · APPROVED". İnceleme kararı belirtilmemişse (GitHub boş döner: inceleme zorunlu değil / henüz karar yok)
+// yalnızca "PR #12": "inceleme gerekli" uydurulmaz.
+export function prHeadline(pr) {
+  return `PR #${pr.number}${pr.reviewState ? ` · ${pr.reviewState}` : ''}`;
+}
+
 export function esc(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')

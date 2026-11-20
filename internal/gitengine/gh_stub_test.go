@@ -49,8 +49,8 @@ func TestFetchGHPRsParsesCIStatesAndFailureLog(t *testing.T) {
 	if red.CI.State != "FAILURE" || red.CI.FailedStep != "test" || red.CI.RunID != "555" {
 		t.Fatalf("red PR CI wrong: %+v", red.CI)
 	}
-	if red.ReviewState != "REVIEW_REQUIRED" {
-		t.Fatalf("empty reviewDecision must default to REVIEW_REQUIRED, got %q", red.ReviewState)
+	if red.ReviewState != "" {
+		t.Fatalf("empty reviewDecision must stay empty (not invented as REVIEW_REQUIRED), got %q", red.ReviewState)
 	}
 	if !strings.Contains(red.CI.RawLog, "TestShellGoldCompare") || len(red.CI.Extracts) == 0 {
 		t.Fatalf("failed run log must be fetched and parsed: %+v", red.CI)
@@ -62,8 +62,8 @@ func TestFetchGHPRsParsesCIStatesAndFailureLog(t *testing.T) {
 	if prs["feat/running"].CI.State != "RUNNING" {
 		t.Fatalf("in-progress check must be RUNNING, got %s", prs["feat/running"].CI.State)
 	}
-	if prs["feat/nochecks"].CI.State != "RUNNING" {
-		t.Fatalf("PR with no checks yet must be RUNNING, got %s", prs["feat/nochecks"].CI.State)
+	if prs["feat/nochecks"].CI != nil {
+		t.Fatalf("PR with no checks must have UNKNOWN CI (nil), not an invented state: %+v", prs["feat/nochecks"].CI)
 	}
 	legacy := prs["feat/legacy-status"]
 	if legacy.CI.State != "FAILURE" || legacy.CI.FailedStep != "ci/circle" || legacy.CI.RunID != "777" {
@@ -390,5 +390,31 @@ func TestNonGitHubRemoteNeverCallsGH(t *testing.T) {
 	}
 	if gh.called("pr list") || gh.called("api") {
 		t.Fatalf("non-GitHub remote must not query gh: %v", gh.calls())
+	}
+}
+
+// Dürüstlük: GitHub'ın boş bıraktığı değerler uydurulmaz. Kontrolü olmayan PR "CI sürüyor", tanınmayan kayıtlar "CI başarılı"
+// olmaz (eskiden öyleydi); inceleme kararı boşsa "inceleme gerekli" yazılmaz.
+func TestFetchGHPRsNeverInventsReviewOrCIState(t *testing.T) {
+	gh := newGHStub(t)
+	gh.set("pr_list_open", `[
+ {"number":1,"headRefName":"feat/bos","title":"bos","body":"","url":"u","author":{"login":"a"},"reviewDecision":"","statusCheckRollup":[]},
+ {"number":2,"headRefName":"feat/taninmayan","title":"t","body":"","url":"u","author":{"login":"a"},"reviewDecision":"APPROVED",
+  "statusCheckRollup":[{"name":"x"},{"workflowName":"CI"}]},
+ {"number":3,"headRefName":"feat/gercek","title":"g","body":"","url":"u","author":{"login":"a"},"reviewDecision":"CHANGES_REQUESTED",
+  "statusCheckRollup":[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]}
+]`, 0)
+	prs, err := fetchGHPRs(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bos := prs["feat/bos"]; bos.ReviewState != "" || bos.CI != nil {
+		t.Fatalf("boş karar ve boş kontrol listesi bilinmiyor kalmalı: review=%q ci=%+v", bos.ReviewState, bos.CI)
+	}
+	if t2 := prs["feat/taninmayan"]; t2.CI != nil || t2.ReviewState != "APPROVED" {
+		t.Fatalf("durumu/sonucu olmayan kontrol kayıtları SUCCESS sayılmamalı (CI nil), gerçek inceleme korunmalı: %+v", t2)
+	}
+	if g := prs["feat/gercek"]; g.CI == nil || g.CI.State != "SUCCESS" || g.ReviewState != "CHANGES_REQUESTED" {
+		t.Fatalf("gerçek veri aynen korunmalı: %+v / %+v", g, g.CI)
 	}
 }

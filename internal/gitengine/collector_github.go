@@ -573,14 +573,11 @@ func fetchGHPRs(ctx context.Context, repoPath string) (map[string]model.PRStatus
 		return res, fmt.Errorf("gh pr list çıktısı çözümlenemedi: %v", err)
 	}
 	for _, it := range items {
+		// GitHub boş `reviewDecision` döner: inceleme zorunlu değil ya da henüz karar yok. Boş bırakılır; eskiden her PR'a
+		// "REVIEW_REQUIRED" (inceleme gerekli) uydurulup inceleme zorunluluğu olmayan depoda da gösteriliyordu.
 		rev := it.ReviewDecision
-		if rev == "" {
-			rev = "REVIEW_REQUIRED"
-		}
 		ciState := "SUCCESS"
-		if len(it.StatusCheckRollup) == 0 {
-			ciState = "RUNNING"
-		}
+		knownChecks := 0 // tanınan (durumu/sonucu olan) kontrol sayısı: yoksa CI durumu BİLİNMİYOR demektir
 		failedStep := ""
 		runID := ""
 		workflow := "" // bilinmiyorsa uydurma: gerçek iş akışı adı kontrol listesinden gelir
@@ -601,6 +598,9 @@ func fetchGHPRs(ctx context.Context, repoPath string) (map[string]model.PRStatus
 			}
 			if conc == "" && st == "COMPLETED" {
 				conc = "SUCCESS"
+			}
+			if conc != "" || st != "" {
+				knownChecks++
 			}
 			detURL := chk.DetailsURL
 			if detURL == "" {
@@ -646,14 +646,11 @@ func fetchGHPRs(ctx context.Context, repoPath string) (map[string]model.PRStatus
 			logCancel()
 		}
 
-		res[it.HeadRefName] = model.PRStatus{
-			Number:      it.Number,
-			Title:       it.Title,
-			Body:        it.Body,
-			Author:      it.Author.Login,
-			URL:         it.URL,
-			ReviewState: rev,
-			CI: &model.CIStatus{
+		// Hiç kontrol yok ya da hiçbirinin durumu tanınmıyorsa CI nil kalır (bilinmiyor). Eskiden boş liste "RUNNING",
+		// tanınmayan kayıtlar "SUCCESS" olurdu: kontrolü olmayan depoda PR elle birleştirilemiyor ("CI bitince merge et" bekliyordu).
+		var ciStatus *model.CIStatus
+		if knownChecks > 0 {
+			ciStatus = &model.CIStatus{
 				State:      ciState,
 				Workflow:   workflow,
 				RunID:      runID,
@@ -662,7 +659,16 @@ func fetchGHPRs(ctx context.Context, repoPath string) (map[string]model.PRStatus
 				Extracts:   extracts,
 				RawLog:     rawLog,
 				Checks:     checks,
-			},
+			}
+		}
+		res[it.HeadRefName] = model.PRStatus{
+			Number:      it.Number,
+			Title:       it.Title,
+			Body:        it.Body,
+			Author:      it.Author.Login,
+			URL:         it.URL,
+			ReviewState: rev,
+			CI:          ciStatus,
 		}
 	}
 	return res, nil
