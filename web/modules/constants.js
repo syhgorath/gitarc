@@ -13,6 +13,9 @@ export const MERGED_LANE_BASE = 52;
 export const MERGED_LANE_STEP = 36;
 export const FO_W = 222;
 export const FO_H = 130; // açık kapsül yüksekliği (Uzak / Yerel satırı dahil)
+// Üst yarı-küredeki açık kapsül, yayın tepe noktasının (apex) bu kadar AŞAĞISINA taşar: kartın alt kenarı = apexY + CARD_APEX_OVERHANG.
+// (capsule.js yerleşimi ve scene.js hedef çizgisi aynı sabiti kullanır; ikisi ayrışırsa çizgi kartın arkasında kalır.)
+export const CARD_APEX_OVERHANG = 12;
 export const MERGED_FO_W = 188;
 export const MERGED_FO_H = 34;
 export const OPEN_CAPSULE_MIN_GAP_X = 238;

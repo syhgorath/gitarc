@@ -229,13 +229,29 @@ test('a running queue keeps polling fast and changes the snapshot signature (car
 
 // ---- sarı kesik hedef çizgisi ----
 import { queueLandingGeometry } from '../../web/modules/scene.js';
-import { MAIN_Y, SPINE_STEP_X } from '../../web/modules/constants.js';
+import { MAIN_Y, SPINE_STEP_X, CARD_APEX_OVERHANG, FO_W } from '../../web/modules/constants.js';
+import { capsulePositionForApex } from '../../web/modules/capsule.js';
+
+test('landing geometry: an upper-arc target line never starts inside (behind) its card; a lower-arc one is unchanged', () => {
+  const apexX = 900;
+  const apexY = 80;
+  const open = { hemisphere: 'upper', state: 'open' };
+  const card = capsulePositionForApex(open, apexX, apexY);
+  const cardBottom = card.y + 130; // FO_H
+  const up = queueLandingGeometry({ apexX, apexY }, 700);
+  const [, sx, sy] = up.d.match(/^M ([\d.-]+) ([\d.-]+) C /).map(Number);
+  assert.ok(sx >= card.x && sx <= card.x + FO_W, 'starts under the card horizontally');
+  assert.ok(sy > cardBottom, `starts BELOW the card bottom edge (y ${sy} > ${cardBottom}), otherwise its first stretch is hidden behind the card`);
+  assert.ok(sy < MAIN_Y - 8, 'and still above the ghost node');
+  const down = queueLandingGeometry({ apexX, apexY: 400 }, 700);
+  assert.ok(down.d.startsWith('M 900 400 C '), 'a lower arc still starts at its apex (the card is below it, nothing hides the start)');
+});
 
 test('landing geometry: ghost node sits just right of the spine tip and the arrow ends next to it, from above or below', () => {
   const up = queueLandingGeometry({ apexX: 900, apexY: 80 }, 700);
   assert.equal(up.landingX, 700 + SPINE_STEP_X * 0.7);
   assert.equal(up.landingY, MAIN_Y);
-  assert.ok(up.d.startsWith('M 900 80 C '), 'starts at the apex dot');
+  assert.ok(up.d.startsWith(`M 900 ${80 + CARD_APEX_OVERHANG + 3} C `), 'an upper arc starts just BELOW the card, not at the apex dot hidden behind it');
   assert.ok(up.d.endsWith(`${up.landingX} ${MAIN_Y - 8}`), 'an upper arc ends just above the ghost node');
   const down = queueLandingGeometry({ apexX: 900, apexY: 400 }, 700);
   assert.ok(down.d.endsWith(`${down.landingX} ${MAIN_Y + 8}`), 'a lower arc ends just below the ghost node');

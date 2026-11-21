@@ -4,7 +4,7 @@
 // (saf `computeSceneBounds`), çizim sırası ve her katmanın (tanımlar, kılavuz çizgileri, yaylar, omurga,
 // düğümler) DOM'a yazılması var.
 import { state, el } from './state.js';
-import { XHTML_NS, MAIN_Y, LANE_BASE_OFFSET, SPINE_STEP_X } from './constants.js';
+import { XHTML_NS, MAIN_Y, LANE_BASE_OFFSET, SPINE_STEP_X, CARD_APEX_OVERHANG } from './constants.js';
 import { esc, truncate, svgEl } from './utils.js';
 import { mainCIBadge, mergeIntentBadge } from './syncsteps.js';
 import { filterContext, matchesBranchFilter } from './filters.js';
@@ -100,10 +100,19 @@ export function remnantGeometry(b, geom) {
 // Saf geometri (DOM yok). geom: computeBranchGeometry sonucu (apexX/apexY); lastSpineX: omurgadaki son düğümün x'i.
 export function queueLandingGeometry(geom, lastSpineX) {
   const landingX = lastSpineX + SPINE_STEP_X * 0.7;
+  const dir = geom.apexY < MAIN_Y ? -1 : 1; // yay omurganın üstünde mi altında mı
+  const endY = MAIN_Y + dir * 8;            // hayalet düğümün hemen yanında biter (ok ucu düğüme değer)
   const sx = geom.apexX;
+  if (dir === -1) {
+    // ÜST yarı-küre: kart tepe noktasının altına taşar (kartın alt kenarı = apexY + CARD_APEX_OVERHANG) ve çizgi katmanı kartların ALTINDA
+    // çizilir. Eskiden çizgi tepe noktasından yatay başlıyordu: ilk ~110 px kartın arkasında kalıyordu. Şimdi kartın ALT kenarının hemen
+    // altından başlar ve dikey bir S-eğrisiyle hayalet düğüme iner: baştan sona görünür.
+    const sy = geom.apexY + CARD_APEX_OVERHANG + 3;
+    const midY = (sy + endY) / 2;
+    return { d: `M ${sx} ${sy} C ${sx} ${midY}, ${landingX} ${midY}, ${landingX} ${endY}`, landingX, landingY: MAIN_Y };
+  }
+  // ALT yarı-küre: kart tepe noktasının altında (apexY + 14'ten başlar); tepe noktası kartın dışında, çizgi baştan görünür.
   const sy = geom.apexY;
-  const dir = sy < MAIN_Y ? -1 : 1; // yay omurganın üstünde mi altında mı
-  const endY = MAIN_Y + dir * 8;     // hayalet düğümün hemen yanında biter (ok ucu düğüme değer)
   const d = `M ${sx} ${sy} C ${sx + 60} ${sy}, ${landingX} ${sy + (endY - sy) * 0.55}, ${landingX} ${endY}`;
   return { d, landingX, landingY: MAIN_Y };
 }
