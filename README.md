@@ -201,3 +201,7 @@ for f in web/*.js web/modules/*.js; do node --check "$f"; done
 - Arayüzün saf kuralları (yerleşim, süzgeç, kapsül kararları, kaydırma/yakınlaştırma) için Node'un yerleşik test koşucusuyla yazılmış testler (`tests/js/`) `go test` içinden de çalışır (node kuruluysa).
 
 Daha fazlası: [HANDOVER.md](HANDOVER.md) (teknik devir teslim ve mimari harita), [AGENTS.md](AGENTS.md) (çalışma kuralları), [CHANGELOG.md](CHANGELOG.md), [docs/PLAN.md](docs/PLAN.md).
+
+## Destek
+
+GitArc ücretsiz ve açık kaynaktır. Faydalı bulduysanız [GitHub Sponsors](https://github.com/sponsors/syhgorath) üzerinden destek olabilirsiniz; yıldız, hata bildirimi ve katkı da en az onun kadar değerlidir.

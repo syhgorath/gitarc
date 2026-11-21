@@ -5,6 +5,7 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 ## [Yayımlanmamış]
 
 ### Belgeler
+- **Sponsor düğmesi:** `.github/FUNDING.yml` ile GitHub depo sayfasında ♥ Sponsor düğmesi ve README'de "Destek" bölümü eklendi (uygulamanın içinde bir şey yok).
 - **README görselleri yenilendi:** Tüm ekran görüntüleri güncel arayüzle (demo verisiyle) yeniden çekildi ve tarayıcı penceresi çerçevesine alınmış tek dosyalık SVG oldu (`scripts/ekran-cercevesi.py`; çekim: `tests/e2e/ekran-goruntuleri.mjs`). Eski `.webp` görüntüler kişisel tarayıcı sekmelerini/yer imlerini gösteriyordu; kaldırıldı. Merge Kuyruğu, Dal koruması ve MCP pencereleri için yeni görseller; "Kuyrukta biri kırmızı yandı" senaryosu eklendi.
 
 ### Düzeltilenler
