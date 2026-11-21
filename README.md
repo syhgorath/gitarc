@@ -4,7 +4,7 @@
 [![Sürüm](https://img.shields.io/github/v/release/syhgorath/gitarc)](https://github.com/syhgorath/gitarc/releases/latest)
 [![Yıldız](https://img.shields.io/github/stars/syhgorath/gitarc?style=flat)](https://github.com/syhgorath/gitarc/stargazers)
 [![Lisans: MIT](https://img.shields.io/badge/lisans-MIT-blue.svg)](LICENSE)
-[![Canlı demo](https://img.shields.io/badge/canl%C4%B1%20demo-tek%20t%C4%B1kla-3fb950)](https://syhgorath.github.io/gitarc/)
+[![Canlı demo](https://img.shields.io/badge/canl%C4%B1%20demo-a%C3%A7-3fb950)](https://syhgorath.github.io/gitarc/)
 
 **GitArc**, düz `git log` ağaçları yerine Git ve GitHub yaşam döngüsünü **parabolik ray topolojisiyle** gösteren, sıfır bağımlılıklı bir yerel kokpittir. Yerel dallarınızı (`HEAD`, uncommitted dosyalar, `origin` farkları) ile GitHub Remote, Pull Request, Review ve GitHub Actions CI durumlarını tek bir SVG tuvalinde birleştirir. [KeyLab (`sshpocket`)](https://github.com/syhgorath/keylab) tasarım ve güvenlik DNA'sını paylaşan bağımsız bir kardeş projedir.
 
