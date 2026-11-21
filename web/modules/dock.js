@@ -115,12 +115,45 @@ export function renderDockStreams() {
 // onlar zaten "Synced" rozetinde/SyncSteps'te görünür.
 export const NON_ACTION_ERRORS = new Set(['Snapshot', 'Sürüm Kontrolü']);
 
+// Bir hata ÇÖZÜLMÜŞSE (sonradan aynı PR/dal için başarılı bir işlem olduysa) kart çıkmaz: günlük kalıcıdır, kart ise "şu an yapılacak bir
+// şey" olmalı. Eskiden çözülmüş eski hatalar (ör. önce reddedilen sonra birleşen PR) sayfa her açıldığında geri geliyordu.
+// Günlük EN YENİ ÖNCE sıralıdır: indeksi küçük olan kayıt daha yenidir.
+const prNumbersOf = (text) => [...String(text || '').matchAll(/#(\d+)\b/g)].map((m) => m[1]);
+export function isResolvedError(logs, idx) {
+  const e = logs[idx];
+  const prs = new Set(prNumbersOf(e.message));
+  for (let j = 0; j < idx; j += 1) {
+    const l = logs[j];
+    if (!l || l.level !== 'ok') continue;
+    if (e.branch && l.branch && l.branch === e.branch) return true;
+    if (prNumbersOf(l.message).some((n) => prs.has(n))) return true;
+  }
+  return false;
+}
+
+// Kapatılan kartlar proje başına tarayıcıda kalıcıdır: sayfa yenilenince/uygulama yeniden açılınca kapatılmış hata geri gelmesin.
+export const radarDismissedKey = (repoId) => `gitarc.radarDismissed.${repoId || 'none'}`;
+export function loadRadarDismissed(storage, repoId) {
+  try {
+    const v = JSON.parse(storage?.getItem(radarDismissedKey(repoId)) || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch { return {}; }
+}
+export function saveRadarDismissed(storage, repoId, map) {
+  try {
+    const entries = Object.entries(map || {}).slice(-100); // sınırsız büyümesin
+    storage?.setItem(radarDismissedKey(repoId), JSON.stringify(Object.fromEntries(entries)));
+  } catch { /* depolama kapalı: yalnızca bu oturumda kapalı kalır */ }
+}
+
 /** Aynı (eylem, dal, mesaj) hatası tekrar ederse TEK kart + sayaç. dismissed[anahtar] === son günlük kimliği ise kapatılmıştır;
  *  hata YENİDEN olursa (yeni günlük kimliği) kart yeniden çıkar. Günlük en yeni önce gelir. */
 export function actionFailureCards(logs, dismissed = {}, limit = 8) {
   const groups = new Map();
-  (logs || []).forEach((l) => {
+  const all = logs || [];
+  all.forEach((l, idx) => {
     if (!l || l.level !== 'error' || NON_ACTION_ERRORS.has(l.action)) return;
+    if (isResolvedError(all, idx)) return;
     const key = [l.action || '', l.branch || '', l.message || ''].join('\u0001');
     const g = groups.get(key);
     if (g) { g.count += 1; return; }
@@ -163,6 +196,7 @@ function buildFailureCard(c, callbacks) {
   card.querySelector('[data-act="dismiss"]')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
     state.radarDismissed[c.key] = c.latestId;
+    saveRadarDismissed(globalThis.localStorage, state.snapshot?.repo?.id, state.radarDismissed);
     renderRadar(callbacks);
   });
   card.addEventListener('click', () => {
@@ -175,6 +209,11 @@ function buildFailureCard(c, callbacks) {
 export function renderRadar(callbacks = {}) {
   const { onSelectBranch, onOpenConflictStudio, onPruneGone } = callbacks;
   const diags = state.snapshot?.diagnostics || [];
+  const repoId = state.snapshot?.repo?.id;
+  if (repoId && state.radarDismissedFor !== repoId) { // proje değişti/ilk çizim: bu projenin kalıcı kapatmalarını yükle
+    state.radarDismissed = loadRadarDismissed(globalThis.localStorage, repoId);
+    state.radarDismissedFor = repoId;
+  }
   const failures = actionFailureCards(state.snapshot?.logs, state.radarDismissed);
   if (el.dockRadarCount) el.dockRadarCount.textContent = diags.length + failures.length;
   if (!el.radarList) return;

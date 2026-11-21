@@ -87,3 +87,28 @@ func TestVanishedBranchIsInfoNotErrorAndExplainsWhy(t *testing.T) {
 		}
 	}
 }
+
+// Eski sürümlerde "error" olarak saklanmış beklenen durumlar (CI bitmedi, dal artık yok) yüklenirken info olur; gerçek hatalar error kalır.
+func TestOldExpectedPreconditionErrorsAreDowngradedOnLoad(t *testing.T) {
+	err := persistSavedLogs([]model.ActionLogEntry{
+		{ID: "log-1", Level: "error", RepoID: "p", Message: "PR #134 şu an birleştirilemiyor: main dalının koruma kuralı engelliyor (zorunlu CI ... onay eksik olabilir)"},
+		{ID: "log-2", Level: "error", RepoID: "p", Message: "X Pull request o/r#5 is not mergeable: the base branch policy prohibits the merge."},
+		{ID: "log-3", Level: "error", RepoID: "p", Message: "canlı depoda dal bulunamadı: local-feat-x"},
+		{ID: "log-4", Level: "error", RepoID: "p", Message: "PR #9 merge edilemedi: gerçek bir hata"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lv := map[string]string{}
+	for _, l := range loadSavedLogs() {
+		lv[l.ID] = l.Level
+	}
+	for _, id := range []string{"log-1", "log-2", "log-3"} {
+		if lv[id] != "info" {
+			t.Fatalf("%s beklenen durum: info olmalı, %q", id, lv[id])
+		}
+	}
+	if lv["log-4"] != "error" {
+		t.Fatalf("gerçek hata error kalmalı: %q", lv["log-4"])
+	}
+}
