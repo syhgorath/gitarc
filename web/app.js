@@ -4,7 +4,7 @@ import { state, el, initElements, resetProjectScopedState } from './modules/stat
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
-import { protectionView, needsUpdateBeforeMerge, queueRunBadge, ciPendingForMerge, projectSwitchWarning } from './modules/syncsteps.js';
+import { protectionView, projectSwitchWarning } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
@@ -23,7 +23,8 @@ import { startCockpitTour, closeTour, nextTourStep, prevTourStep } from './modul
 import { openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText } from './modules/mcp-modal.js';
 import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modules/diff-viewer.js';
 import { refreshProtectionPlan, applyShownProtection } from './modules/protection.js';
-import { openQueueModal, closeQueueModal, startSingleMergeRun, stopMergeRun } from './modules/queue.js';
+import { openQueueModal, closeQueueModal } from './modules/queue.js';
+import { mergeBranch } from './modules/merge.js';
 
 // Central Branch Selection
 export function selectBranch(branchId) {
@@ -90,78 +91,10 @@ async function handleCheckoutBranch(branchId, btnEl = null) {
   });
 }
 
-async function handleMergeBranch(branchId, btnEl = null) {
-  const b = (state.snapshot?.branches || []).find((x) => x.id === branchId);
-  // Geride kalan PR korumalı depoda doğrudan birleşemez: tek onaylı 1 PR'lık koşu (güncelle → CI bekle → birleştir) planını aç.
-  if (needsUpdateBeforeMerge(b, state.snapshot)) {
-    openQueueModal(applySnapshot, { only: branchId, autoPlan: true });
-    return;
-  }
-  const isRunning = ciPendingForMerge(b, state.snapshot); // CI sürüyor ya da (zorunlu kontrol varken) henüz belirmedi
-
-  if (isRunning) {
-    // Çevrimiçi: sunucuda 1 PR'lık koşu (yenilemede kaybolmaz). Çevrimdışı yedek: bu sekmenin bekçisi (pendingAutoMerge).
-    if (!state.offlineMode) {
-      if (queueRunBadge(state.snapshot, b)) {
-        try {
-          await stopMergeRun();
-          applySnapshot(await apiCall('/api/snapshot'));
-          showToast('Otomatik merge koşusu durduruldu', 'info');
-        } catch (err) { showToast(err.message, 'danger'); }
-        return;
-      }
-      try {
-        const res = await startSingleMergeRun(branchId);
-        if (res.started) {
-          showToast(`⏳ CI devam ediyor: Bitince '${b?.name}' otomatik birleştirilecek (sunucu koşusu)`, 'warn');
-          applySnapshot(await apiCall('/api/snapshot'));
-        } else {
-          showToast(`Otomatik merge başlatılamadı: ${res.reason}`, 'danger');
-        }
-      } catch (err) { showToast(err.message, 'danger'); }
-      return;
-    }
-    if (state.pendingAutoMerge[branchId]) {
-      delete state.pendingAutoMerge[branchId];
-      renderSVG(getActionCallbacks());
-      renderInspector(getActionCallbacks());
-      showToast('Otomatik merge kuyruğu iptal edildi', 'info');
-      return;
-    }
-    state.pendingAutoMerge[branchId] = {
-      branchId,
-      branchName: b?.name,
-      strategy: state.mergeStrategy,
-      queuedAt: new Date().toLocaleTimeString(),
-    };
-    renderSVG(getActionCallbacks());
-    renderInspector(getActionCallbacks());
-    showToast(`⏳ CI devam ediyor: Bitince '${b?.name}' otomatik birleştirilecek!`, 'warn');
-    return;
-  }
-
-  await runWithBtnBusy(btnEl, '⚡ Birleştiriliyor...', async () => {
-    try {
-      const snap = state.offlineMode
-        ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.mergeBranch(branchId) : state.snapshot)
-        : await apiCall('/api/branch/merge', 'POST', { branchId, strategy: state.mergeStrategy });
-      applySnapshot(snap);
-      showToast(`✓ Dal birleştirildi (${state.mergeStrategy.toUpperCase()}) ve parabol kapatıldı!`, 'ok');
-    } catch (err) {
-      showToast(err.message, 'danger');
-      // Sunucu "dal main'in gerisinde" diyorsa (kural arayüzce bilinmiyordu: ruleset/okunamadı) çıkmaz sokakta bırakma: aynı planı aç.
-      if (/gerisinde kaldı/.test(err.message || '')) openQueueModal(applySnapshot, { only: branchId, autoPlan: true });
-      // Koruma kuralı (bitmemiş zorunlu CI) engelledi: çıkmaz sokak yerine güvenli ön adım — CI bitince birleştiren 1 PR'lık koşu.
-      else if (!state.offlineMode && /koruma kuralı engelliyor/.test(err.message || '')) {
-        try {
-          const res = await startSingleMergeRun(branchId);
-          if (res.started) {
-            showToast(`⏳ '${b?.name}' için kontroller bitince otomatik birleştirilecek (sunucu koşusu)`, 'warn');
-            applySnapshot(await apiCall('/api/snapshot'));
-          }
-        } catch { /* koşu başlatılamadı: yukarıdaki açıklayıcı hata zaten gösterildi */ }
-      }
-    }
+function handleMergeBranch(branchId, btnEl = null) {
+  return mergeBranch(branchId, btnEl, {
+    applySnapshot,
+    rerender: () => { renderSVG(getActionCallbacks()); renderInspector(getActionCallbacks()); },
   });
 }
 
