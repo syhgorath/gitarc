@@ -318,3 +318,20 @@ test('cap-queue-tag: tonlar opak --surface zemininin üstüne bindirilir (yarı 
     assert.match(rule, /background:\s*linear-gradient\(.*\),\s*var\(--surface\)\s*;/, `${tone}: opak zemin üstüne bindirme bekleniyor: ${rule}`);
   }
 });
+
+// Niyet satırı KARTIN İÇİNDE (eskiden kartın üst kenarına taşan köşe etiketiydi): başlık satırından SONRA gelir ve commit konusunun yerini alır.
+test('kuyruk niyeti kartın içinde: başlıktan sonra, commit konusu satırının yerine; yoksa konu satırı normal', () => {
+  const b = { id: 'c', name: 'feat/c', state: 'open', hasLocal: true, hasRemote: true, pr: { number: 3, ci: { state: 'SUCCESS' } }, lastCommitSubject: 'feat: konu metni' };
+  const base = { tone: 'emerald', isSelected: false, isQueued: false };
+  const withQ = openCardModel(b, { ...base, queueRun: { text: '⏳ CI bitince birleşecek', tone: 'current', title: 'ipucu' } }).html;
+  assert.ok(withQ.indexOf('cap-head') < withQ.indexOf('cap-queue-tag current'), 'niyet satırı başlık satırından sonra (kartın içinde) gelir');
+  assert.ok(withQ.includes('class="cap-sub cap-queue-tag current"'), 'konu satırının yerini alır');
+  const without = openCardModel(b, { ...base, queueRun: null }).html;
+  assert.ok(without.includes('class="cap-sub" title='), 'niyet yoksa commit konusu satırı olduğu gibi');
+});
+
+test('cap-queue-tag kartın akışında: konumlandırılmış (absolute) olmamalı, aksi halde kartın dışına taşar', () => {
+  const css = readFileSync(new URL('../../web/tasarim.css', import.meta.url), 'utf8');
+  const base = css.match(/\.cap-queue-tag\s*\{([^}]*)\}/)?.[1] || '';
+  assert.ok(base.length > 0 && !/position:\s*absolute/.test(base) && /display:\s*block/.test(base), `taban kural: ${base}`);
+});

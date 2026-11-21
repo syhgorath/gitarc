@@ -265,14 +265,17 @@ export function openCardModel(b, ctx) {
   const className = `cap-card ${ctx.tone} ${ctx.isSelected ? 'selected' : ''}`;
   const qr = ctx.queueRun;
   const html = `
-    ${qr ? `<span class="cap-queue-tag ${esc(qr.tone)}" title="${esc(qr.title)}">${esc(qr.text)}</span>` : ''}
     <div class="cap-head">
       <span class="cap-title" title="${esc(b.name)}">${f.isWorkingTreeWip ? '✏️ Çalışma Alanı' : esc(truncate(b.name, 18))}</span>
       ${authorBadgeHtml}
       <span class="cap-badge ${badge.tone} ${badge.pulse ? 'running-pulse' : ''}">${esc(badge.text)}</span>
     </div>
     ${whereHtmlOf(b)}
-    <div class="cap-sub" title="${esc(subText)}">${esc(truncate(subText, 32))}</div>
+    ${qr
+    // Kuyruk/otomatik-merge niyeti KARTIN İÇİNDE: commit konusunun satırı yerini alır (eskiden kartın üst kenarına taşan bir köşe etiketiydi ve
+    // yakındaki kartlar/kenarlık yüzünden "arkada kalıyormuş" gibi görünüyordu). Konu, ipucunda durur.
+    ? `<div class="cap-sub cap-queue-tag ${esc(qr.tone)}" title="${esc(qr.title)} — ${esc(subText)}">${esc(qr.text)}</div>`
+    : `<div class="cap-sub" title="${esc(subText)}">${esc(truncate(subText, 32))}</div>`}
     ${alertsHtml ? `<div class="cap-alerts">${alertsHtml}</div>` : ''}
     <div class="cap-actions">${actionRowHtml}</div>
   `;
