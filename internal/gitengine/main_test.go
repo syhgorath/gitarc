@@ -14,6 +14,7 @@ func TestMain(m *testing.M) {
 	}
 	os.Setenv("HOME", home)
 	os.Setenv("USERPROFILE", home)
+	selfRepoURL = "" // testler gerçek GitHub'a hiç gitmesin (sürüm kontrolü testleri kendi yerel deposunu verir)
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)

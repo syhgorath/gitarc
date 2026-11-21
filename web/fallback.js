@@ -1059,6 +1059,7 @@
           updateAvailable: false,
           updateCommand: 'git pull --ff-only origin main && go build -o gitarc .',
           teamMode: Boolean(sim.repo.teamMode),
+          checkError: 'çevrimdışı demo: sürüm denetlenemez', // demo "güncel" demez
         };
       },
       syncSpine() {

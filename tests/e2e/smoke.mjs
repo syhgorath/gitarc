@@ -182,6 +182,15 @@ try {
     await b.eval(refresh);
     await expect(`!!document.querySelector('#radar-list .radar-card.action-failure')`, 'aynı hata yeniden olunca kart geri gelmedi');
   });
+  await step('Sürüm rozeti güncelleme kartını açar; "Yeni sürüm var mı?" denetler; ulaşılamayınca "güncel" DEMEZ', async () => {
+    await click('#btn-update-check');
+    await expect(visible('#security-update-modal'), 'sürüm rozeti pencereyi açmadı');
+    await expect(`document.getElementById('sec-update-status').textContent.includes('Henüz denetlenmedi')`, 'denetim yapılmadan "güncel" yazıyor');
+    await click('#btn-run-update-check');
+    await expect(`document.getElementById('sec-update-status').textContent.includes('Denetlenemedi')`, 'ulaşılamayan sürüm kaynağı "denetlenemedi" demedi');
+    await click('#sec-close');
+    await expect(hidden('#security-update-modal'), 'pencere kapanmadı');
+  });
   await step('Koruma penceresi: plan görünür, "Temel" uygulanınca depo korumalı olur, pencere kapanır', async () => {
     await click('#btn-protect-branch');
     await expect(visible('#security-update-modal'), 'Koruma penceresi açılmadı');

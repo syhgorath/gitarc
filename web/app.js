@@ -12,7 +12,7 @@ import { renderRayPopovers } from './modules/rails.js';
 import { pollDecision } from './modules/polling.js';
 import { detectPushes, playPushTraces } from './modules/trace.js';
 import { renderKPIs } from './modules/kpi.js';
-import { renderTopbar } from './modules/topbar.js';
+import { renderTopbar, updateStatusText } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
 import { openConflictStudio, closeConflictStudio, applyConflictStudio } from './modules/conflict-studio.js';
 import {
@@ -320,7 +320,7 @@ function renderSecurityUpdateModal() {
     el.secTeamChip.hidden = !snap.repo.teamMode;
   }
   if (el.secUpdateStatus) {
-    el.secUpdateStatus.textContent = snap.repo.updateAvailable ? 'Yeni Sürüm Mevcut' : 'Güncel';
+    el.secUpdateStatus.textContent = updateStatusText(snap.repo);
   }
   if (el.secUpdateCmd) {
     el.secUpdateCmd.textContent = 'git pull --ff-only origin main && go build -o gitarc .';
@@ -456,10 +456,34 @@ async function bootstrap() {
     const url = el.btnMainCI.dataset.url;
     if (url && url.startsWith('https://')) window.open(url, '_blank', 'noopener');
   });
-  el.btnProtectBranch?.addEventListener('click', () => {
+  const openSecurityModal = () => {
     if (el.securityUpdateModal) el.securityUpdateModal.hidden = false;
     renderSecurityUpdateModal();
     refreshProtectionPlan();
+  };
+  el.btnProtectBranch?.addEventListener('click', openSecurityModal);
+  el.btnUpdateCheck?.addEventListener('click', openSecurityModal); // sürüm rozeti: sürüm/güncelleme kartını açar (eskiden hiçbir şey yapmıyordu)
+  // "Yeni sürüm var mı?": GitArc'ın KENDİ etiketlerine bakar (kullanıcı isteyince; ağ gerekir). Okunamazsa "güncel" denmez.
+  el.btnRunUpdateCheck?.addEventListener('click', () => runWithBtnBusy(el.btnRunUpdateCheck, '🔄 Denetleniyor...', async () => {
+    try {
+      const res = state.offlineMode
+        ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.checkUpdates() : null)
+        : await apiCall('/api/system/update-check', 'POST', {});
+      if (!res) return;
+      if (state.snapshot) {
+        // Rozet/durum satırı yeni bilgiyle çizilsin; denetlenemediyse "güncelleme var" bayrağına dokunma.
+        const repo = { ...state.snapshot.repo, latestVersion: res.latestVersion, updateAvailable: Boolean(res.updateAvailable) };
+        applySnapshot({ ...state.snapshot, repo });
+      }
+      if (el.secUpdateStatus) el.secUpdateStatus.textContent = updateStatusText(state.snapshot?.repo, res);
+      showToast(res.checkError ? 'Sürüm denetlenemedi' : (res.updateAvailable ? `⬆ Yeni sürüm: v${res.latestVersion}` : '✓ GitArc güncel'), res.checkError ? 'danger' : 'ok');
+    } catch (err) {
+      showToast(`Sürüm denetlenemedi: ${err.message}`, 'danger');
+    }
+  }));
+  el.secCopyUpdateCmd?.addEventListener('click', async () => {
+    const cmd = el.secUpdateCmd?.textContent || '';
+    try { await navigator.clipboard.writeText(cmd); showToast('Güncelleme komutu kopyalandı', 'ok'); } catch { showToast('Kopyalanamadı: komutu elle seçin', 'danger'); }
   });
   ['sec-close', 'sec-close-btn'].forEach((id) => {
     document.getElementById(id)?.addEventListener('click', () => {

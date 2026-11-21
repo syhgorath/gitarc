@@ -142,6 +142,10 @@ Başlangıçta GitArc, bulunduğunuz klasörün ait olduğu Git deposunu açar; 
 
 Demo verisi yalnızca bilerek istenince açılır: `./gitarc -repo sim`. Demo depolar **GitArc Sandbox** (temel) ve **MegaCorp Platform** (50 geliştirici, 4 ana hat, kurumsal senaryo); açıkken tuvalde belirgin bir **DEMO · sahte veri** şeridi durur ve üst çubuktaki depo seçiciden geçiş yapılabilir.
 
+### Tarayıcıda demo (GitHub Pages)
+
+`web/` klasörü sunucusuz da çalışır: statik olarak yayınlandığında arayüz tarayıcı içi çevrimdışı motora düşer ve **demo verisiyle** açılır (gerçek bir depoya dokunmaz). `.github/workflows/pages.yml` bunu GitHub Pages'e yayınlar; yalnızca elle tetiklenir. Kurulum: Settings → Pages → Source: **GitHub Actions**, sonra `gh workflow run pages.yml`.
+
 ## MCP entegrasyonu (AI ajanları)
 
 Arayüzdeki `🔌 MCP` düğmesi yapılandırmayı (çalışan GitArc ikilisinin yoluyla) üretir; uzağa yazan araçları onay kutusuyla açıp `env` olarak ekleyebilirsiniz:

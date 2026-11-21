@@ -1,0 +1,43 @@
+# GitHub Pages demosu: `web/` klasörünü olduğu gibi yayınlar. Sunucu yokken arayüz tarayıcı içi çevrimdışı motora (LocalFallbackEngine) düşer
+# ve DEMO verisiyle çalışır; gerçek bir depoya dokunmaz.
+#
+# YALNIZCA ELLE TETİKLENİR (workflow_dispatch). Neden: depo ayarlarında Pages açık değilken `configure-pages` adımı başarısız olur ve `main`'deki
+# her push kırmızı bir koşu üretirdi (GitArc'ın `main CI` rozeti aynı commit'in TÜM koşularına bakar). Kurulum:
+#   1) Repo → Settings → Pages → Build and deployment → Source: "GitHub Actions"
+#   2) `gh workflow run pages.yml` (ya da Actions sekmesinden "Run workflow")
+#   3) Sonra, istenirse yukarıdaki `on:` bölümüne `push: { branches: [main], paths: ['web/**'] }` ekleyerek her web değişikliğinde otomatik yayınlayın.
+name: Pages demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload web/ as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
