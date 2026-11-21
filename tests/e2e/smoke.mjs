@@ -141,6 +141,8 @@ try {
     await b.eval(`${card}.querySelector('[data-act="merge"]').click()`);
     await expect(`!!document.querySelector('.cap-queue-tag.current') && /İşleniyor|Kuyrukta/.test(document.querySelector('.cap-queue-tag.current').textContent)`, 'tekil otomatik merge (sunucu koşusu) kartında köşe etiketi yok', 15000);
     await expect(`!!document.querySelector('.svg-queue-target .svg-queue-target-path') && !!document.querySelector('.svg-queue-landing')`, 'tekil otomatik merge için "birleşecek" oku/hayalet düğüm yok');
+    // Niyet satırı KARTIN İÇİNDE olmalı (dikdörtgeni kartın dikdörtgeninin içinde): kartın üst kenarına taşan etiket "arkada kalıyor" gibi görünüyordu.
+    await expect(`(()=>{ const t=document.querySelector('.cap-queue-tag'); const c=t?.closest('.cap-card'); if(!t||!c) return false; const a=t.getBoundingClientRect(), b=c.getBoundingClientRect(); return a.left>=b.left-1 && a.right<=b.right+1 && a.top>=b.top-1 && a.bottom<=b.bottom+1; })()`, 'kuyruk niyet satırı kartın dışına taşıyor');
     // Köşe etiketinin zemini OPAK olmalı (yarı saydamsa kartın üst kenarı içinden görünür ve etiket "kartın arkasında" kalır).
     await expect(`(()=>{ const t=document.querySelector('.cap-queue-tag'); if(!t) return false; const c=getComputedStyle(t).backgroundColor; const m=c.match(/rgba?\\(([^)]+)\\)/); if(!m) return false; const p=m[1].split(',').map((x)=>x.trim()); return p.length===3 || Number(p[3])===1; })()`, 'köşe etiketinin arka planı yarı saydam: kartın kenarı içinden görünür');
     // Kesik hedef çizgisi KARTIN ARKASINDA başlamamalı: ilk noktası etiketli kartın dikdörtgeninin dışında olmalı.
