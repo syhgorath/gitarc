@@ -98,3 +98,40 @@ test('action failures: limit and missing input', () => {
   assert.deepEqual(actionFailureCards(undefined), []);
   assert.deepEqual(actionFailureCards([null, { level: 'error', action: 'X', message: 'm' }]).map((c) => c.action), ['X']);
 });
+
+// ---- çözülmüş eski hatalar ve kalıcı kapatma ----
+import { isResolvedError, loadRadarDismissed, saveRadarDismissed, radarDismissedKey } from '../../web/modules/dock.js';
+
+const okLog = (id, action, message, extra = {}) => ({ id: `log-${id}`, level: 'ok', action, message, timestamp: '21:00:0' + id, ...extra });
+
+test('çözülmüş hata kart olmaz: sonradan aynı PR numarası ya da aynı dal için başarılı işlem olduysa', () => {
+  // en yeni önce: PR #134 sonradan BİRLEŞTİ (kuyruk adımı), daha önceki reddi artık yapılacak bir şey değil
+  const logs = [
+    okLog(3, 'Kuyruk Adımı', 'PR #134 birleştirildi (merge commit)'),
+    errLog(2, 'Merge (merge)', 'PR #134 şu an birleştirilemiyor: ...', { branch: 'local-feat-a' }),
+    errLog(1, 'Merge (merge)', 'PR #99 merge edilemedi: çakışma', { branch: 'local-feat-b' }),
+  ];
+  assert.equal(isResolvedError(logs, 1), true, 'aynı PR numarasıyla sonradan ok');
+  assert.equal(isResolvedError(logs, 2), false, 'başka PR: hâlâ açık sorun');
+  assert.deepEqual(actionFailureCards(logs).map((c) => c.branch), ['local-feat-b']);
+  // aynı dal için sonradan ok
+  const byBranch = [okLog(2, 'Push & PR Aç', 'pushlandı', { branch: 'feat/x' }), errLog(1, 'Push & PR Aç', 'reddedildi', { branch: 'feat/x' })];
+  assert.equal(actionFailureCards(byBranch).length, 0);
+  // başarılı kayıt hatadan ÖNCE ise (daha eski) hata çözülmüş sayılmaz
+  const okBefore = [errLog(2, 'Merge (merge)', 'PR #7 reddedildi'), okLog(1, 'Kuyruk Adımı', 'PR #7 birleştirildi')];
+  assert.equal(actionFailureCards(okBefore).length, 1);
+});
+
+test('kapatılan kartlar proje başına kalıcı: yeniden yükleyince geri gelmez; bozuk/boş depolama güvenli', () => {
+  const store = new Map();
+  const storage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, v) };
+  assert.deepEqual(loadRadarDismissed(storage, 'proj-a'), {});
+  saveRadarDismissed(storage, 'proj-a', { k1: 'log-9' });
+  assert.deepEqual(loadRadarDismissed(storage, 'proj-a'), { k1: 'log-9' });
+  assert.deepEqual(loadRadarDismissed(storage, 'proj-b'), {}, 'proje başına ayrı');
+  assert.ok(store.has(radarDismissedKey('proj-a')));
+  store.set(radarDismissedKey('proj-c'), '{bozuk json');
+  assert.deepEqual(loadRadarDismissed(storage, 'proj-c'), {});
+  assert.deepEqual(loadRadarDismissed(null, 'x'), {});
+  assert.doesNotThrow(() => saveRadarDismissed(null, 'x', { a: 'b' }));
+});

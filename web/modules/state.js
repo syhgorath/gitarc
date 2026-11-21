@@ -27,6 +27,7 @@ export const state = {
   draftPrEdits: {},
   studio: null,
   clientLogs: [],
+  radarDismissedFor: null,
   radarDismissed: {}, // Hata Radarı'nda kapatılan işlem hatası kartları: grup anahtarı → kapatıldığı andaki son günlük kimliği
 };
 
@@ -37,6 +38,7 @@ export function resetProjectScopedState(st = state) {
   st.selectedNodeSha = null;
   st.pendingAutoMerge = {};
   st.radarDismissed = {};
+  st.radarDismissedFor = null; // sonraki çizimde yeni projenin kalıcı kapatmaları yüklenir
   st.autoMergingInFlight = {};
   st.draftPrEdits = {};
   st.proposalDraftEdits = {};

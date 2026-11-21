@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gitarc/internal/model"
@@ -80,6 +81,12 @@ func loadSavedLogs() []model.ActionLogEntry {
 		if legacySyntheticRepoIDs[logs[i].RepoID] {
 			logs[i].RepoID = ""
 		}
+		// Eski sürümler "koruma kuralı engelliyor" (CI bitmedi) ve "dal artık yok" (çift tıklama) durumlarını `error` olarak kaydetti; bunlar
+		// hiçbir şeyi değiştirmeyen, çıkış yolu olan beklenen durumlardır (yeni sürümde `info`). Eski kayıtlar Hata Radarı'nda sayfa her açıldığında
+		// kart olarak geri geliyordu: yüklerken aynı seviyeye çevrilir.
+		if logs[i].Level == "error" && isExpectedPreconditionMessage(logs[i].Message) {
+			logs[i].Level = "info"
+		}
 	}
 	return trimLogs(logs)
 }
@@ -98,4 +105,12 @@ func persistSavedLogs(logs []model.ActionLogEntry) error {
 		return err
 	}
 	return os.WriteFile(filePath, data, 0644)
+}
+
+// isExpectedPreconditionMessage: hata olarak kaydedilmiş ama aslında beklenen/zararsız ön koşul durumları (bkz. errMergePolicyBlocked, errBranchGone).
+func isExpectedPreconditionMessage(msg string) bool {
+	return strings.Contains(msg, "koruma kuralı engelliyor") ||
+		strings.Contains(msg, "base branch policy prohibits the merge") ||
+		strings.Contains(msg, "canlı depoda dal bulunamadı") ||
+		strings.Contains(msg, "dal artık depoda yok")
 }
