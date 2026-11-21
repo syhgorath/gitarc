@@ -5,7 +5,7 @@
 // dinleyicilerini bağlar. HTML şablonlarının boşlukları bilerek korunmuştur (satır içi öğeler arasındaki
 // boşluk düzeni etkiler).
 import { state } from './state.js';
-import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H } from './constants.js';
+import { XHTML_NS, FO_W, FO_H, MERGED_FO_W, MERGED_FO_H, CARD_APEX_OVERHANG } from './constants.js';
 import { esc, truncate, svgEl, isWorkingTreeBranch, diffArgsFor, prHeadline } from './utils.js';
 import { mergeIntentBadge, needsUpdateBeforeMerge, queueRunBadge, ciPendingForMerge } from './syncsteps.js';
 
@@ -17,7 +17,7 @@ export function capsulePositionForApex(b, apexX, apexY) {
     };
   }
   const x = apexX - FO_W / 2;
-  const y = b.hemisphere === 'lower' ? apexY + 14 : apexY - FO_H + 12;
+  const y = b.hemisphere === 'lower' ? apexY + 14 : apexY - FO_H + CARD_APEX_OVERHANG;
   return { x, y };
 }
 
