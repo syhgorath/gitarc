@@ -34,7 +34,7 @@ Bu belge, GitArc projesinin kod tabanı sağlığını, modül sınırlarını, 
 | **Web Frontend** | `web/modules/api.js` | 25 | REST API istemcisi ve hata yönetimi | ✅ Modüler ayrıldı |
 | **Web Frontend** | `web/modules/constants.js` | 16 | Layout ve geometri sabitleri | ✅ Modüler ayrıldı |
 | **Web Frontend** | `web/fallback.js` | 672 | Tarayıcı çevrimdışı (offline) simülasyon motoru | ✅ İyi durumda (Tri-Mode parity korunuyor) |
-| **Web Frontend** | `web/tasarim.css` | 2.931 | Tasarım sistemi, tema, PocketUI, animasyonlar | ✅ Düzenli, Strict CSP uyumlu |
+| **Web Frontend** | `web/tasarim.css` | 4313 | Tasarım sistemi, tema, PocketUI, animasyonlar | ✅ Tek dosya, başında bölüm dizini; yalnızca 3 mükerrer kural vardı (temizlendi); Strict CSP uyumlu. Birden çok dosyaya bölmek bilinçli YAPILMADI: kaskad sırası riski, ek istekler ve `queue-step.test.mjs` dosyayı doğrudan okur |
 | **Go Engine** | `internal/gitengine/simulation.go` | 1.423 | In-memory simülasyon repo yöneticisi | ✅ `simulation_enterprise_mock.go` (523 satır) ayrıldı |
 | **Go Engine** | `internal/gitengine/simulation_enterprise_mock.go` | 523 | MegaCorp 50 geliştirici demo simülasyon veri yükü | ✅ Temiz ayrıldı |
 | **Go Engine** | `internal/gitengine/collector.go` | 1.200 | Yerel Git komutları (`git log`, `merge-tree`, `for-each-ref`) | ✅ `collector_github.go` ayrıldı |
