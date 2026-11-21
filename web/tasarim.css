@@ -254,15 +254,13 @@ body {
   flex-shrink: 0;
 }
 
+/* Logo: favicon.svg (kendi koyu yuvarlak zemini var; ayrıca kutu/kenarlık gerekmez) */
 .brand-mark {
   width: 28px;
   height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text);
+  display: block;
+  flex-shrink: 0;
+  border-radius: 6px;
 }
 
 .brand-copy {

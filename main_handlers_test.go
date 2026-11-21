@@ -91,9 +91,37 @@ func TestPostOnlyEndpointsRejectGET(t *testing.T) {
 	}
 }
 
+// Sekme simgesi: index.html onu bağlar, ikili içinde SVG olarak servis edilir ve içinde çalıştırılabilir içerik yoktur (script/olay işleyicisi/dış kaynak).
+func TestFaviconIsLinkedServedAsSVGAndIsInert(t *testing.T) {
+	c := newAPIClient(t, gitengine.NewManager(""))
+	get := func(p string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "http://"+c.host+p, nil)
+		req.Host = c.host
+		rec := httptest.NewRecorder()
+		c.h.ServeHTTP(rec, req)
+		return rec
+	}
+	if !strings.Contains(get("/").Body.String(), `rel="icon" type="image/svg+xml" href="favicon.svg"`) {
+		t.Fatal("index.html sekme simgesini (favicon.svg) bağlamalı")
+	}
+	if !strings.Contains(get("/").Body.String(), `class="brand-mark" src="favicon.svg"`) {
+		t.Fatal("üst çubuk logosu da favicon.svg olmalı (tek kaynak)")
+	}
+	rec := get("/favicon.svg")
+	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "image/svg+xml") {
+		t.Fatalf("favicon.svg: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	body := strings.ToLower(rec.Body.String())
+	for _, bad := range []string{"<script", "onload", "onclick", "href=\"http", "xlink:href", "<image", "<foreignobject"} {
+		if strings.Contains(body, bad) {
+			t.Fatalf("favicon.svg etkisiz (inert) olmalı, %q içeriyor", bad)
+		}
+	}
+}
+
 func TestStaticAssetsAreNeverCachedAndHaveNoHardcodedVersionQuery(t *testing.T) {
 	c := newAPIClient(t, gitengine.NewManager(""))
-	for _, p := range []string{"/", "/app.js", "/tasarim.css", "/modules/scene.js"} {
+	for _, p := range []string{"/", "/app.js", "/tasarim.css", "/modules/scene.js", "/favicon.svg"} {
 		req := httptest.NewRequest(http.MethodGet, "http://"+c.host+p, nil)
 		req.Host = c.host
 		rec := httptest.NewRecorder()
