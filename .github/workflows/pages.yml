@@ -24,10 +24,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # İKİ İŞ (GitHub'ın önerdiği düzen): yükleme bitip artefakt kesinleşmeden dağıtım başlamaz. Tek işte upload→deploy art arda koşunca nadiren
+  # "Found 0 artifact(s)" ile düşüyordu (artefakt henüz görünür değil); aynı koşuyu yeniden çalıştırmak da "Multiple artifacts" ile düşer.
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -41,6 +40,13 @@ jobs:
         with:
           path: web
 
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
