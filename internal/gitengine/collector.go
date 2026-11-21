@@ -327,13 +327,19 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	}, nil
 }
 
-// detectDefaultBranch omurga (varsayılan) dalını bulur. Öncelik: (1) uzak deponun bildirdiği varsayılan dal
-// (`refs/remotes/origin/HEAD`; git-flow'da `main` ile `develop` birlikte varken gerçek olan budur), (2) yerelde
+// detectDefaultBranch omurga (varsayılan) dalını bulur. Öncelik: (0) elle seçim, (0b) uzağın bildirdiği varsayılan (ls-remote,
+// taze), (1) yerel kayıtlı uzak varsayılan dal (`refs/remotes/origin/HEAD`; ESKİ olabilir; git-flow'da `main` ile `develop` birlikte varken gerçek olan budur), (2) yerelde
 // bulunan main/master/develop, (3) geçerli dal. Eskiden yalnızca (2) vardı: `develop` varsayılanlı ama yerelde
 // `main` da bulunan bir depoda yanlış dal omurga seçiliyordu.
 func detectDefaultBranch(ctx context.Context, repoPath string) string {
 	if pinned := pinnedBaseBranch(ctx, repoPath); pinned != "" {
 		return pinned
+	}
+	// Uzağın GERÇEK varsayılanı (arka planda `git ls-remote --symref` ile okunur): yerel origin/HEAD eski kalabilir.
+	if rd := remoteDefaultBranch(repoPath); rd != "" {
+		if _, _, err := runCmd(ctx, repoPath, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+rd); err == nil {
+			return rd
+		}
 	}
 	if out, _, err := runCmd(ctx, repoPath, "git", "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"); err == nil {
 		if name := strings.TrimPrefix(strings.TrimSpace(out), "origin/"); name != "" && name != "HEAD" {

@@ -216,7 +216,7 @@ func (m *Manager) commitWorkingTreeLive(live *repoEntry, branchName, commitMsg, 
 			if body == "" {
 				body = "GitArc kokpitinden oluşturuldu."
 			}
-			if out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", curBranch, "--title", title, "--body", body); prErr != nil {
+			if out, _, prErr := runCmd(ctx, live.path, "gh", append([]string{"pr", "create", "--head", curBranch, "--title", title, "--body", body}, prBaseArgs(ctx, live.path, defBranch)...)...); prErr != nil {
 				if !strings.Contains(strings.ToLower(out), "already exists") {
 					return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
 				}
@@ -271,7 +271,7 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody s
 			if body == "" {
 				body = "GitArc canlı kokpitinden açıldı."
 			}
-			out, _, prErr := runCmd(ctx, live.path, "gh", "pr", "create", "--head", b.Name, "--title", title, "--body", body)
+			out, _, prErr := runCmd(ctx, live.path, "gh", append([]string{"pr", "create", "--head", b.Name, "--title", title, "--body", body}, prBaseArgs(ctx, live.path, detectDefaultBranch(ctx, live.path))...)...)
 			if prErr != nil {
 				if !strings.Contains(strings.ToLower(out), "already exists") {
 					return model.CockpitSnapshot{}, fmt.Errorf("dal pushlandı ancak PR açılamadı: %s", strings.TrimSpace(out))
@@ -661,4 +661,17 @@ func isPolicyBlockedMergeError(out string) bool {
 func isBehindMergeError(out string) bool {
 	o := strings.ToLower(out)
 	return strings.Contains(o, "not up to date with the base branch") || strings.Contains(o, "head branch is not up to date")
+}
+
+// prBaseArgs: `gh pr create`'e GitArc'ın omurgasını açıkça taban olarak verir. Vermezse gh GitHub'ın varsayılanını kullanır; GitArc'ın
+// "kaç commit önde" hesabı başka bir omurgaya göre yapılmışsa ikisi ayrışır ("No commits between ..." hatası). Omurga uzakta yoksa
+// (yalnızca yerel seçim) eski davranış: taban verilmez.
+func prBaseArgs(ctx context.Context, repoPath, base string) []string {
+	if base == "" {
+		return nil
+	}
+	if _, _, err := runCmd(ctx, repoPath, "git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/"+base); err != nil {
+		return nil
+	}
+	return []string{"--base", base}
 }

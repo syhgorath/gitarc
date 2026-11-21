@@ -67,6 +67,10 @@ type repoBG struct {
 	fetchBusy bool
 	fetchDone chan struct{}
 
+	// remoteDefault: uzak deponun BİLDİRDİĞİ varsayılan dal (`git ls-remote --symref <uzak> HEAD`; son başarılı okuma, "" = bilinmiyor).
+	// Yerel `origin/HEAD` klonlama anında yazılır ve `git fetch` onu güncellemez: GitHub'da varsayılan dal değişince eski kalır.
+	remoteDefault string
+
 	steps   map[string]model.SyncStep
 	version uint64 // arka plan sonuçları değiştikçe artar; QuickRepoSignature'a girer
 }
@@ -474,10 +478,19 @@ func (st *repoBG) doFetch(repoPath, remoteName string) {
 	t0 := time.Now()
 	out, _, err := runCmd(ctx, repoPath, "git", "fetch", "--prune", remoteName)
 	dur := time.Since(t0)
+	// Uzağın gerçek varsayılan dalı (salt okunur; yerel ref'lere yazmaz). Okunamazsa eski değer korunur: boş sonuç yazılmaz.
+	headOut, _, headErr := runCmd(ctx, repoPath, "git", "ls-remote", "--symref", remoteName, "HEAD")
+	remoteDef := ""
+	if headErr == nil {
+		remoteDef = parseSymrefHead(headOut)
+	}
 	now := time.Now()
 
 	st.mu.Lock()
 	defer st.mu.Unlock()
+	if remoteDef != "" {
+		st.remoteDefault = remoteDef
+	}
 	if err == nil {
 		st.setStep("fetch", func(s *model.SyncStep) {
 			*s = model.SyncStep{State: "ok", At: now.Format(time.RFC3339), DurationMs: dur.Milliseconds()}
@@ -491,6 +504,29 @@ func (st *repoBG) doFetch(repoPath, remoteName string) {
 	st.fetchBusy = false
 	st.version++
 	close(st.fetchDone)
+}
+
+// parseSymrefHead: `git ls-remote --symref <uzak> HEAD` çıktısından varsayılan dal adı ("ref: refs/heads/main\tHEAD" → "main").
+func parseSymrefHead(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(line, "ref: refs/heads/")
+		if !ok {
+			continue
+		}
+		if name, _, found := strings.Cut(rest, "\t"); found && name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// remoteDefaultBranch: son bilinen uzak varsayılan dal ("" = henüz okunmadı ya da okunamadı).
+func remoteDefaultBranch(repoPath string) string {
+	st := bgFor(repoPath)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.remoteDefault
 }
 
 var errGHMissing = fmt.Errorf("gh CLI kurulu değil")
