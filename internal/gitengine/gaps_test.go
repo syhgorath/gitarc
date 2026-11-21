@@ -110,36 +110,65 @@ func TestCompareSemver(t *testing.T) {
 	}
 }
 
-func TestCheckForUpdatesLiveReadsRemoteTags(t *testing.T) {
-	dir, run := newTempRepo(t)
-	remote := t.TempDir()
-	if out, err := exec.Command("git", "init", "--bare", "-b", "main", remote).CombinedOutput(); err != nil {
+// Sürüm kontrolü GitArc'ın KENDİ deposunun etiketlerine bakar; açık projenin etiketlerine DEĞİL (eskiden açık projenin origin'ine bakıyordu).
+func TestCheckForUpdatesReadsGitArcsOwnTagsNotTheOpenProjects(t *testing.T) {
+	// GitArc'ın "kendi deposu" (test için yerel bare): v99.0.0 ve v1.2.0
+	selfDir, selfRun := newTempRepo(t)
+	selfBare := t.TempDir()
+	if out, err := exec.Command("git", "init", "--bare", "-b", "main", selfBare).CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, out)
 	}
-	run("remote", "add", "origin", remote)
-	run("push", "-u", "origin", "main")
-	run("tag", "v99.0.0")
-	run("tag", "v1.2.0")
-	run("push", "origin", "--tags")
+	selfRun("remote", "add", "origin", selfBare)
+	selfRun("push", "-u", "origin", "main")
+	selfRun("tag", "v99.0.0")
+	selfRun("tag", "v1.2.0")
+	selfRun("push", "origin", "--tags")
+	_ = selfDir
+	old := selfRepoURL
+	selfRepoURL = selfBare
+	defer func() { selfRepoURL = old }()
 
+	// Açık proje: etiketi OLMAYAN başka bir depo. Eskiden bu yüzden "güncel" denirdi.
+	dir, _ := newTempRepo(t)
 	mgr := switchLive(t, dir)
 	res, err := mgr.CheckForUpdates()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res["latestVersion"] != "99.0.0" || res["updateAvailable"] != true {
-		t.Fatalf("expected latest 99.0.0 with update available, got %+v", res)
+		t.Fatalf("GitArc'ın kendi etiketlerinden 99.0.0 beklenirdi (açık projenin etiketi yok): %+v", res)
 	}
 	if res["currentVersion"] != AppVersion {
 		t.Fatalf("currentVersion mismatch: %+v", res)
 	}
+	if _, bad := res["checkError"]; bad {
+		t.Fatalf("okundu: checkError olmamalı: %+v", res)
+	}
 
-	// No remote tags → no update.
-	dir2, _ := newTempRepo(t)
-	mgr2 := switchLive(t, dir2)
-	res, _ = mgr2.CheckForUpdates()
+	// Etiketsiz kendi deposu → güncelleme yok.
+	emptyBare := t.TempDir()
+	if out, err := exec.Command("git", "init", "--bare", "-b", "main", emptyBare).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	selfRepoURL = emptyBare
+	res, _ = mgr.CheckForUpdates()
 	if res["updateAvailable"] != false {
-		t.Fatalf("no tags must not report an update: %+v", res)
+		t.Fatalf("etiket yok: güncelleme bildirilmemeli: %+v", res)
+	}
+}
+
+// Sürüm listesi okunamazsa (ağ yok) "güncel" DENMEZ: checkError döner ve updateAvailable false kalır; arayüz "denetlenemedi" yazar.
+func TestCheckForUpdatesUnreachableIsReportedNotGreen(t *testing.T) {
+	old := selfRepoURL
+	selfRepoURL = filepath.Join(t.TempDir(), "yok-boyle-bir-depo.git")
+	defer func() { selfRepoURL = old }()
+	res, err := NewManager("").CheckForUpdates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, _ := res["checkError"].(string)
+	if msg == "" || res["updateAvailable"] != false {
+		t.Fatalf("okunamadı: checkError dolu ve updateAvailable=false beklenirdi: %+v", res)
 	}
 }
 

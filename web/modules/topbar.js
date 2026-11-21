@@ -21,6 +21,18 @@ export function modeView(repo, offline = false) {
   };
 }
 
+// Güncelleme durumu satırı (koruma penceresindeki "Sürüm & güncelleme" kartı). `res`: /api/system/update-check yanıtı (yoksa anlık
+// görüntüdeki son bilinen değerler). Denetim hiç yapılmadıysa "güncel" DENMEZ: "henüz denetlenmedi".
+export function updateStatusText(repo, res = null) {
+  const cur = res?.currentVersion || repo?.appVersion || '';
+  if (res?.checkError) return `Denetlenemedi (ağ/erişim): ${res.checkError}`;
+  const latest = res?.latestVersion || repo?.latestVersion || '';
+  const avail = res ? Boolean(res.updateAvailable) : Boolean(repo?.updateAvailable);
+  if (avail) return `⬆ Yeni sürüm mevcut: v${latest} (şu an v${cur})`;
+  if (latest) return `✓ Güncel (v${cur})`;
+  return `v${cur} · Henüz denetlenmedi: "Yeni sürüm var mı?" ile denetleyin`;
+}
+
 export function versionView(repo) {
   const text = `v${repo.appVersion || '0.10.0'}${repo.teamMode ? ' · TEAM' : ''}${repo.updateAvailable ? ' ⬆ Güncelle' : ''}`;
   return { text, className: `btn mono ${repo.updateAvailable ? 'warn' : 'ghost'}` };

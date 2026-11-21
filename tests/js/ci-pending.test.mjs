@@ -63,3 +63,13 @@ test('openPRsTruncationNote: liste sınıra dayandıysa söyler, yoksa boş', ()
   assert.equal(openPRsTruncationNote({ repo: {} }), '');
   assert.match(openPRsTruncationNote({ repo: { openPRsTruncated: true } }), /yalnızca ilk 20 açık PR/);
 });
+
+import { updateStatusText } from '../../web/modules/topbar.js';
+
+test('updateStatusText: hiç denetlenmediyse "güncel" DENMEZ; denetlenemediyse nedeni söyler', () => {
+  assert.match(updateStatusText({ appVersion: '0.10.0' }), /Henüz denetlenmedi/);
+  assert.match(updateStatusText({ appVersion: '0.10.0' }, { currentVersion: '0.10.0', checkError: 'ağ yok' }), /Denetlenemedi.*ağ yok/);
+  assert.match(updateStatusText({ appVersion: '0.10.0' }, { currentVersion: '0.10.0', latestVersion: '0.11.0', updateAvailable: true }), /Yeni sürüm mevcut: v0\.11\.0 \(şu an v0\.10\.0\)/);
+  assert.match(updateStatusText({ appVersion: '0.10.0' }, { currentVersion: '0.10.0', latestVersion: '0.10.0', updateAvailable: false }), /Güncel \(v0\.10\.0\)/);
+  assert.match(updateStatusText({ appVersion: '0.10.0', latestVersion: '0.10.0' }), /Güncel/);
+});

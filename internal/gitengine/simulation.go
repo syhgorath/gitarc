@@ -1546,46 +1546,62 @@ func buildSandboxSimulation() simWorkspace {
 }
 
 // CheckForUpdates inspects remote git tags to detect whether a newer GitArc release exists.
+// selfRepoURL: GitArc'ın KENDİ deposu. Sürüm kontrolü AÇIK PROJENİN değil buranın etiketlerine bakar (eskiden açık projenin `origin`'ine
+// bakıyordu: başka bir proje açıkken hiç etiketi yoktu ve GitArc güncellenmiş olsa bile "güncel" deniyordu). Test için değiştirilebilir.
+var selfRepoURL = "https://github.com/syhgorath/gitarc.git"
+
+// CheckForUpdates: GitArc'ın kendi etiketlerinden en yenisini okur (yalnızca kullanıcı "Yeni sürüm var mı?" dediğinde çağrılır; ağ gerekir).
+// Okunamazsa (ağ yok, zaman aşımı) `checkError` doluşur ve "güncel" DENMEZ: arayüz "denetlenemedi" gösterir.
 func (m *Manager) CheckForUpdates() (map[string]any, error) {
 	latest := AppVersion
 	updateCmd := "git pull --ff-only origin main && go build -o gitarc ."
+	checkError := ""
 
-	if live, ok := m.activeLiveRepo(); ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		defer cancel()
-		remoteName := "origin"
-		if rOut, _, err := runCmd(ctx, live.path, "git", "remote"); err == nil && strings.TrimSpace(rOut) != "" {
-			remoteName = strings.Fields(rOut)[0]
-		}
-		if out, _, err := runCmd(ctx, live.path, "git", "ls-remote", "--tags", "--sort=-v:refname", remoteName); err == nil {
-			for _, line := range strings.Split(out, "\n") {
-				fields := strings.Fields(line)
-				if len(fields) < 2 {
-					continue
-				}
-				ref := strings.TrimSuffix(fields[1], "^{}")
-				if strings.HasPrefix(ref, "refs/tags/v") {
-					latest = strings.TrimPrefix(ref, "refs/tags/v")
-					break
-				}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	url := selfRepoURL
+	if v := strings.TrimSpace(os.Getenv("GITARC_SELF_REPO")); v != "" {
+		url = v // çatal (fork) kullanan ya da testler için geçersiz kılma
+	}
+	out, _, err := runCmd(ctx, os.TempDir(), "git", "ls-remote", "--tags", "--sort=-v:refname", url)
+	if err != nil {
+		checkError = "GitArc'ın sürüm listesi okunamadı: " + shortErr(out, err)
+	} else {
+		for _, line := range strings.Split(out, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			ref := strings.TrimSuffix(fields[1], "^{}")
+			if strings.HasPrefix(ref, "refs/tags/v") {
+				latest = strings.TrimPrefix(ref, "refs/tags/v")
+				break
 			}
 		}
 	}
 
-	avail := compareSemver(latest, AppVersion) > 0
+	avail := checkError == "" && compareSemver(latest, AppVersion) > 0
 	m.mu.Lock()
 	m.latestVer = latest
 	m.updateAvail = avail
-	m.recordLogLocked("ok", "Sürüm Kontrolü", "", fmt.Sprintf("Mevcut v%s · Uzak v%s (Güncelleme: %v)", AppVersion, latest, avail), "")
+	if checkError != "" {
+		m.recordLogLocked("info", "Sürüm Kontrolü", "", fmt.Sprintf("Mevcut v%s · Uzak sürüm okunamadı (%s)", AppVersion, checkError), "")
+	} else {
+		m.recordLogLocked("ok", "Sürüm Kontrolü", "", fmt.Sprintf("Mevcut v%s · Uzak v%s (Güncelleme: %v)", AppVersion, latest, avail), "")
+	}
 	m.mu.Unlock()
 
-	return map[string]any{
+	res := map[string]any{
 		"currentVersion":  AppVersion,
 		"latestVersion":   latest,
 		"updateAvailable": avail,
 		"updateCommand":   updateCmd,
 		"teamMode":        m.IsTeamMode(),
-	}, nil
+	}
+	if checkError != "" {
+		res["checkError"] = checkError
+	}
+	return res, nil
 }
 
 func compareSemver(a, b string) int {
