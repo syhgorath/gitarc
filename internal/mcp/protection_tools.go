@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gitarc/internal/gitengine"
+	"gitarc/internal/model"
 )
 
 // Dal koruması araçları (oku → planla → [izinli] uygula).
@@ -91,15 +92,7 @@ func callProtectionTool(name string, args map[string]any, mgr *gitengine.Manager
 		if err != nil {
 			return errResult(err.Error()), true
 		}
-		return jsonTextResult(map[string]any{
-			"mode":            modeOf(mgr),
-			"branch":          plan.Branch,
-			"state":           plan.State,
-			"current":         plan.Current,
-			"availableChecks": plan.AvailableChecks,
-			"notes":           plan.Notes,
-			"applyEnabled":    protectionApplyEnabled(),
-		}), true
+		return jsonTextResult(protectionStatusPayload(modeOf(mgr), plan, protectionApplyEnabled())), true
 
 	case "gitarc_protection_plan":
 		profile, _ := args["profile"].(string)
@@ -144,4 +137,48 @@ func callProtectionTool(name string, args map[string]any, mgr *gitengine.Manager
 		}), true
 	}
 	return toolResult{}, false
+}
+
+// firstNote: plan notlarından "okunamadı/yok" ile ilgili ilkini ya da varsayılanı döndürür.
+func firstNote(notes []string, def string) string {
+	for _, n := range notes {
+		if strings.Contains(n, "okunamadı") || strings.Contains(n, "Ruleset") || strings.Contains(n, "planında") {
+			return n
+		}
+	}
+	return def
+}
+
+// protectionStatusPayload: gitarc_protection_status çıktısı (saf; sınanabilir). "current" yalnızca GERÇEKTEN okunduysa verilir.
+func protectionStatusPayload(mode string, plan model.ProtectionPlan, applyEnabled bool) map[string]any {
+	res := map[string]any{
+		"mode":            mode,
+		"branch":          plan.Branch,
+		"state":           plan.State,
+		"availableChecks": plan.AvailableChecks,
+		"notes":           plan.Notes,
+		"applyEnabled":    applyEnabled,
+	}
+	// "current" yalnızca GERÇEKTEN okunduysa verilir (klasik koruma ya da Ruleset kuralları). Okunamadıysa/korumasızsa sıfır değerli
+	// bir nesne ("checks: null") "korumasız" gibi okunurdu: bunun yerine neden yazılır.
+	switch {
+	case plan.State == "unknown":
+		res["current"] = nil
+		res["reason"] = firstNote(plan.Notes, "Koruma durumu okunamadı (yetki yok ya da gh hatası); bu \"korumasız\" demek değildir.")
+	case plan.State == "none":
+		res["current"] = nil
+		res["reason"] = "Dal korumasız: zorunlu PR/CI kuralı yok."
+	case plan.State == "unsupported":
+		res["current"] = nil
+		res["reason"] = firstNote(plan.Notes, "Bu depo planında dal koruması yok.")
+	case plan.State == "ruleset" && plan.Source != "ruleset":
+		res["current"] = nil
+		res["reason"] = firstNote(plan.Notes, "Dal Ruleset ile korunuyor ama kurallar okunamadı.")
+	default:
+		res["current"] = plan.Current
+		if plan.Source != "" {
+			res["source"] = plan.Source // classic | ruleset (ruleset salt okunur: GitArc değiştirmez)
+		}
+	}
+	return res
 }

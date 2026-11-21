@@ -262,13 +262,17 @@ func listTools() []toolDefinition {
 		},
 		{
 			Name:        "gitarc_audit_log",
-			Description: "GitArc kokpiti ve MCP üzerinden gerçekleştirilen son işlemleri, önerileri ve onay kayıtlarını zaman damgalı olarak listeler.",
+			Description: "GitArc kokpiti ve MCP üzerinden gerçekleştirilen son işlemleri, önerileri ve onay kayıtlarını zaman damgalı olarak listeler. Her kayıt hangi projeye (repoId, repoName) ait olduğunu söyler; varsayılan yalnızca seçili projedir.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"limit": map[string]any{
 						"type":        "integer",
 						"description": "Döndürülecek maksimum log kaydı sayısı (varsayılan: 25).",
+					},
+					"repoId": map[string]any{
+						"type":        "string",
+						"description": "Varsayılan: yalnızca seçili (etkin) proje. \"all\" = tüm projeler; ya da bir proje kimliği. Her kayıt repoId ve repoName taşır; repoId'si olmayan eski kayıtlar yalnızca \"all\" ile \"bilinmiyor\" olarak görünür.",
 					},
 				},
 			},
@@ -369,34 +373,41 @@ func callTool(params toolCallParams, mgr *gitengine.Manager) toolResult {
 		return jsonTextResult(buildScanSecretsPayload(paths, mgr))
 
 	case "gitarc_audit_log":
-		snap, err := mgr.Snapshot()
-		if err != nil {
-			return errResult(err.Error())
-		}
 		limit := 25
 		if l, ok := params.Arguments["limit"].(float64); ok && l > 0 {
 			limit = int(l)
 		}
-		logs := snap.Logs
-		if len(logs) > limit {
-			logs = logs[:limit]
+		repoID, _ := params.Arguments["repoId"].(string)
+		logs, scope, hidden := mgr.AuditLogs(repoID, limit)
+		snap, err := mgr.Snapshot()
+		if err != nil {
+			return errResult(err.Error())
 		}
 		mode := snap.Repo.Mode
 		if mode == "" {
 			mode = "live"
 		}
-		return jsonTextResult(map[string]any{
+		res := map[string]any{
 			"mode":  mode,
+			"scope": scope, // etkin proje kimliği ya da "all"
 			"repo":  snap.Repo.Name,
 			"count": len(logs),
 			"logs":  logs,
-		})
+		}
+		if hidden > 0 {
+			res["hiddenUnknownRepo"] = hidden // repoId'si olmayan eski kayıtlar; repoId="all" ile görünür
+		}
+		return jsonTextResult(res)
 
 	default:
 		return errResult(fmt.Sprintf("bilinmeyen araç: %s", params.Name))
 	}
 }
 
+// buildCleanupCandidatesPayload: temizlenebilir dallar. Aday kuralı arayüzdeki "🧹 Temizle" sayacıyla AYNI ve tektir
+// (`gitengine.IsPrunable` → `BranchArc.Prunable`): uzun ömürlü dallar (develop, release/*), kaydedilmemiş değişikliği olan aktif dal,
+// uzakta ilerlemiş dallar hariç. Ek koşul: dal GERÇEKTEN var (yerelde ya da uzakta). Yalnızca PR geçmişinden gelen birleşmiş adlar
+// (ne yerelde ne uzakta) aday DEĞİLDİR; `historyOnlyIgnored` olarak sayılır ki "N aday" yalan söylemesin.
 func buildCleanupCandidatesPayload(snap model.CockpitSnapshot) map[string]any {
 	type cleanupCandidate struct {
 		Name         string `json:"name"`
@@ -408,62 +419,49 @@ func buildCleanupCandidatesPayload(snap model.CockpitSnapshot) map[string]any {
 		Proof        string `json:"proof"`
 		SuggestedCmd string `json:"suggestedCmd"`
 	}
-	var candidates []cleanupCandidate
+	candidates := []cleanupCandidate{}
+	historyOnly := 0
 	for _, b := range snap.Branches {
-		if b.ID == "local-wip-working-tree" || strings.HasPrefix(b.ID, "local-wip-") {
+		if !b.HasLocal && !b.HasRemote {
+			if b.State == "merged" || (b.PR != nil && b.PR.ReviewState == "MERGED") {
+				historyOnly++ // yalnızca PR geçmişi: temizlenecek bir şey yok
+			}
 			continue
 		}
-		isMerged := b.State == "merged" || (b.PR != nil && b.PR.ReviewState == "MERGED")
-		if !isMerged && !b.OriginGone && b.State != "gone" {
+		if !b.Prunable || b.SuggestedCmd == "" {
 			continue
 		}
-
 		proof := "Uzak dal silinmiş (origin: gone)."
 		if b.PR != nil && b.PR.ReviewState == "MERGED" {
 			proof = fmt.Sprintf("GitHub PR #%d birleştirildi (MERGED).", b.PR.Number)
-		} else if isMerged {
+		} else if b.State == "merged" {
 			proof = "Git geçmişinde main omurgasına birleştirilmiş (merged)."
 		}
-
-		cmd := b.SuggestedCmd
-		if cmd == "" {
-			if b.HasLocal {
-				cmd = fmt.Sprintf("git branch -D %s", b.Name)
-			} else if b.HasRemote {
-				cmd = fmt.Sprintf("git push origin --delete %s", b.Name)
-			}
-		}
-
-		prNum := 0
-		prState := ""
+		prNum, prState := 0, ""
 		if b.PR != nil {
-			prNum = b.PR.Number
-			prState = b.PR.ReviewState
+			prNum, prState = b.PR.Number, b.PR.ReviewState
 		}
-
 		candidates = append(candidates, cleanupCandidate{
-			Name:         b.Name,
-			HasLocal:     b.HasLocal,
-			HasRemote:    b.HasRemote,
-			OriginGone:   b.OriginGone,
-			PRNumber:     prNum,
-			PRState:      prState,
-			Proof:        proof,
-			SuggestedCmd: cmd,
+			Name: b.Name, HasLocal: b.HasLocal, HasRemote: b.HasRemote, OriginGone: b.OriginGone,
+			PRNumber: prNum, PRState: prState, Proof: proof, SuggestedCmd: b.SuggestedCmd,
 		})
 	}
-
 	mode := snap.Repo.Mode
 	if mode == "" {
 		mode = "live"
 	}
+	summary := fmt.Sprintf("%d adet temizlenebilir birleşmiş/silinmiş dal adayı bulundu.", len(candidates))
+	if len(candidates) == 0 {
+		summary = "Temizlenebilir dal yok."
+	}
 	return map[string]any{
-		"mode":       mode,
-		"repo":       snap.Repo.Name,
-		"count":      len(candidates),
-		"summary":    fmt.Sprintf("%d adet temizlenebilir birleşmiş/silinmiş dal adayı bulundu.", len(candidates)),
-		"candidates": candidates,
-		"note":       "MCP üzerinden hiçbir dal doğrudan silinmez. Temizlemek için 'suggestedCmd' komutunu terminalde çalıştırabilir veya GitArc UI üzerindeki 'Temizle' butonunu kullanabilirsiniz.",
+		"mode":               mode,
+		"repo":               snap.Repo.Name,
+		"count":              len(candidates),
+		"summary":            summary,
+		"candidates":         candidates,
+		"historyOnlyIgnored": historyOnly,
+		"note":               "MCP üzerinden hiçbir dal doğrudan silinmez. Temizlemek için 'suggestedCmd' komutunu terminalde çalıştırabilir veya GitArc UI üzerindeki 'Temizle' butonunu kullanabilirsiniz. Uzun ömürlü dallar (develop, release/*) ve yalnızca PR geçmişinde kalan adlar aday sayılmaz.",
 	}
 }
 
