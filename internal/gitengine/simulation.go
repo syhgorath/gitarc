@@ -174,6 +174,19 @@ func NewManager(extraRepoPath string) *Manager {
 
 	// Load persisted user projects from ~/.gitarc/projects.json
 	saved := loadSavedProjects()
+	// -repo / ortam / klasör ile açılan proje kayıtlı bir projeyse KAYITLI kimliğini kullan (eskiden "live-custom" gibi geçici bir kimlik
+	// alıyordu: aynı proje açılış yoluna göre iki ayrı günlüğe/öneri kartına sahip oluyordu).
+	for i := range candidates {
+		if !legacySyntheticRepoIDs[candidates[i].id] {
+			continue
+		}
+		for _, sp := range saved {
+			if isGitDir(sp.Path) && sameRepoPath(candidates[i].path, sp.Path) {
+				candidates[i].id = sp.ID
+				break
+			}
+		}
+	}
 	for _, sp := range saved {
 		if isGitDir(sp.Path) {
 			already := false
@@ -444,9 +457,7 @@ func (m *Manager) recordLogLocked(level, action, branch, message, detail string)
 		RepoID:    m.activeRepoID,
 	}
 	m.logs = append([]model.ActionLogEntry{entry}, m.logs...)
-	if len(m.logs) > maxStoredLogs {
-		m.logs = m.logs[:maxStoredLogs]
-	}
+	m.logs = trimLogs(m.logs)
 	_ = persistSavedLogs(m.logs)
 }
 
@@ -459,7 +470,7 @@ func (m *Manager) recordLog(level, action, branch, message, detail string) {
 func (m *Manager) logLiveOutcome(action, branch, okMsg string, snap model.CockpitSnapshot, err error) (model.CockpitSnapshot, error) {
 	if err != nil {
 		level := "error"
-		if errors.Is(err, errMergePolicyBlocked) {
+		if errors.Is(err, errMergePolicyBlocked) || errors.Is(err, errBranchGone) {
 			level = "info" // beklenen ön koşul (CI bitmedi): hata kartı çıkarma
 		}
 		m.recordLog(level, action, branch, err.Error(), "")

@@ -86,9 +86,18 @@ func (m *Manager) AddProject(repoPath, customName string) (model.CockpitSnapshot
 
 	// Aynı depo farklı yol yazımlarıyla (alt klasör, sembolik bağ, /var ↔ /private/var) ikinci kez eklenmez.
 	var existingID string
-	for _, lr := range m.liveRepos {
+	for i, lr := range m.liveRepos {
 		if sameRepoPath(lr.path, abs) {
 			existingID = lr.id
+			// -repo/ortam/klasörle açılmış geçici kimlik ("live-custom"...) kayda GEÇMEZ: yoldan türetilen kalıcı kimliğe yükseltilir, aksi
+			// halde aynı proje açılış yoluna göre iki ayrı günlük/öneri kartına sahip olurdu.
+			if legacySyntheticRepoIDs[existingID] {
+				existingID = projectIDForPath(abs)
+				m.liveRepos[i].id = existingID
+				if m.activeRepoID == lr.id {
+					m.activeRepoID = existingID
+				}
+			}
 			break
 		}
 	}

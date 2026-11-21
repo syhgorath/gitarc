@@ -43,3 +43,15 @@ test('kart düğmesi: CI belirmemişken "CI Bitince Merge Et", yoksa "Merge"', (
   assert.match(html({ ciPending: true, isQueued: false }), /CI Bitince Merge Et/);
   assert.match(html({ ciPending: false, isQueued: false }), /⚡ Merge/);
 });
+
+// Proje değiştirirken süren kuyruk koşusu varsa uyarı (koşu etkin proje değişince durur, yarım kalabilir).
+import { projectSwitchWarning } from '../../web/modules/syncsteps.js';
+
+test('projectSwitchWarning: koşu yoksa null; koşu sürüyorsa ilerlemeyi ve "yarım kalabilir"i söyler', () => {
+  assert.equal(projectSwitchWarning(null), null);
+  assert.equal(projectSwitchWarning({ repo: { name: 'GitArc' } }), null);
+  const w = projectSwitchWarning({ repo: { name: 'GitArc', queueRun: { total: 5, merged: 2, items: [] } } });
+  assert.match(w, /GitArc: 2\/5 PR'lık kuyruk koşusu sürüyor/);
+  assert.match(w, /DURUR ve yarım kalabilir/);
+  assert.match(w, /Yine de projeyi değiştirmek istiyor musunuz\?/);
+});
