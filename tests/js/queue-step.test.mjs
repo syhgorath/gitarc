@@ -309,3 +309,12 @@ test('offline engine: applying a protection that requires an up-to-date branch s
   const snap = eng.applyProtection('ci', ['test'], plan.fingerprint);
   assert.equal(snap.repo.strictUpToDate, true);
 });
+
+// Köşe etiketi OPAK olmalı: yarı saydam ton kartın üst kenarını etiketin içinden gösterip etiketi "kartın arkasında" gösteriyordu.
+test('cap-queue-tag: tonlar opak --surface zemininin üstüne bindirilir (yarı saydam arka plan tek başına kullanılmaz)', () => {
+  const css = readFileSync(new URL('../../web/tasarim.css', import.meta.url), 'utf8');
+  for (const tone of ['waiting', 'current']) {
+    const rule = css.match(new RegExp(`\\.cap-queue-tag\\.${tone}\\s*\\{([^}]*)\\}`))?.[1] || '';
+    assert.match(rule, /background:\s*linear-gradient\(.*\),\s*var\(--surface\)\s*;/, `${tone}: opak zemin üstüne bindirme bekleniyor: ${rule}`);
+  }
+});
