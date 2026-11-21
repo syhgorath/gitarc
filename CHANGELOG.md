@@ -5,6 +5,7 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 ## [Yayımlanmamış]
 
 ### Belgeler
+- **MIT lisansı eklendi (`LICENSE`):** README "açık kaynak" diyordu ama repoda lisans dosyası yoktu (lisans yoksa varsayılan olarak tüm haklar saklıdır, kullanım/dağıtım izni yoktur). Metin KeyLab'ınkiyle aynı (MIT, © 2026 syhgorath); README'ye lisans rozeti ve "Lisans" bölümü eklendi.
 - **README: rozetler, canlı demo bağlantısı, indirme notu:** CI / sürüm / yıldız / canlı demo rozetleri; canlı demo bağlantısı (https://syhgorath.github.io/gitarc/); "İndirme" notu (derlenmiş ikili henüz yok, kaynaktan derleme komutu). Pages demosu artık `main`'de `web/` değişince kendiliğinden yayınlanır (`pages.yml` `push` tetikleyicisi; elle tetikleme de duruyor).
 - **Sponsor düğmesi:** `.github/FUNDING.yml` ile GitHub depo sayfasında ♥ Sponsor düğmesi ve README'de "Destek" bölümü eklendi (uygulamanın içinde bir şey yok).
 - **README görselleri yenilendi:** Tüm ekran görüntüleri güncel arayüzle (demo verisiyle) yeniden çekildi ve tarayıcı penceresi çerçevesine alınmış tek dosyalık SVG oldu (`scripts/ekran-cercevesi.py`; çekim: `tests/e2e/ekran-goruntuleri.mjs`). Eski `.webp` görüntüler kişisel tarayıcı sekmelerini/yer imlerini gösteriyordu; kaldırıldı. Merge Kuyruğu, Dal koruması ve MCP pencereleri için yeni görseller; "Kuyrukta biri kırmızı yandı" senaryosu eklendi.

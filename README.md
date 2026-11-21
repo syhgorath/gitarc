@@ -3,6 +3,7 @@
 [![CI](https://github.com/syhgorath/gitarc/actions/workflows/ci.yml/badge.svg)](https://github.com/syhgorath/gitarc/actions/workflows/ci.yml)
 [![Sürüm](https://img.shields.io/github/v/release/syhgorath/gitarc)](https://github.com/syhgorath/gitarc/releases/latest)
 [![Yıldız](https://img.shields.io/github/stars/syhgorath/gitarc?style=flat)](https://github.com/syhgorath/gitarc/stargazers)
+[![Lisans: MIT](https://img.shields.io/badge/lisans-MIT-blue.svg)](LICENSE)
 [![Canlı demo](https://img.shields.io/badge/canl%C4%B1%20demo-tek%20t%C4%B1kla-3fb950)](https://syhgorath.github.io/gitarc/)
 
 **GitArc**, düz `git log` ağaçları yerine Git ve GitHub yaşam döngüsünü **parabolik ray topolojisiyle** gösteren, sıfır bağımlılıklı bir yerel kokpittir. Yerel dallarınızı (`HEAD`, uncommitted dosyalar, `origin` farkları) ile GitHub Remote, Pull Request, Review ve GitHub Actions CI durumlarını tek bir SVG tuvalinde birleştirir. [KeyLab (`sshpocket`)](https://github.com/syhgorath/keylab) tasarım ve güvenlik DNA'sını paylaşan bağımsız bir kardeş projedir.
@@ -218,6 +219,10 @@ for f in web/*.js web/modules/*.js; do node --check "$f"; done
 - Arayüzün saf kuralları (yerleşim, süzgeç, kapsül kararları, kaydırma/yakınlaştırma) için Node'un yerleşik test koşucusuyla yazılmış testler (`tests/js/`) `go test` içinden de çalışır (node kuruluysa).
 
 Daha fazlası: [HANDOVER.md](HANDOVER.md) (teknik devir teslim ve mimari harita), [AGENTS.md](AGENTS.md) (çalışma kuralları), [CHANGELOG.md](CHANGELOG.md), [docs/PLAN.md](docs/PLAN.md).
+
+## Lisans
+
+GitArc [MIT lisansı](LICENSE) ile dağıtılır: kullanabilir, değiştirebilir ve dağıtabilirsiniz; telif ve lisans bildirimi korunmalıdır. Yazılım olduğu gibi, garanti verilmeden sunulur.
 
 ## Destek
 
