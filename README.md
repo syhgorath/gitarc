@@ -1,5 +1,10 @@
 # GitArc — Parabolik Git & PR Yaşam Döngüsü Kokpiti
 
+[![CI](https://github.com/syhgorath/gitarc/actions/workflows/ci.yml/badge.svg)](https://github.com/syhgorath/gitarc/actions/workflows/ci.yml)
+[![Sürüm](https://img.shields.io/github/v/release/syhgorath/gitarc)](https://github.com/syhgorath/gitarc/releases/latest)
+[![Yıldız](https://img.shields.io/github/stars/syhgorath/gitarc?style=flat)](https://github.com/syhgorath/gitarc/stargazers)
+[![Canlı demo](https://img.shields.io/badge/canl%C4%B1%20demo-tek%20t%C4%B1kla-3fb950)](https://syhgorath.github.io/gitarc/)
+
 **GitArc**, düz `git log` ağaçları yerine Git ve GitHub yaşam döngüsünü **parabolik ray topolojisiyle** gösteren, sıfır bağımlılıklı bir yerel kokpittir. Yerel dallarınızı (`HEAD`, uncommitted dosyalar, `origin` farkları) ile GitHub Remote, Pull Request, Review ve GitHub Actions CI durumlarını tek bir SVG tuvalinde birleştirir. [KeyLab (`sshpocket`)](https://github.com/syhgorath/keylab) tasarım ve güvenlik DNA'sını paylaşan bağımsız bir kardeş projedir.
 
 ![GitArc kokpiti: parabolik raylar, KPI çipleri ve alt çekmece](docs/screenshots/kokpit.svg)
@@ -115,6 +120,14 @@ Birleşmiş bir dalı seçince GitHub'daki gerçek PR başlığı, açıklaması
 
 ## Hızlı başlangıç
 
+**İndirme:** Hazır (derlenmiş) ikili henüz yayınlanmıyor; [Releases](https://github.com/syhgorath/gitarc/releases) sayfasındaki arşivler yalnızca kaynak koddur. Kaynaktan derlemek için:
+
+```bash
+git clone https://github.com/syhgorath/gitarc.git && cd gitarc && go build -o gitarc .
+```
+
+Önce denemek isterseniz kurulum gerektirmeyen [canlı demoyu](https://syhgorath.github.io/gitarc/) açın.
+
 Gereksinimler: Go (sürüm `go.mod` içinde), `git`. GitHub özellikleri (PR, CI, branch protection) için [`gh` CLI](https://cli.github.com/) kurulu ve oturum açılmış olmalıdır; `gh` yoksa (veya uzak depo GitHub değilse) PR/CI/koruma bilgisi gösterilmez, yerel Git özellikleri çalışmaya devam eder.
 
 ```bash
@@ -142,9 +155,9 @@ Başlangıçta GitArc, bulunduğunuz klasörün ait olduğu Git deposunu açar; 
 
 Demo verisi yalnızca bilerek istenince açılır: `./gitarc -repo sim`. Demo depolar **GitArc Sandbox** (temel) ve **MegaCorp Platform** (50 geliştirici, 4 ana hat, kurumsal senaryo); açıkken tuvalde belirgin bir **DEMO · sahte veri** şeridi durur ve üst çubuktaki depo seçiciden geçiş yapılabilir.
 
-### Tarayıcıda demo (GitHub Pages)
+### Canlı demo (tarayıcıda, kurulumsuz)
 
-`web/` klasörü sunucusuz da çalışır: statik olarak yayınlandığında arayüz tarayıcı içi çevrimdışı motora düşer ve **demo verisiyle** açılır (gerçek bir depoya dokunmaz). `.github/workflows/pages.yml` bunu GitHub Pages'e yayınlar; yalnızca elle tetiklenir. Kurulum: Settings → Pages → Source: **GitHub Actions**, sonra `gh workflow run pages.yml`.
+**https://syhgorath.github.io/gitarc/** adresini açın: kurulum gerekmez, **demo verisiyle** (sahte depo) çalışır ve gerçek bir depoya dokunmaz. `web/` klasörü sunucusuz da çalıştığı için arayüz tarayıcı içi çevrimdışı motora (`LocalFallbackEngine`) düşer. Demo, `main`'de `web/` değiştikçe `.github/workflows/pages.yml` ile **kendiliğinden** yayınlanır (elle de tetiklenebilir: `gh workflow run pages.yml`). Kendi çatalınızda yayınlamak için: Settings → Pages → Source: **GitHub Actions**.
 
 ## MCP entegrasyonu (AI ajanları)
 
