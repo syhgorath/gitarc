@@ -58,6 +58,9 @@ type Manager struct {
 	// Kuyruk otomatik koşusu (3b): proje başına tek koşu; yalnızca kendi dosyasında kalıcıdır.
 	qrOnce  sync.Once
 	qrStore *queueRunStore
+	// parent: bu Yönetici, çalışan bir kuyruk koşusunun SABİTLENMİŞ (tek projeli) kopyasıdır (bkz. pinnedFor); günlük kayıtları ana
+	// Yöneticiye, kendi proje kimliğiyle iletilir. Ana Yönetici'de nil.
+	parent *Manager
 }
 
 // ActiveRepoID: sunucuda şu an etkin olan projenin kimliği ("" = proje yok). İstemciler değiştirici isteklerde kendi
@@ -265,6 +268,8 @@ func (m *Manager) repoOptionsLocked() []model.RepoOption {
 			DefaultBranch: "main",
 			// Kart dosyası projenin kendi .git'inde durur; etkin olmayan projelerin bekleyen kartı da görünsün.
 			PendingProposal: proposalFileSig(lr.path) != "",
+			// Arka planda süren bir kuyruk koşusu var (etkin olmayan projede de görünsün: ⏳ rozeti).
+			QueueRunning: m.queueRunBrief(lr.path, lr.path, true) != nil,
 		})
 	}
 	return opts
@@ -310,6 +315,9 @@ func (m *Manager) QuickRepoSignature() string {
 	var props []string
 	for _, lr := range m.liveRepos {
 		props = append(props, proposalFileSig(lr.path))
+		if lr.path != live.path { // etkin olmayan projedeki arka plan koşusu da imzayı değiştirsin (proje seçicideki ⏳ rozeti tazelensin)
+			props = append(props, m.queueRunSignature(lr.path, lr.path, true))
+		}
 	}
 	return fmt.Sprintf("%s:%d:%d:%d:%s%s", live.id, headMod, indexMod, bgVersion(live.path), strings.Join(props, ","), m.queueRunSignature(live.path, live.path, true))
 }
@@ -385,6 +393,15 @@ func (m *Manager) IsTeamMode() bool {
 }
 
 func (m *Manager) recordLogLocked(level, action, branch, message, detail string) {
+	if m.parent != nil { // sabitlenmiş kopya: kaydı ana Yönetici'ye, KENDİ projesinin kimliğiyle ilet (ana etkin proje başka olabilir)
+		m.parent.recordLogFor(m.activeRepoID, level, action, branch, message, detail)
+		return
+	}
+	m.recordLogForLocked(m.activeRepoID, level, action, branch, message, detail)
+}
+
+// recordLogForLocked: kaydı BELİRLİ bir projeye yazar (arka plan işleri etkin proje değiştikten sonra da kendi projesine yazsın).
+func (m *Manager) recordLogForLocked(repoID, level, action, branch, message, detail string) {
 	m.logSeq++
 	entry := model.ActionLogEntry{
 		ID:        fmt.Sprintf("log-%d", m.logSeq),
@@ -394,11 +411,17 @@ func (m *Manager) recordLogLocked(level, action, branch, message, detail string)
 		Branch:    branch,
 		Message:   strings.TrimSpace(message),
 		Detail:    strings.TrimSpace(detail),
-		RepoID:    m.activeRepoID,
+		RepoID:    repoID,
 	}
 	m.logs = append([]model.ActionLogEntry{entry}, m.logs...)
 	m.logs = trimLogs(m.logs)
 	_ = persistSavedLogs(m.logs)
+}
+
+func (m *Manager) recordLogFor(repoID, level, action, branch, message, detail string) {
+	m.mu.Lock()
+	m.recordLogForLocked(repoID, level, action, branch, message, detail)
+	m.mu.Unlock()
 }
 
 func (m *Manager) recordLog(level, action, branch, message, detail string) {

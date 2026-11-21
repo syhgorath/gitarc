@@ -45,15 +45,14 @@ test('kart düğmesi: CI belirmemişken "CI Bitince Merge Et", yoksa "Merge"', (
 });
 
 // Proje değiştirirken süren kuyruk koşusu varsa uyarı (koşu etkin proje değişince durur, yarım kalabilir).
-import { projectSwitchWarning } from '../../web/modules/syncsteps.js';
+import { projectSwitchNotice } from '../../web/modules/syncsteps.js';
 
-test('projectSwitchWarning: koşu yoksa null; koşu sürüyorsa ilerlemeyi ve "yarım kalabilir"i söyler', () => {
-  assert.equal(projectSwitchWarning(null), null);
-  assert.equal(projectSwitchWarning({ repo: { name: 'GitArc' } }), null);
-  const w = projectSwitchWarning({ repo: { name: 'GitArc', queueRun: { total: 5, merged: 2, items: [] } } });
-  assert.match(w, /GitArc: 2\/5 PR'lık kuyruk koşusu sürüyor/);
-  assert.match(w, /DURUR ve yarım kalabilir/);
-  assert.match(w, /Yine de projeyi değiştirmek istiyor musunuz\?/);
+test('projectSwitchNotice: koşu yoksa null; koşu sürüyorsa DURMAYACAĞINI (arka planda süreceğini) söyler, onay sormaz', () => {
+  assert.equal(projectSwitchNotice(null), null);
+  assert.equal(projectSwitchNotice({ repo: { name: 'GitArc' } }), null);
+  const n = projectSwitchNotice({ repo: { name: 'GitArc', queueRun: { total: 5, merged: 2, items: [] } } });
+  assert.match(n, /GitArc: 2\/5 PR'lık kuyruk koşusu arka planda sürüyor/);
+  assert.doesNotMatch(n, /DURUR|durur|istiyor musunuz/);
 });
 
 import { openPRsTruncationNote } from '../../web/modules/queue.js';

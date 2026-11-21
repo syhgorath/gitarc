@@ -4,7 +4,7 @@ import { state, el, initElements, resetProjectScopedState } from './modules/stat
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
-import { protectionView, projectSwitchWarning } from './modules/syncsteps.js';
+import { protectionView, projectSwitchNotice } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
@@ -404,12 +404,8 @@ async function bootstrap() {
     const targetRepoId = el.repoSelect.value;
     if (!targetRepoId || targetRepoId === state.snapshot?.repo?.id) return;
 
-    // Süren kuyruk koşusu proje değişince durur: önce sor, vazgeçilirse seçimi geri al.
-    const warn = projectSwitchWarning(state.snapshot);
-    if (warn && !window.confirm(warn)) {
-      if (el.repoSelect && state.snapshot?.repo?.id) el.repoSelect.value = state.snapshot.repo.id;
-      return;
-    }
+    // Süren kuyruk koşusu kendi projesine sabittir ve arka planda sürer: onay sorulmaz, geçişten sonra kısa bir not gösterilir.
+    const switchNotice = projectSwitchNotice(state.snapshot);
 
     showToast('⏳ Proje yükleniyor...', 'info');
     try {
@@ -422,6 +418,7 @@ async function bootstrap() {
       localStorage.setItem(REPO_STORAGE_KEY, targetRepoId);
       applySnapshot(snap);
       showToast(`✓ Proje değiştirildi: ${snap.repo.name}`, 'ok');
+      if (switchNotice) showToast(switchNotice, 'info');
     } catch (err) {
       showToast(`Proje değiştirilemedi: ${err.message}`, 'danger');
       if (el.repoSelect && state.snapshot?.repo?.id) {

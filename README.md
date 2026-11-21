@@ -34,7 +34,7 @@ Korumalı `main`'de ("dal güncel olmalı" + zorunlu CI) AI ajanlarının veya e
 
 1. **Plan (salt okunur):** Seçtiğiniz PR'ları sırayla `main`'e birleştirilmiş gibi bellekte simüle eder (`git merge-tree`); çalışma ağacınıza, indekse ve ref'lere dokunmaz. Hangi PR'ın çakıştığını, kuyruğun nerede durduğunu ve tahmini CI tur sayısını söyler.
 2. **Adım adım:** Sıradaki PR için `update` (dalı `main`'e göre güncelle, uzak PR dalına push) / `merge` / `wait` / `blocked` kararını gösterir; siz onaylayınca TEK adımı uygular.
-3. **Otomatik koşu:** Planı onaylarsanız sunucu arka planda her PR için güncelle → CI yeşil olana kadar bekle → `--match-head-commit` ile birleştir → sıradakine geç. **İlk sorunda durur** (çakışma, kırmızı CI, inceleme engeli, dışarıdan değişen dal ucu, zaman aşımı). GitArc kapanırsa koşu kendiliğinden devam etmez.
+3. **Otomatik koşu:** Planı onaylarsanız sunucu arka planda her PR için güncelle → CI yeşil olana kadar bekle → `--match-head-commit` ile birleştir → sıradakine geç. **İlk sorunda durur** (çakışma, kırmızı CI, inceleme engeli, dışarıdan değişen dal ucu, zaman aşımı). Koşu kendi projesine sabittir: sürerken arayüzde **başka projeye geçebilirsiniz**, koşu arka planda sürer (proje seçicide ⏳ ile işaretlenir). GitArc kapanırsa koşu kendiliğinden devam etmez.
 
 Kartlarda koşudaki PR'lar `🚦 Kuyrukta 2/5` / `⏳ İşleniyor · CI bekleniyor` etiketi taşır; işlenen PR'a sarı kesik bir "birleşecek" oku çizilir. CI bilinmiyorsa yeşil **varsayılmaz**; koruma atlatılmaz (`--admin` yok).
 

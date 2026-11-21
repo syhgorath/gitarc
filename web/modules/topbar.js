@@ -64,9 +64,10 @@ export function syncBadgeModel(repo) {
   return { text, isSynced, healthy, title, steps: sync.items, skewed: isSynced ? !healthy : true };
 }
 
-// Proje seçicideki etiket: onay bekleyen bir öneri kartı olan projenin önünde 📥 rozeti (o projede değilken de görünsün).
+// Proje seçicideki etiket: onay bekleyen öneri kartı olan projenin önünde 📥, arka planda kuyruk koşusu süren projenin önünde ⏳ rozeti.
 export function repoOptionLabel(r) {
-  return `${r?.pendingProposal ? '📥 ' : ''}${r?.name || ''}`;
+  // ⏳: bu projede arka planda bir kuyruk koşusu sürüyor (başka projedeyken de görünsün).
+  return `${r?.queueRunning ? '⏳ ' : ''}${r?.pendingProposal ? '📥 ' : ''}${r?.name || ''}`;
 }
 
 function renderRepoSelect(snap) {
