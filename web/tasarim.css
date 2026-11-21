@@ -1,3 +1,52 @@
+/* =============================================================================
+   BÖLÜM DİZİNİ (yaklaşık; başlık metnini arayın, satır numarası verilmez)
+   - Topbar — Kompakt PocketUI Estetiği
+   - Sürüm düğmesi başlığın altında, küçük bir rozet gibi durur
+   - Legend Bar
+   - KPI Strip — Kompakt İkinci Şerit
+   - Main Workspace - 100% Full Canvas
+   - Tuval üstü etiketler ve çipler
+   - Sağ Üst & Sağ Alt Kayan Rozetler
+   - Veri toplama adımları: en fazla 2 satır, taşarsa kaydırılır
+   - SVG Elements
+   - "Uzağa gidiyor" izi
+   - Branch Capsule Cards inside SVG <foreignObject>
+   - Compact Merged Arch Pill
+   - Right Inspector Pane
+   - PocketUI Bottom Dock & Split Studio
+   - Sol Kolon Dal & CI Kartları
+   - GitHub Actions CI Adımları İstifi
+   - Sol Kolon Hızlı Aksiyon Butonları
+   - Sağ Kolon Satır İçi Diff Satırları
+   - Full-width Hata & Uyarı Radarı Cards
+   - Logs and Actions Stream
+   - Detail Cards
+   - Modals & Overlays Hidden State
+   - Toasts
+   - Inspector Merge Strategy, Edit Forms, Lock Note & Suggested…
+   - Conflict Studio & MCP Modals
+   - INTERACTIVE COCKPIT TOUR (SPOTLIGHT HELPER)
+   - AUTHOR BADGES ON CANVAS & CAPSULES
+   - SVG Ray Labels
+   - Birleşmiş dalın "Değişen Dosyalar" kartı
+   - Demo kipi şeridi ve "proje yok" karşılama paneli
+   - Izgara satırı kaybolmasın diye display
+   - İlk açılışta GitHub verisi gelene kadar küçük ipucu
+   - Satır içi diff panelinin dosya sekmeleri
+   - Dal koruması penceresi
+   - Koruma / MCP pencereleri
+   - Öneri kartı
+   - Merge kuyruğu planı penceresi
+   - Merge düğümünün altındaki "main CI" rozeti
+   - Sürüyor = henüz bitmedi
+   - Kuyruk penceresi
+   - Kuyruk otomatik koşusu paneli (3b)
+   - Olay günlüğü
+   - Çalışan kuyruk koşusundaki PR'ın kart rozeti
+   - Çalışan koşuda işlenen PR'ın hedef çizgisi
+   - Hata Radarı: işlem hatası kartları (günlükteki hatalar)
+   ============================================================================= */
+
 :root {
   /* PocketUI / macOS & Vercel Estetiği — Kompakt Gece Teması (Varsayılan) */
   color-scheme: dark;
@@ -559,12 +608,6 @@ body {
 .kpi-pill.ok strong { color: var(--emerald); }
 .kpi-pill.purple strong { color: var(--purple); }
 
-.lens-tools {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .lens-tools input {
   height: 24px;
   padding: 2px 9px;
@@ -715,11 +758,11 @@ body {
 }
 
 .canvas-overlay-top {
+  top: 8px;
   right: auto;
   max-width: calc(100% - 28px - min(430px, 45%));
 }
 
-.canvas-overlay-top { top: 8px; }
 .canvas-overlay-bottom { bottom: 8px; }
 
 .ray-popover-anchor {
