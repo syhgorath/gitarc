@@ -4287,8 +4287,9 @@ body.no-project .loading-hint {
 /* Çalışan kuyruk koşusundaki PR'ın kart rozeti: kartın üst kenarında köşe etiketi (yerleşimi etkilemez; .fo-capsule taşmaya izin verir) */
 .cap-card { position: relative; }
 .cap-queue-tag { position: absolute; top: -10px; left: 10px; padding: 1px 8px; border-radius: 999px; font-family: var(--mono); font-size: 10px; font-weight: 700; white-space: nowrap; background: var(--surface); border: 1px solid var(--border); z-index: 2; pointer-events: auto; }
-.cap-queue-tag.waiting { color: var(--sky); border-color: var(--sky-border); background: var(--sky-weak); }
-.cap-queue-tag.current { color: var(--warn); border-color: var(--warn); border-style: dashed; background: var(--warn-weak); }
+/* Tonlar yarı saydam (…-weak): kartın üst kenarı etiketin içinden görünüp etiketi "kartın arkasında" gösteriyordu. Tonu OPAK zeminin üstüne bindiriyoruz. */
+.cap-queue-tag.waiting { color: var(--sky); border-color: var(--sky-border); background: linear-gradient(var(--sky-weak), var(--sky-weak)), var(--surface); }
+.cap-queue-tag.current { color: var(--warn); border-color: var(--warn); border-style: dashed; background: linear-gradient(var(--warn-weak), var(--warn-weak)), var(--surface); }
 @media (prefers-reduced-motion: no-preference) {
   .cap-queue-tag.current { animation: cap-queue-pulse 1.4s ease-in-out infinite; }
 }

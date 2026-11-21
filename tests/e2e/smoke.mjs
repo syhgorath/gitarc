@@ -141,6 +141,8 @@ try {
     await b.eval(`${card}.querySelector('[data-act="merge"]').click()`);
     await expect(`!!document.querySelector('.cap-queue-tag.current') && /İşleniyor|Kuyrukta/.test(document.querySelector('.cap-queue-tag.current').textContent)`, 'tekil otomatik merge (sunucu koşusu) kartında köşe etiketi yok', 15000);
     await expect(`!!document.querySelector('.svg-queue-target .svg-queue-target-path') && !!document.querySelector('.svg-queue-landing')`, 'tekil otomatik merge için "birleşecek" oku/hayalet düğüm yok');
+    // Köşe etiketinin zemini OPAK olmalı (yarı saydamsa kartın üst kenarı içinden görünür ve etiket "kartın arkasında" kalır).
+    await expect(`(()=>{ const t=document.querySelector('.cap-queue-tag'); if(!t) return false; const c=getComputedStyle(t).backgroundColor; const m=c.match(/rgba?\\(([^)]+)\\)/); if(!m) return false; const p=m[1].split(',').map((x)=>x.trim()); return p.length===3 || Number(p[3])===1; })()`, 'köşe etiketinin arka planı yarı saydam: kartın kenarı içinden görünür');
     // Kesik hedef çizgisi KARTIN ARKASINDA başlamamalı: ilk noktası etiketli kartın dikdörtgeninin dışında olmalı.
     await expect(`(()=>{ const p=document.querySelector('.svg-queue-target-path'); const fo=document.querySelector('.cap-queue-tag')?.closest('.fo-capsule'); if(!p||!fo) return false; const s=p.getPointAtLength(0); const x=+fo.getAttribute('x'), y=+fo.getAttribute('y'), w=+fo.getAttribute('width'), h=+fo.getAttribute('height'); return !(s.x>=x&&s.x<=x+w&&s.y>=y&&s.y<=y+h); })()`, 'sarı kesik hedef çizgisi kartın arkasında başlıyor (ilk noktası kartın içinde)');
     await b.eval(`${card}.querySelector('[data-act="merge"]').click()`); // ikinci tıklama = İptal
