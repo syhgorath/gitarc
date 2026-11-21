@@ -368,9 +368,32 @@ func (m *Manager) StartQueueRun(branchIDs []string, confirm string) (*model.Queu
 	return snapshot, nil
 }
 
+// pinnedFor: yalnızca BU projeye sabitlenmiş bir Yönetici kopyası. Kuyruk koşusu adımları (plan/uygula/güncelle/birleştir) "etkin proje"
+// üzerinden çalışır; kullanıcı arayüzde başka projeye geçince (sunucuda tek etkin proje var) koşu YANLIŞ projeye işlem yapmasın ya da
+// durmasın diye koşu kendi sabitlenmiş kopyasını kullanır. Günlük ana Yönetici'ye iletilir, koşu deposu (qrStore) paylaşılır.
+func (m *Manager) pinnedFor(live *repoEntry) *Manager {
+	store := m.qr()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	pm := &Manager{
+		activeRepoID: live.id,
+		liveRepos:    []repoEntry{*live},
+		teamMode:     m.teamMode,
+		parent:       m,
+		qrStore:      store,
+	}
+	pm.qrOnce.Do(func() {}) // paylaşılan depo hazır; yenisi oluşturulmasın
+	return pm
+}
+
 func (m *Manager) driveQueueRun(ctx context.Context, key string, live *repoEntry, isLive bool, run *model.QueueRun, act *activeQueueRun) {
 	s := m.qr()
 	defer close(act.done)
+	// Canlı koşu kendi projesine SABİTLENİR: başka projeye geçmek koşuyu durdurmaz ve işlem yanlış projeye gitmez.
+	step := m
+	if isLive {
+		step = m.pinnedFor(live)
+	}
 	update := func(f func(r *model.QueueRun)) {
 		s.mu.Lock()
 		f(run)
@@ -380,7 +403,7 @@ func (m *Manager) driveQueueRun(ctx context.Context, key string, live *repoEntry
 	}
 	remote := "origin"
 	if isLive {
-		if snap, err := m.Snapshot(); err == nil && snap.Repo.RemoteName != "" {
+		if snap, err := step.Snapshot(); err == nil && snap.Repo.RemoteName != "" {
 			remote = snap.Repo.RemoteName
 		}
 	}
@@ -395,9 +418,9 @@ func (m *Manager) driveQueueRun(ctx context.Context, key string, live *repoEntry
 				defer cancel()
 				_, _, _ = runCmd(fctx, live.path, "git", "fetch", remote) // taze uçlar; başarısızlık planda görünür
 			}
-			return m.QueueStepPlan(id)
+			return step.QueueStepPlan(id)
 		},
-		apply: func(id, fp string) error { _, err := m.QueueStepApply(id, fp); return err },
+		apply: func(id, fp string) error { _, err := step.QueueStepApply(id, fp); return err },
 		head: func(id string) string {
 			if !isLive {
 				return ""
@@ -408,11 +431,11 @@ func (m *Manager) driveQueueRun(ctx context.Context, key string, live *repoEntry
 			return sha
 		},
 		sameProject: func() bool {
-			cur, ok := m.activeLiveRepo()
 			if isLive {
-				return ok && sameRepoPath(cur.path, live.path)
+				return true // canlı koşu kendi projesine sabit: etkin projenin değişmesi onu etkilemez
 			}
-			return !ok && !m.NoProject()
+			_, onLive := m.activeLiveRepo() // demo koşusu: canlı bir projeye geçilirse durur
+			return !onLive && !m.NoProject()
 		},
 		now: time.Now,
 		sleep: func(c context.Context, d time.Duration) bool {
@@ -459,7 +482,7 @@ func (m *Manager) driveQueueRun(ctx context.Context, key string, live *repoEntry
 	s.mu.Lock()
 	finalMsg := run.Message
 	s.mu.Unlock()
-	m.recordLog(level, "Kuyruk Koşusu", "", finalMsg, "")
+	m.recordLogFor(runRepoID(live, isLive, m), level, "Kuyruk Koşusu", "", finalMsg, "") // koşunun KENDİ projesine yaz (etkin proje değişmiş olabilir)
 	if isLive {
 		InvalidateGHCache(live.path)
 	}
@@ -554,4 +577,12 @@ func (m *Manager) queueRunSignature(key, repoPath string, isLive bool) string {
 		return ""
 	}
 	return fmt.Sprintf("qr:%s:%d:%d:%d", run.Status, run.Merged, run.Current, len(run.Events))
+}
+
+// runRepoID: koşunun günlük kaydı için proje kimliği (demo koşusunda etkin kimlik).
+func runRepoID(live *repoEntry, isLive bool, m *Manager) string {
+	if isLive && live != nil {
+		return live.id
+	}
+	return m.ActiveRepoID()
 }

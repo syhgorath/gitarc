@@ -51,6 +51,8 @@ type RepoOption struct {
 	Behind        int    `json:"behind"`
 	// PendingProposal: bu projede onay bekleyen bir öneri kartı var (proje seçicide 📥 rozeti).
 	PendingProposal bool `json:"pendingProposal,omitempty"`
+	// QueueRunning: bu projede arka planda bir kuyruk koşusu SÜRÜYOR (proje seçicide ⏳ rozeti; başka projedeyken de görünür).
+	QueueRunning bool `json:"queueRunning,omitempty"`
 }
 
 // RepoMeta holds active repository metadata and spine sync status.

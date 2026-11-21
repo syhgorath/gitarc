@@ -9,6 +9,8 @@ test('a project with a pending proposal is marked with 📥 in the selector, oth
   assert.equal(repoOptionLabel({ id: 'a', name: 'GitArc (Canlı)', pendingProposal: true }), '📥 GitArc (Canlı)');
   assert.equal(repoOptionLabel({ id: 'b', name: 'sshpocket (Kayıtlı)' }), 'sshpocket (Kayıtlı)');
   assert.equal(repoOptionLabel({ id: 'b', name: 'x', pendingProposal: false }), 'x');
+  assert.equal(repoOptionLabel({ id: 'c', name: 'y', queueRunning: true }), '⏳ y', 'arka planda koşusu süren proje ⏳ ile işaretlenir');
+  assert.equal(repoOptionLabel({ id: 'c', name: 'y', queueRunning: true, pendingProposal: true }), '⏳ 📥 y');
   assert.equal(repoOptionLabel(undefined), '');
 });
 
