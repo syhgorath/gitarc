@@ -1,6 +1,7 @@
 package gitengine
 
 import (
+	"errors"
 	"context"
 	"fmt"
 	"os"
@@ -457,7 +458,11 @@ func (m *Manager) recordLog(level, action, branch, message, detail string) {
 
 func (m *Manager) logLiveOutcome(action, branch, okMsg string, snap model.CockpitSnapshot, err error) (model.CockpitSnapshot, error) {
 	if err != nil {
-		m.recordLog("error", action, branch, err.Error(), "")
+		level := "error"
+		if errors.Is(err, errMergePolicyBlocked) {
+			level = "info" // beklenen ön koşul (CI bitmedi): hata kartı çıkarma
+		}
+		m.recordLog(level, action, branch, err.Error(), "")
 		return snap, err
 	}
 	m.recordLog("ok", action, branch, okMsg, "")

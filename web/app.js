@@ -4,7 +4,7 @@ import { state, el, initElements, resetProjectScopedState } from './modules/stat
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
-import { protectionView, needsUpdateBeforeMerge, queueRunBadge } from './modules/syncsteps.js';
+import { protectionView, needsUpdateBeforeMerge, queueRunBadge, ciPendingForMerge } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
@@ -97,7 +97,7 @@ async function handleMergeBranch(branchId, btnEl = null) {
     openQueueModal(applySnapshot, { only: branchId, autoPlan: true });
     return;
   }
-  const isRunning = b?.pr?.ci?.state === 'RUNNING';
+  const isRunning = ciPendingForMerge(b, state.snapshot); // CI sürüyor ya da (zorunlu kontrol varken) henüz belirmedi
 
   if (isRunning) {
     // Çevrimiçi: sunucuda 1 PR'lık koşu (yenilemede kaybolmaz). Çevrimdışı yedek: bu sekmenin bekçisi (pendingAutoMerge).

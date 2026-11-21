@@ -46,6 +46,8 @@ type ghData struct {
 	protectionState   string
 	protectionSummary string
 	mainCI            *model.MainCIStatus
+	requiredChecks    []string // zorunlu CI kontrol adları (Ruleset + klasik); okunamazsa önceki değer korunur
+	rulesetStrict     bool     // Ruleset "dal güncel olmalı" (strict_required_status_checks_policy)
 }
 
 // repoBG, bir deponun arka plan veri toplama durumudur (tek uçuş / single-flight).
@@ -342,8 +344,10 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 		mainCI            *model.MainCIStatus
 		mainErr           error
 		dMain             time.Duration
+		reqChecks         []string
+		reqStrict, reqOK  bool
 	)
-	wg.Add(4)
+	wg.Add(5)
 	go func() {
 		defer wg.Done()
 		t0 := time.Now()
@@ -367,6 +371,10 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 		t0 := time.Now()
 		mainCI, mainErr = fetchMainCI(ctx, repoPath, defaultBranch)
 		dMain = time.Since(t0)
+	}()
+	go func() {
+		defer wg.Done()
+		reqChecks, reqStrict, reqOK = fetchRequiredChecks(ctx, repoPath, defaultBranch)
 	}()
 	wg.Wait()
 
@@ -411,6 +419,9 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 	}
 	st.data.protectionState, st.data.protectionSummary = protState, protSm
 	st.haveData = true
+	if reqOK { // okunamayan (gh hatası) sonuç önceki bilgiyi ezmez
+		st.data.requiredChecks, st.data.rulesetStrict = reqChecks, reqStrict
+	}
 	protStep := "ok"
 	if protState == "unknown" {
 		protStep = "unknown"
@@ -504,6 +515,72 @@ func (st *repoBG) doFetch(repoPath, remoteName string) {
 	st.fetchBusy = false
 	st.version++
 	close(st.fetchDone)
+}
+
+// fetchRequiredChecks: varsayılan dalda birleştirme için zorunlu CI kontrol adları. Kaynaklar (salt okunur, ikisi de denenir):
+//  1. `rules/branches/<dal>`: dala UYGULANAN Ruleset kuralları (okuma yetkisi olan herkes görür; GitHub Ruleset'li depolar);
+//  2. klasik dal koruması (`branches/<dal>/protection`; yalnızca yöneticiler okur, yoksa 404: sorun değil).
+//
+// ok=false yalnızca ikisi de okunamazsa; o zaman çağıran önceki bilgiyi korur ("okunamadı" ile "zorunlu kontrol yok" ayrı şeylerdir).
+func fetchRequiredChecks(ctx context.Context, repoPath, branch string) (checks []string, strict bool, ok bool) {
+	if _, err := exec.LookPath("gh"); err != nil || branch == "" {
+		return nil, false, false
+	}
+	seen := map[string]bool{}
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name != "" && !seen[name] {
+			seen[name] = true
+			checks = append(checks, name)
+		}
+	}
+	rCtx, cancel := context.WithTimeout(ctx, ghProtTimeout)
+	defer cancel()
+	if out, _, err := runCmd(rCtx, repoPath, "gh", "api", "repos/:owner/:repo/rules/branches/"+branch); err == nil {
+		ok = true
+		var rules []struct {
+			Type       string `json:"type"`
+			Parameters struct {
+				Required []struct {
+					Context string `json:"context"`
+				} `json:"required_status_checks"`
+				Strict bool `json:"strict_required_status_checks_policy"`
+			} `json:"parameters"`
+		}
+		if json.Unmarshal([]byte(out), &rules) == nil {
+			for _, r := range rules {
+				if r.Type != "required_status_checks" {
+					continue
+				}
+				for _, c := range r.Parameters.Required {
+					add(c.Context)
+				}
+				if r.Parameters.Strict {
+					strict = true
+				}
+			}
+		}
+	}
+	cCtx, cCancel := context.WithTimeout(ctx, ghProtTimeout)
+	defer cCancel()
+	if out, _, err := runCmd(cCtx, repoPath, "gh", "api", fmt.Sprintf("repos/:owner/:repo/branches/%s/protection", branch), "--jq", ".required_status_checks.contexts"); err == nil {
+		ok = true
+		var names []string
+		if json.Unmarshal([]byte(strings.TrimSpace(out)), &names) == nil {
+			for _, n := range names {
+				add(n)
+			}
+		}
+	}
+	return checks, strict, ok
+}
+
+// requiredChecksFor / rulesetStrictFor: son bilinen zorunlu kontroller (anlık görüntüye girer).
+func requiredChecksFor(repoPath string) ([]string, bool) {
+	st := bgFor(repoPath)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return append([]string(nil), st.data.requiredChecks...), st.data.rulesetStrict
 }
 
 // parseSymrefHead: `git ls-remote --symref <uzak> HEAD` çıktısından varsayılan dal adı ("ref: refs/heads/main\tHEAD" → "main").

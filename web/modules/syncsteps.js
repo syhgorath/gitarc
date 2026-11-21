@@ -147,6 +147,17 @@ export function needsUpdateBeforeMerge(b, snap) {
     && snap?.repo?.strictUpToDate && !(b.conflict && b.conflict.hasConflict));
 }
 
+// Birleştirme düğmesi "CI Bitince Merge Et" mi olmalı? PR'ın CI'ı sürüyorsa evet. CI HENÜZ YOKSA (GitHub zorunlu kontrolleri PR açıldıktan
+// birkaç saniye sonra oluşturur) ve depoda zorunlu CI kontrolü varsa da evet: düz "Merge" GitHub'ın reddine çarpar. Zorunlu kontrol yoksa
+// ya da okunamadıysa (requiredChecks boş) düz Merge kalır: CI'ı hiç olmayan bir depoda boşuna beklenmez. CI biliniyorsa (yeşil/kırmızı) hayır.
+export function ciPendingForMerge(b, snap) {
+  if (!b || b.state !== 'open' || !b.pr || !(b.pr.number > 0)) return false;
+  const st = b.pr.ci?.state;
+  if (st === 'RUNNING') return true;
+  if (st) return false;
+  return Array.isArray(snap?.repo?.requiredChecks) && snap.repo.requiredChecks.length > 0;
+}
+
 // BİRLEŞME NİYETİ rozeti (tek dil): bir PR'ın "birleşecek" olduğunu gösteren her durum aynı görünümü alır.
 //  - kuyruk koşusunda (sunucu): "🚦 Kuyrukta 3/5" ya da "⏳ İşleniyor · CI bekleniyor" (queueRunBadge),
 //  - tekil "CI Bitince Merge Et" (bu sekme, pendingAutoMerge): "⏳ CI bitince birleşecek".

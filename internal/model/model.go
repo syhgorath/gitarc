@@ -68,6 +68,9 @@ type RepoMeta struct {
 	// StrictUpToDate: korumada "dal güncel olmalı" AÇIK mı (gerideki PR birleşemez). Okunamıyorsa/bilinmiyorsa false: arayüz geride kalan
 	// PR'a "güncelle" önermez, GitHub reddederse açıklayıcı hata gösterir (kural uydurulmaz).
 	StrictUpToDate bool `json:"strictUpToDate,omitempty"`
+	// RequiredChecks: varsayılan dalda birleştirmek için GEÇMESİ ZORUNLU CI kontrol adları (Ruleset + klasik koruma; salt okunur). Boş = zorunlu kontrol yok
+	// ya da okunamadı. Bir PR'ın CI durumu henüz yokken (GitHub kontrolleri birkaç sn geç açar) düz "Merge" yerine "CI bitince" sunmak için kullanılır.
+	RequiredChecks []string `json:"requiredChecks,omitempty"`
 	// BaseCandidates: omurga olarak seçilebilecek yerel dallar (yalnızca canlı depoda dolu).
 	BaseCandidates []string `json:"baseCandidates,omitempty"`
 	RemoteName        string `json:"remoteName"`
