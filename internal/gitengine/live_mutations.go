@@ -51,7 +51,7 @@ func (m *Manager) findLiveBranch(live *repoEntry, branchID string) (model.Branch
 		}
 		return *fallback, snap, nil
 	}
-	return model.BranchArc{}, snap, fmt.Errorf("canlı depoda dal bulunamadı: %s", branchID)
+	return model.BranchArc{}, snap, fmt.Errorf("%w: '%s' (az önce birleştirilmiş/silinmiş ya da ekran eski kalmış olabilir; ekran yenilenir, hiçbir şey değiştirilmedi)", errBranchGone, branchID)
 }
 
 func (m *Manager) createBranchLive(live *repoEntry, name, hemisphere, fromSHA string) (model.CockpitSnapshot, error) {
@@ -651,6 +651,10 @@ func (m *Manager) GetDiffStat() (model.DiffStat, error) {
 	defer m.mu.Unlock()
 	return m.getDiffStatSimLocked(), nil
 }
+
+// errBranchGone: işlem sırasında dal artık depoda yok. Genelde çift tıklama/eski ekran sonucudur (ilk istek dalı zaten birleştirip sildi):
+// zararsızdır, günlükte hata değil bilgi olarak tutulur (Hata Radarı kartı çıkarmaz).
+var errBranchGone = errors.New("dal artık depoda yok")
 
 // errMergePolicyBlocked: koruma kuralı (bitmemiş zorunlu CI...) birleştirmeyi şimdilik engelledi. Hiçbir şey değişmedi ve çıkış yolu var
 // ("CI bitince merge et"): günlükte hata değil bilgi olarak tutulur, Hata Radarı'nda kart çıkarmaz.

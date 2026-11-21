@@ -147,6 +147,17 @@ export function needsUpdateBeforeMerge(b, snap) {
     && snap?.repo?.strictUpToDate && !(b.conflict && b.conflict.hasConflict));
 }
 
+// Proje değiştirirken uyarı: bu projede KUYRUK KOŞUSU sürüyorsa (RepoMeta.queueRun yalnızca çalışan koşuda vardır) başka projeye geçmek
+// koşuyu durdurur (sunucuda tek "etkin proje" var; koşu etkin proje değişince güvenlik için kesilir). İşlenen PR'lar birleşmiş olur,
+// kalanlar beklemede kalır: "yarım kalabilir". Koşu yoksa null (uyarı gösterilmez).
+export function projectSwitchWarning(snap) {
+  const q = snap?.repo?.queueRun;
+  if (!q) return null;
+  const total = q.total || (Array.isArray(q.items) ? q.items.length : 0);
+  const name = snap?.repo?.name || 'Bu proje';
+  return `${name}: ${q.merged || 0}/${total} PR'lık kuyruk koşusu sürüyor.\n\nBaşka projeye geçerseniz koşu DURUR ve yarım kalabilir (birleşenler birleşmiş kalır, kalanlar beklemede). Daha sonra projeye dönüp planı yeniden onaylayarak devam edebilirsiniz.\n\nYine de projeyi değiştirmek istiyor musunuz?`;
+}
+
 // Birleştirme düğmesi "CI Bitince Merge Et" mi olmalı? PR'ın CI'ı sürüyorsa evet. CI HENÜZ YOKSA (GitHub zorunlu kontrolleri PR açıldıktan
 // birkaç saniye sonra oluşturur) ve depoda zorunlu CI kontrolü varsa da evet: düz "Merge" GitHub'ın reddine çarpar. Zorunlu kontrol yoksa
 // ya da okunamadıysa (requiredChecks boş) düz Merge kalır: CI'ı hiç olmayan bir depoda boşuna beklenmez. CI biliniyorsa (yeşil/kırmızı) hayır.

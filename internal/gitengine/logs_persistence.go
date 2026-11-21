@@ -13,9 +13,31 @@ import (
 var logsFileMu sync.Mutex
 
 const (
-	maxStoredLogs  = 200 // tüm projelerin toplam kayıt sınırı
-	maxVisibleLogs = 50  // bir projenin görünümünde en fazla
+	maxStoredLogs        = 1000 // tüm projelerin toplam kayıt sınırı
+	maxStoredLogsPerRepo = 200  // BİR projenin saklanan kayıt sınırı: çok işlem yapan proje ötekilerin geçmişini dışarı itmesin
+	maxVisibleLogs       = 50   // bir projenin görünümünde en fazla
 )
+
+// trimLogs: yeniden eskiye sıralı günlüğü proje başına ve toplam sınıra göre keser (sırayı korur).
+func trimLogs(logs []model.ActionLogEntry) []model.ActionLogEntry {
+	perRepo := map[string]int{}
+	out := make([]model.ActionLogEntry, 0, len(logs))
+	for _, e := range logs {
+		if perRepo[e.RepoID] >= maxStoredLogsPerRepo {
+			continue
+		}
+		perRepo[e.RepoID]++
+		out = append(out, e)
+		if len(out) >= maxStoredLogs {
+			break
+		}
+	}
+	return out
+}
+
+// legacySyntheticRepoIDs: eski sürümlerde -repo/ortam/klasör ile açılan projeye verilen GEÇİCİ kimlikler. Aynı kimlik farklı zamanlarda
+// farklı projelere denk geldiği için kayıtların hangi projeye ait olduğu belirsizdir: bu kayıtlar "projesi bilinmiyor" (boş) sayılır.
+var legacySyntheticRepoIDs = map[string]bool{"live-custom": true, "live-env": true, "live-cwd": true}
 
 // maxLogSeq: kayıtlı günlük kimliklerinden ("log-N") en büyük N; yeni kimlikler bundan sonra başlar.
 func maxLogSeq(logs []model.ActionLogEntry) int {
@@ -54,10 +76,12 @@ func loadSavedLogs() []model.ActionLogEntry {
 	if err := json.Unmarshal(data, &logs); err != nil {
 		return nil
 	}
-	if len(logs) > maxStoredLogs {
-		logs = logs[:maxStoredLogs]
+	for i := range logs {
+		if legacySyntheticRepoIDs[logs[i].RepoID] {
+			logs[i].RepoID = ""
+		}
 	}
-	return logs
+	return trimLogs(logs)
 }
 
 func persistSavedLogs(logs []model.ActionLogEntry) error {
@@ -68,10 +92,7 @@ func persistSavedLogs(logs []model.ActionLogEntry) error {
 	if err != nil {
 		return err
 	}
-	toSave := logs
-	if len(toSave) > maxStoredLogs {
-		toSave = toSave[:maxStoredLogs]
-	}
+	toSave := trimLogs(logs)
 	data, err := json.MarshalIndent(toSave, "", "  ")
 	if err != nil {
 		return err

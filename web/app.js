@@ -4,7 +4,7 @@ import { state, el, initElements, resetProjectScopedState } from './modules/stat
 import { esc, truncate, showToast, runWithBtnBusy, snapshotSignature, suggestUniqueBranchName } from './modules/utils.js';
 import { apiCall } from './modules/api.js';
 import { initTheme } from './modules/theme.js';
-import { protectionView, needsUpdateBeforeMerge, queueRunBadge, ciPendingForMerge } from './modules/syncsteps.js';
+import { protectionView, needsUpdateBeforeMerge, queueRunBadge, ciPendingForMerge, projectSwitchWarning } from './modules/syncsteps.js';
 import { setupBottomDock, renderRadar, renderLogBadge, recordClientLog } from './modules/dock.js';
 import { renderSVG } from './modules/scene.js';
 import { setupCanvasInteractions } from './modules/interactions.js';
@@ -470,6 +470,13 @@ async function bootstrap() {
   el.repoSelect?.addEventListener('change', async () => {
     const targetRepoId = el.repoSelect.value;
     if (!targetRepoId || targetRepoId === state.snapshot?.repo?.id) return;
+
+    // Süren kuyruk koşusu proje değişince durur: önce sor, vazgeçilirse seçimi geri al.
+    const warn = projectSwitchWarning(state.snapshot);
+    if (warn && !window.confirm(warn)) {
+      if (el.repoSelect && state.snapshot?.repo?.id) el.repoSelect.value = state.snapshot.repo.id;
+      return;
+    }
 
     showToast('⏳ Proje yükleniyor...', 'info');
     try {
