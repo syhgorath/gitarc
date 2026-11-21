@@ -139,11 +139,20 @@ function appendText(parent, tag, text, cls) {
   return n;
 }
 
+/** Açık PR listesi sınıra dayandıysa kuyruk penceresinde uyarı metni (yoksa ""): fazlası burada görünmeyebilir, sessizce eksik kalmasın. */
+export function openPRsTruncationNote(snap) {
+  return snap?.repo?.openPRsTruncated
+    ? 'Not: GitHub\'dan yalnızca ilk 20 açık PR okunuyor; daha fazla açık PR varsa burada görünmeyebilir. Birleşenler kuyruktan kalkınca kalanlar listelenir.'
+    : '';
+}
+
 function renderCandidates() {
   const box = el.queueCandidates;
   if (!box) return;
   box.textContent = '';
   const byId = Object.fromEntries(queueCandidates(state.snapshot).map((b) => [b.id, b]));
+  const truncNote = openPRsTruncationNote(state.snapshot);
+  if (truncNote) appendText(box, 'div', truncNote, 'prot-note');
   if (!view.order.length) {
     appendText(box, 'div', 'Kuyruğa girecek açık PR yok.', 'prot-note');
     return;

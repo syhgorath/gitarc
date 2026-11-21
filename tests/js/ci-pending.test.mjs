@@ -55,3 +55,11 @@ test('projectSwitchWarning: koşu yoksa null; koşu sürüyorsa ilerlemeyi ve "y
   assert.match(w, /DURUR ve yarım kalabilir/);
   assert.match(w, /Yine de projeyi değiştirmek istiyor musunuz\?/);
 });
+
+import { openPRsTruncationNote } from '../../web/modules/queue.js';
+
+test('openPRsTruncationNote: liste sınıra dayandıysa söyler, yoksa boş', () => {
+  assert.equal(openPRsTruncationNote(null), '');
+  assert.equal(openPRsTruncationNote({ repo: {} }), '');
+  assert.match(openPRsTruncationNote({ repo: { openPRsTruncated: true } }), /yalnızca ilk 20 açık PR/);
+});
