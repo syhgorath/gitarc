@@ -168,10 +168,10 @@ Arayüzdeki `🔌 MCP` düğmesi yapılandırmayı (çalışan GitArc ikilisinin
 | `gitarc_conflict_plan` | Bir daldaki çakışmayı salt okunur inceler: dosyalar, çakışma metni, stratejiler, riskler (salt okunur) |
 | `gitarc_resolve_conflict` | İzole worktree içinde doğrulamalı çakışma çözümü; yerel dalı günceller ve dalı uzağa **push eder**. **Varsayılan KAPALI**: yalnızca sunucu `GITARC_MCP_ALLOW_RESOLVE=1` ile başlatılırsa çalışır ve plandan alınan `fingerprint` ister |
 | `gitarc_propose_commit` | Commit & PR öneri kartı (arayüzde onay bekler, doğrudan commit etmez) |
-| `gitarc_cleanup_candidates` | Temizlenebilir birleşmiş/silinmiş dallar ve kanıtları (silmez) |
+| `gitarc_cleanup_candidates` | Temizlenebilir birleşmiş/silinmiş dallar ve kanıtları (silmez). Arayüzdeki 🧹 ile aynı kural: uzun ömürlü dallar (develop, release/*) ve yalnızca PR geçmişinde kalan (ne yerelde ne uzakta olan) adlar aday sayılmaz |
 | `gitarc_scan_secrets` | API anahtarı, özel anahtar, `.env` ve kişisel yol taraması |
-| `gitarc_audit_log` | Kokpit ve MCP işlem kayıtları |
-| `gitarc_protection_status` | Varsayılan dalın koruma durumu ve zorunlu yapılabilecek CI kontrolleri (salt okunur) |
+| `gitarc_audit_log` | Kokpit ve MCP işlem kayıtları; her kayıt `repoId` + `repoName` taşır, varsayılan yalnızca seçili proje (`repoId="all"` ile tümü; projesi bilinmeyen eski kayıtlar yalnızca `all` ile "bilinmiyor" görünür) |
+| `gitarc_protection_status` | Varsayılan dalın koruma durumu ve zorunlu yapılabilecek CI kontrolleri (salt okunur). Ruleset'le korunan depoda dala uygulanan kurallar (zorunlu CI, PR/onay, force-push, silme) salt okunur gösterilir (`source: ruleset`); okunamazsa `current: null` ve `reason` ("korumasız" DEĞİL) |
 | `gitarc_protection_plan` | Bir koruma profilinin ne değiştireceği (salt okunur; yalnızca güçlendirir) |
 | `gitarc_protection_apply` | Planı uygular. **Varsayılan KAPALI**: yalnızca sunucu `GITARC_MCP_ALLOW_PROTECTION=1` ile başlatılırsa çalışır ve plandan alınan `fingerprint` ister |
 

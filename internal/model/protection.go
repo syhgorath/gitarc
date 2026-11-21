@@ -28,7 +28,9 @@ type ProtectionPlan struct {
 	Profile string `json:"profile"` // "temel" | "ci" | "siki"
 	// State: "none" (korumasız) | "active" (klasik koruma var) | "ruleset" (Ruleset ile korunuyor, GitArc dokunmaz)
 	//        | "unknown" (okunamadı / yetki yok) | "unsupported" (planda dal koruması yok)
-	State           string             `json:"state"`
+	State string `json:"state"`
+	// Source: Current'ın nereden okunduğu: "classic" (klasik dal koruması) | "ruleset" (dala uygulanan GitHub Ruleset kuralları, SALT OKUNUR) | "".
+	Source          string             `json:"source,omitempty"`
 	Applicable      bool               `json:"applicable"`
 	Current         ProtectionSettings `json:"current"`
 	Target          ProtectionSettings `json:"target"`

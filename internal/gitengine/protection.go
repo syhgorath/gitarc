@@ -227,8 +227,9 @@ func buildPlan(branch, profile string, selected []string, cur model.ProtectionSe
 // ---- Canlı (GitHub) ----
 
 type ghProtectionRead struct {
-	settings model.ProtectionSettings
-	raw      map[string]json.RawMessage
+	settings    model.ProtectionSettings
+	raw         map[string]json.RawMessage
+	fromRuleset bool // settings, Ruleset kurallarından (salt okunur) okundu
 }
 
 func ghAPIBranchPath(branch string) string {
@@ -257,14 +258,63 @@ func readLiveProtection(ctx context.Context, repoPath, branch string) (ghProtect
 		return res, "unsupported"
 	case strings.Contains(low, "branch not protected"):
 		if hasActiveRuleset(ctx, repoPath) {
+			res.settings, res.fromRuleset = readRulesetSettings(ctx, repoPath, branch)
 			return res, "ruleset"
 		}
 		return res, "none"
 	}
 	if hasActiveRuleset(ctx, repoPath) {
+		res.settings, res.fromRuleset = readRulesetSettings(ctx, repoPath, branch)
 		return res, "ruleset"
 	}
 	return res, "unknown"
+}
+
+// readRulesetSettings: dala UYGULANAN GitHub Ruleset kurallarını (`rules/branches/<dal>`; okuma yetkisi yeter) ProtectionSettings'e çevirir.
+// SALT OKUNUR: GitArc Ruleset'i değiştirmez. ok=false: kurallar okunamadı (çağıran "yok" değil "okunamadı" der).
+// Yöneticiler için geçerlilik (enforceAdmins) bu uçtan bilinmez (bypass listesi ayrı); false bırakılır.
+func readRulesetSettings(ctx context.Context, repoPath, branch string) (model.ProtectionSettings, bool) {
+	var s model.ProtectionSettings
+	out, _, err := runCmd(ctx, repoPath, "gh", "api", "repos/:owner/:repo/rules/branches/"+branch)
+	if err != nil {
+		return s, false
+	}
+	var rules []struct {
+		Type       string `json:"type"`
+		Parameters struct {
+			Required []struct {
+				Context string `json:"context"`
+			} `json:"required_status_checks"`
+			Strict       bool `json:"strict_required_status_checks_policy"`
+			Approvals    int  `json:"required_approving_review_count"`
+			DismissStale bool `json:"dismiss_stale_reviews_on_push"`
+		} `json:"parameters"`
+	}
+	if json.Unmarshal([]byte(out), &rules) != nil {
+		return s, false
+	}
+	for _, r := range rules {
+		switch r.Type {
+		case "pull_request":
+			s.RequirePR = true
+			if r.Parameters.Approvals > s.Approvals {
+				s.Approvals = r.Parameters.Approvals
+			}
+			s.DismissStale = s.DismissStale || r.Parameters.DismissStale
+		case "required_status_checks":
+			for _, c := range r.Parameters.Required {
+				if c.Context != "" {
+					s.Checks = append(s.Checks, c.Context)
+				}
+			}
+			s.StrictUpToDate = s.StrictUpToDate || r.Parameters.Strict
+		case "non_fast_forward":
+			s.BlockForcePush = true
+		case "deletion":
+			s.BlockDeletion = true
+		}
+	}
+	return s, true
 }
 
 func hasActiveRuleset(ctx context.Context, repoPath string) bool {
@@ -443,6 +493,14 @@ func (m *Manager) livePlan(ctx context.Context, live *repoEntry, profile string,
 	}
 	read, state := readLiveProtection(ctx, live.path, branch)
 	plan, err := buildPlan(branch, profile, checks, read.settings, state, fetchAvailableChecks(ctx, live.path, branch))
+	switch {
+	case state == "active":
+		plan.Source = "classic"
+	case state == "ruleset" && read.fromRuleset:
+		plan.Source = "ruleset"
+	case state == "ruleset":
+		plan.Notes = append(plan.Notes, "Ruleset kuralları okunamadı (ayrıntı gösterilemiyor); bu \"kural yok\" demek değildir.")
+	}
 	return plan, read.raw, err
 }
 
