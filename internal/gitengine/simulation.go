@@ -224,66 +224,6 @@ func NewManager(extraRepoPath string) *Manager {
 	return m
 }
 
-func isGitDir(p string) bool {
-	if p == "" {
-		return false
-	}
-	return gitDirOf(p) != ""
-}
-
-// executablePath: çalışan ikilinin sembolik bağları çözülmüş mutlak yolu; bulunamazsa "".
-func executablePath() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	if r, err := filepath.EvalSymlinks(exe); err == nil {
-		return r
-	}
-	return exe
-}
-
-// gitDirOrDefault: gitDirOf, depo değilse (henüz oluşmamış yol) eski `<p>/.git` varsayımı.
-func gitDirOrDefault(p string) string {
-	if d := gitDirOf(p); d != "" {
-		return d
-	}
-	return filepath.Join(p, ".git")
-}
-
-// gitDirOf: klasörün gerçek git dizini. Normal depoda `<p>/.git`; `git worktree` ve submodule'de `.git` bir DOSYADIR
-// ("gitdir: <yol>") ve gerçek dizin (HEAD/index burada, worktree başına ayrı) oradan okunur. Depo değilse "".
-func gitDirOf(p string) string {
-	dot := filepath.Join(p, ".git")
-	st, err := os.Stat(dot)
-	if err != nil {
-		return ""
-	}
-	if st.IsDir() {
-		return dot
-	}
-	data, err := os.ReadFile(dot)
-	if err != nil {
-		return ""
-	}
-	line := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
-	rest, ok := strings.CutPrefix(line, "gitdir:")
-	if !ok {
-		return ""
-	}
-	target := strings.TrimSpace(rest)
-	if target == "" {
-		return ""
-	}
-	if !filepath.IsAbs(target) {
-		target = filepath.Join(p, target)
-	}
-	if st, err := os.Stat(target); err != nil || !st.IsDir() {
-		return ""
-	}
-	return filepath.Clean(target)
-}
-
 func (m *Manager) repoOptionsLocked() []model.RepoOption {
 	openCount := 0
 	for _, b := range m.simRepo.branches {

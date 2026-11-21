@@ -24,6 +24,7 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 - **Sürüm rozeti başlığı yukarı itiyordu:** `topbar.js` düğmenin `className`'ini yeniden yazdığı için `.brand-ver` sınıf kuralı hiç uygulanmıyordu (rozet 28 px, başlık çubuğun kenarına yapışıyordu); kural konuma (`.brand-sub-row > button`) bağlandı.
 
 ### Değişenler
+- **İç düzen (davranış aynı):** `isGitDir`, `gitDirOf`, `gitDirOrDefault`, `executablePath` yardımcıları `simulation.go`'dan `gitroot.go`'ya taşındı (git dizini/depo kökü ile ilgili her şey tek dosyada).
 - **Üst çubuk kompakt:** Başlık `GitArc` (Arc yeşil, "SVG" kaldırıldı); sürüm rozeti başlığın altına taşındı; `Proje Ekle`, `Birleşmiş Paraboller`, `Tur` kısaltıldı: 1280 px'te sığar.
 - **MCP penceresi artık gerçek yapılandırmayı üretir:** `command` açık projenin klasörü yerine çalışan GitArc ikilisinin yolu (`RepoMeta.execPath`) olur (eskiden başka bir proje açıkken var olmayan `<proje>/gitarc` yazılıyordu); uzağa yazan 5 aracın her biri için onay kutusu var, işaretlenenler yapılandırmaya `env` olarak girer (varsayılan hepsi kapalı).
 - **Alt çekmece kompakt:** Başlık satırı 36→30 px, sütun başlıkları 24→20 px ve kısa adlı (`Dal & CI/CD`, `Radar & Log`, `Diff`); kopyala/temizle düğmeleri simge; yedek rozet ve boşluklar kısaldı; çekmece `clamp(170px, 27vh, 300px)` olup içerik alanı ~%25 büyüdü. Gövde yüksekliği `calc(100% - 32px)` ile başlık (36 px) arasındaki 4 px uyuşmazlık giderildi; Radar kartındaki ✕ artık başlıkla aynı satırda.
