@@ -59,6 +59,11 @@ func TestBranchDiffUsesTheRealDefaultBranch(t *testing.T) {
 	write("only-on-develop.txt", "d\n")
 	run("push", "-u", "origin", "develop")
 	run("remote", "set-head", "origin", "develop")
+	// Uzağın (GitHub'ın) varsayılanı da develop olsun: GitArc artık uzağın gerçek HEAD'ini (ls-remote) yerel kayda tercih eder.
+	bare, _ := runGitOut(dir, "remote", "get-url", "origin")
+	if out, err := runGitOut(dir, "--git-dir="+strings.TrimSpace(bare), "symbolic-ref", "HEAD", "refs/heads/develop"); err != nil {
+		t.Fatalf("uzak HEAD develop yapılamadı: %v %s", err, out)
+	}
 	run("checkout", "-b", "feat/x")
 	write("feat-x.txt", "x\n")
 	run("push", "-u", "origin", "feat/x")
