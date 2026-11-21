@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none">
+  <style>
+    .base-line { stroke: #1f2328; }
+    @media (prefers-color-scheme: dark) {
+      .base-line { stroke: #f0f6fc; }
+    }
+  </style>
+  <path d="M3 17c4 0 5-10 9-10s5 10 9 10" stroke="#3fb950" stroke-width="2.4" stroke-linecap="round" />
+  <path d="M9 17c3 0 4 4 8 4" stroke="#a371f7" stroke-width="2.2" stroke-linecap="round" />
+  <path class="base-line" d="M3 17h18" stroke-width="2.4" stroke-linecap="round" />
+</svg>
