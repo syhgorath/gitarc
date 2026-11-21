@@ -496,6 +496,50 @@ func (m *Manager) recentLogs() []model.ActionLogEntry {
 	return m.recentLogsLocked()
 }
 
+// AuditLogs: denetim günlüğü (MCP). repoID: "" = etkin proje, "all" = tüm projeler, aksi halde o proje. Her kayıt proje kimliği VE adıyla
+// döner. repoID'si olmayan eski kayıtlar ("bilinmiyor": hangi projeye ait olduğu bilinmez) varsayılanda (yalnızca etkin proje) ve belirli bir
+// projede GİZLENİR ve sayısı döner; yalnızca "all" ile görünür (RepoID "bilinmiyor" yazılır). limit<=0: 25.
+func (m *Manager) AuditLogs(repoID string, limit int) (logs []model.ActionLogEntry, scopeID string, hiddenUnknown int) {
+	if limit <= 0 {
+		limit = 25
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	names := map[string]string{}
+	for _, o := range m.repoOptionsLocked() {
+		names[o.ID] = o.Name
+	}
+	scopeID = strings.TrimSpace(repoID)
+	if scopeID == "" {
+		scopeID = m.activeRepoID
+	}
+	out := []model.ActionLogEntry{}
+	for _, e := range m.logs {
+		if e.RepoID == "" {
+			if scopeID == "all" && len(out) < limit {
+				e.RepoID, e.RepoName = "bilinmiyor", "bilinmiyor"
+				out = append(out, e)
+			} else if scopeID != "all" {
+				hiddenUnknown++
+			}
+			continue
+		}
+		if scopeID != "all" && e.RepoID != scopeID {
+			continue
+		}
+		if len(out) >= limit {
+			continue
+		}
+		if n, ok := names[e.RepoID]; ok {
+			e.RepoName = n
+		} else {
+			e.RepoName = e.RepoID // proje artık listede değil: kimliği göster
+		}
+		out = append(out, e)
+	}
+	return out, scopeID, hiddenUnknown
+}
+
 // ClearLogs empties the in-memory cockpit operation/error log buffer and clears the persistent file.
 func (m *Manager) ClearLogs() (model.CockpitSnapshot, error) {
 	m.mu.Lock()

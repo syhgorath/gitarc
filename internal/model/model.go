@@ -324,6 +324,8 @@ type ActionLogEntry struct {
 	// RepoID: kaydın oluştuğu proje. Günlük proje başına gösterilir (bir projenin hatası ötekinin günlüğünde görünmesin);
 	// boş (eski kayıtlar) her projede görünür, böylece hiçbir şey kaybolmaz.
 	RepoID string `json:"repoId,omitempty"`
+	// RepoName: yalnızca denetim günlüğü (MCP gitarc_audit_log) okunurken doldurulur; saklanmaz.
+	RepoName string `json:"repoName,omitempty"`
 }
 
 // SyncStep, bir veri toplama adımının (git fetch, gh PR listesi, koruma sorgusu) son durumudur.
