@@ -247,6 +247,8 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	mergedPRs := map[string]model.PRStatus{}
 	protectionState := "unknown"
 	protectionSummary := "Yerel depo (koruma yok)"
+	var reqChecks []string
+	var rulesetStrict bool
 	if remoteName != "" {
 		// Madde 6: Uzak dal listesini git fetch --prune ile güncel tut. Fetch arka planda çalışır;
 		// büyük depolarda snapshot'ı bloklamaz, durumu SyncSteps'te görünür.
@@ -256,6 +258,7 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 		ghPRs, mergedPRs, ghMergedArches, protectionState, protectionSummary = fetchGHMetadataCached(ctx, repoPath, remoteName, defaultBranch, nodes, shaToIdx, mergedArches)
 		mergedArches = append(mergedArches, ghMergedArches...)
 		enrichMergedArches(mergedArches, mergedPRs)
+		reqChecks, rulesetStrict = requiredChecksFor(repoPath)
 	}
 	branches, localHits := collectLocalBranches(ctx, repoPath, defaultBranch, baseRef, baseTipSHA, curBranchName, currentUser, nodes, shaToIdx, dirtyCount, dirtyFiles, ghPRs, mergedPRs, mergedArches)
 	remoteBranches, remoteHits := collectRemoteOnlyBranches(ctx, repoPath, remoteName, defaultBranch, baseRef, baseTipSHA, nodes, shaToIdx, branches, ghPRs, mergedPRs, mergedArches)
@@ -309,7 +312,8 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			VersionTag:        versionTag,
 			CurrentUser:       currentUser,
 			BranchProtected:   protectionState == "active",
-			StrictUpToDate:    protectionIsStrict(protectionSummary),
+			StrictUpToDate:    protectionIsStrict(protectionSummary) || rulesetStrict,
+			RequiredChecks:    reqChecks,
 			ProtectionState:   protectionState,
 			ProtectionSummary: protectionSummary,
 			MainCI:            mainCIFor(repoPath),

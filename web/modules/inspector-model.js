@@ -3,7 +3,7 @@
 // Hangi kartın/butonun/metnin gösterileceği buradaki fonksiyonlardan gelir; HTML basımı inspector-cards.js ve
 // studio.js'te, olay bağlama inspector.js / studio.js / proposal.js'te yapılır.
 import { truncate, isMergedOrGone, suggestUniqueBranchName, prHeadline } from './utils.js';
-import { needsUpdateBeforeMerge, queueRunBadge } from './syncsteps.js';
+import { needsUpdateBeforeMerge, queueRunBadge, ciPendingForMerge } from './syncsteps.js';
 
 // ---------------------------------------------------------------------------
 // CI kontrolleri: iki panelde (stüdyo ve inspector) tek sınıflandırma
@@ -59,7 +59,9 @@ export function branchViewModel(b, snap, st = {}) {
   const isRemoteOnly = !b.hasLocal && b.hasRemote && isOpen;
   const isLive = snap.repo.mode === 'live';
   const ciState = b.pr?.ci?.state || '';
+  // "CI Bitince Merge Et" gerekir mi: CI sürüyor ya da (zorunlu kontrol varken) henüz hiç belirmedi. Rozet/yeşil-kırmızı metinleri ciState'e bakar.
   const isRunning = ciState === 'RUNNING';
+  const mergeWaitsForCI = ciPendingForMerge(b, snap);
   const isQueued = Boolean(st.pendingAutoMerge?.[b.id] || queueRunBadge(snap, b));
   const needsUpdate = needsUpdateBeforeMerge(b, snap);
   const canCommitWorkingTree = Boolean(isVirtualWip || (b.uncommittedCount || 0) > 0 || (b.isHead && (snap?.repo?.dirtyCount || 0) > 0));
@@ -75,7 +77,7 @@ export function branchViewModel(b, snap, st = {}) {
   const { upperSummary, lowerSummary } = layerSummaries(b, snap, { isVirtualWip, isRemoteOnly });
 
   return {
-    b, snap, isOpen, isVirtualWip, hasConflict, isRemoteOnly, isLive, ciState, isRunning, isQueued, needsUpdate,
+    b, snap, isOpen, isVirtualWip, hasConflict, isRemoteOnly, isLive, ciState, isRunning, mergeWaitsForCI, isQueued, needsUpdate,
     canCommitWorkingTree, isAlreadySynced, canPromote, hasOpenPR, canMerge, authorName, isMe,
     upperSummary, lowerSummary,
     title: isVirtualWip ? '✏️ Çalışma Alanı (Taslak)' : b.name,
