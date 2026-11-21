@@ -314,6 +314,7 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			BranchProtected:   protectionState == "active",
 			StrictUpToDate:    protectionIsStrict(protectionSummary) || rulesetStrict,
 			RequiredChecks:    reqChecks,
+			OpenPRsTruncated:  openPRsTruncatedFor(repoPath),
 			ProtectionState:   protectionState,
 			ProtectionSummary: protectionSummary,
 			MainCI:            mainCIFor(repoPath),

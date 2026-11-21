@@ -67,9 +67,14 @@ func TestBrowserSmoke(t *testing.T) {
 	gitRun(t, repo, "branch", "-D", "feat/x")
 	liveURL := serveApp(t, gitengine.NewManager(repo))
 
+	// 4) Taze depo: hiç commit'i/dalı olmayan `git init` (çökmemeli, "proje yok"a da düşmemeli).
+	fresh := t.TempDir()
+	gitRun(t, fresh, "init", "-q", "-b", "main")
+	freshURL := serveApp(t, gitengine.NewManager(fresh))
+
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, node, filepath.Join(old, "tests", "e2e", "smoke.mjs"), noneURL, simURL, liveURL)
+	cmd := exec.CommandContext(ctx, node, filepath.Join(old, "tests", "e2e", "smoke.mjs"), noneURL, simURL, liveURL, freshURL)
 	cmd.Dir = old
 	out, err := cmd.CombinedOutput()
 	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 77 {

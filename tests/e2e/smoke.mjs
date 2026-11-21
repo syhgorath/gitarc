@@ -3,8 +3,8 @@
 // tıklama yakalar. Kullanım: node tests/e2e/smoke.mjs <proje-yok-url> <demo-url> <canlı-url>. Çıkış: 0 geçti, 1 kaldı, 77 atlandı.
 import { launch } from './cdp.mjs';
 
-const [noneUrl, simUrl, liveUrl] = process.argv.slice(2);
-if (!noneUrl || !simUrl || !liveUrl) { console.error('kullanım: smoke.mjs <none> <sim> <live>'); process.exit(2); }
+const [noneUrl, simUrl, liveUrl, freshUrl] = process.argv.slice(2); // freshUrl isteğe bağlı: hiç commit'i/dalı olmayan taze depo
+if (!noneUrl || !simUrl || !liveUrl) { console.error('kullanım: smoke.mjs <none> <sim> <live> [fresh]'); process.exit(2); }
 
 const t00 = Date.now();
 const b = await launch();
@@ -261,6 +261,17 @@ try {
     await click('#diff-modal-close');
   });
   await step('konsolda hata yok', async () => noConsoleErrors());
+  if (freshUrl) {
+    console.log('Taze depo (hiç commit/dal yok):');
+    await b.goto(freshUrl);
+    await step('taze depo çökmeden açılır: canlı depo, proje-yok paneli yok, kapsül yok, konsolda hata yok', async () => {
+      await expect(`!document.body.classList.contains('no-project')`, 'taze depo "proje yok" sayıldı');
+      await expect(`!!document.querySelector('#rail-svg') && document.querySelectorAll('#rail-svg .fo-capsule').length === 0`, 'taze depoda tuval çizilmedi ya da olmayan kapsül var');
+      await expect(`document.getElementById('kpi-pills').children.length > 0`, 'KPI şeridi boş: arayüz yüklenmedi');
+      await expect(hidden('#demo-banner'), 'taze depoda demo şeridi görünmemeli');
+      noConsoleErrors();
+    });
+  }
 } finally {
   b.close();
 }

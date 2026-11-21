@@ -38,6 +38,10 @@ var (
 )
 
 // ghData, GitHub'dan alınan son başarılı sonuçlardır (bayat gösterim için saklanır).
+// openPRListLimit: tek seferde okunan açık PR sayısı (büyük depolarda yavaşlamasın). Sınıra dayanırsa kullanıcıya SÖYLENİR (RepoMeta.OpenPRsTruncated);
+// aksi halde fazlası sessizce görünmez olurdu.
+const openPRListLimit = 20
+
 type ghData struct {
 	openPRs           map[string]model.PRStatus
 	mergedPRs         map[string]model.PRStatus
@@ -46,6 +50,7 @@ type ghData struct {
 	protectionState   string
 	protectionSummary string
 	mainCI            *model.MainCIStatus
+	openPRsTruncated  bool     // açık PR listesi sınıra dayandı
 	requiredChecks    []string // zorunlu CI kontrol adları (Ruleset + klasik); okunamazsa önceki değer korunur
 	rulesetStrict     bool     // Ruleset "dal güncel olmalı" (strict_required_status_checks_policy)
 }
@@ -405,6 +410,7 @@ func (st *repoBG) refreshGH(repoPath, defaultBranch string, nodes []model.Commit
 
 	if apply("prs", prErr, dPR, len(prs)) {
 		st.data.openPRs = prs
+		st.data.openPRsTruncated = len(prs) >= openPRListLimit
 		st.haveData = true
 	}
 	if apply("merged", mErr, dMerged, len(merged)) {
@@ -575,6 +581,14 @@ func fetchRequiredChecks(ctx context.Context, repoPath, branch string) (checks [
 	return checks, strict, ok
 }
 
+// openPRsTruncatedFor: açık PR listesi sınıra dayandı mı (son başarılı okuma).
+func openPRsTruncatedFor(repoPath string) bool {
+	st := bgFor(repoPath)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.data.openPRsTruncated
+}
+
 // requiredChecksFor / rulesetStrictFor: son bilinen zorunlu kontroller (anlık görüntüye girer).
 func requiredChecksFor(repoPath string) ([]string, bool) {
 	st := bgFor(repoPath)
@@ -674,7 +688,7 @@ func fetchGHPRs(ctx context.Context, repoPath string) (map[string]model.PRStatus
 	}
 	ghCtx, cancel := context.WithTimeout(ctx, ghPRTimeout)
 	defer cancel()
-	out, _, err := runCmd(ghCtx, repoPath, "gh", "pr", "list", "--state", "open", "--limit", "20",
+	out, _, err := runCmd(ghCtx, repoPath, "gh", "pr", "list", "--state", "open", "--limit", strconv.Itoa(openPRListLimit),
 		"--json", "number,headRefName,title,body,author,reviewDecision,statusCheckRollup,url")
 	if err != nil {
 		return res, fmt.Errorf("gh pr list: %s", shortErr(out, err))
