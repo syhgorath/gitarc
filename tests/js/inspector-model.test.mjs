@@ -115,19 +115,28 @@ test('commitScope maps the first changed file to a Conventional Commit type and 
   assert.deepEqual(commitScope(undefined), { prefix: 'feat', scope: '' });
 });
 
-test('workingTreeDefaults: the virtual working tree derives branch, message and PR body from the files', () => {
+test('workingTreeDefaults: the virtual working tree derives branch, message and PR body from the files (only REAL info, no invented claims)', () => {
   const files = ['web/app.js', 'web/modules/x.js', 'README.md'];
   const d = workingTreeDefaults(open('local-wip-working-tree', { name: 'wip/working-tree' }), files, { branches: [] }, true);
   assert.match(d.defaultWtBranch, /^feat\//);
   assert.equal(d.branchPlaceholder, 'Örn: ' + d.defaultWtBranch);
-  assert.equal(d.defaultCommitMsg, 'feat(ui): 3 dosya (app.js, x.js...) güncellemeleri ve iyileştirmeler');
+  assert.equal(d.defaultCommitMsg, 'feat(ui): 3 dosya güncellendi (app.js, x.js, …)');
   assert.equal(d.defaultPrTitle, d.defaultCommitMsg);
-  assert.match(d.defaultPrBody, /^## Neler Değişti\?\n- `web\/app\.js` üzerinde geliştirmeler\n- /);
-  assert.match(d.defaultPrBody, /## Doğrulama/);
+  assert.equal(d.defaultPrBody, '## Neler Değişti?\n- `web/app.js`\n- `web/modules/x.js`\n- `README.md`');
+  // uydurma iddialar YOK: test/doğrulama yapılmadan "tamamlandı" yazılmaz
+  assert.doesNotMatch(d.defaultPrBody, /Doğrulama|tamamlandı|geliştirmeler/);
   const one = workingTreeDefaults(open('w', { name: 'wip/working-tree' }), ['a.go'], { branches: [] }, true);
-  assert.match(one.defaultCommitMsg, /1 dosya \(a\.go\)/);
+  assert.match(one.defaultCommitMsg, /1 dosya güncellendi \(a\.go\)/);
   const none = workingTreeDefaults(open('w', { name: 'wip/working-tree' }), [], { branches: [] }, true);
-  assert.equal(none.defaultCommitMsg, 'feat: yeni özellik geliştirmeleri');
+  assert.equal(none.defaultCommitMsg, 'feat: değişiklikleri kaydet');
+});
+
+test('workingTreeDefaults: the server\'s suggestion (from the change\'s own CHANGELOG additions/commits) wins over any client guess', () => {
+  const b = open('local-wip-working-tree', { name: 'wip/working-tree', lastCommitMsg: 'docs: gerçek özet', draftPrTitle: 'docs: gerçek özet', draftPrBody: '## Neler Değişti?\n- gerçek madde' });
+  const d = workingTreeDefaults(b, ['README.md'], { branches: [] }, true);
+  assert.equal(d.defaultCommitMsg, 'docs: gerçek özet');
+  assert.equal(d.defaultPrTitle, 'docs: gerçek özet');
+  assert.equal(d.defaultPrBody, '## Neler Değişti?\n- gerçek madde');
 });
 
 test('workingTreeDefaults: a real branch keeps its own name; auto-generated "update N files" messages are dropped', () => {

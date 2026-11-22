@@ -137,17 +137,19 @@ export function workingTreeDefaults(b, candidateFiles, snap, isVirtualWip) {
     defaultWtBranch = suggestUniqueBranchName('feat', candidateFiles, snap);
     branchPlaceholder = 'Örn: ' + defaultWtBranch;
 
-    const { prefix, scope } = commitScope(candidateFiles[0]);
-
-    const count = candidateFiles.length;
-    const countLabel = count === 1 ? '1 dosya' : `${count} dosya`;
-    const fileSummary = candidateFiles.slice(0, 2).map((x) => x.split('/').pop()).join(', ');
-    const moreSuffix = count > 2 ? '...' : '';
-    const desc = count > 0 ? `${countLabel} (${fileSummary}${moreSuffix}) güncellemeleri ve iyileştirmeler` : 'yeni özellik geliştirmeleri';
-
-    defaultCommitMsg = `${prefix}${scope}: ${desc}`;
-    defaultPrTitle = defaultCommitMsg;
-    defaultPrBody = `## Neler Değişti?\n- ${candidateFiles.slice(0, 8).map((f) => `\`${f}\` üzerinde geliştirmeler`).join('\n- ')}\n\n## Doğrulama\n- Yerel testler ve kontroller tamamlandı.`;
+    // Sunucu, değişikliğin KENDİ bilgisinden (kaydedilmemiş CHANGELOG eklemesi, dosyalar) bir öneri verir: o öncelikli. Yalnızca sunucu bir şey
+    // vermediyse dosya listesinden GERÇEK bilgi türetilir. Eskiden burada uydurma metin vardı ("üzerinde geliştirmeler", ve doğrulanmamış bir
+    // "## Doğrulama - Yerel testler ve kontroller tamamlandı." iddiası): hiçbir şey çalıştırılmadan test geçmiş gibi yazılıyordu.
+    if (!defaultCommitMsg || !defaultPrTitle || !defaultPrBody) {
+      const { prefix, scope } = commitScope(candidateFiles[0]);
+      const count = candidateFiles.length;
+      const fileSummary = candidateFiles.slice(0, 2).map((x) => x.split('/').pop()).join(', ');
+      const desc = count > 0 ? `${count === 1 ? '1 dosya' : `${count} dosya`} güncellendi (${fileSummary}${count > 2 ? ', …' : ''})` : 'değişiklikleri kaydet';
+      const fallbackMsg = `${prefix}${scope}: ${desc}`;
+      if (!defaultCommitMsg) defaultCommitMsg = fallbackMsg;
+      if (!defaultPrTitle) defaultPrTitle = defaultCommitMsg;
+      if (!defaultPrBody) defaultPrBody = `## Neler Değişti?\n${candidateFiles.slice(0, 8).map((f) => `- \`${f}\``).join('\n')}`;
+    }
   }
   return { defaultWtBranch, branchPlaceholder, defaultCommitMsg, defaultPrTitle, defaultPrBody };
 }
