@@ -96,6 +96,7 @@ var noProjectAllowed = map[string]bool{
 	"/api/repo/remove":            true,
 	"/api/system/choose-folder":   true,
 	"/api/system/update-check":    true,
+	"/api/system/update-apply":    true,
 	"/api/system/git-status-ping": true,
 	"/api/logs/clear":             true,
 }
@@ -235,6 +236,7 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/sync-spine", a.guard(a.handleSyncSpine))
 	mux.HandleFunc("/api/logs/clear", a.guard(a.handleClearLogs))
 	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
+	mux.HandleFunc("/api/system/update-apply", a.guard(a.handleUpdateApply))
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/repo/protection/plan", a.guard(a.handleProtectionPlan))
 	mux.HandleFunc("/api/queue/plan", a.guard(a.handleQueuePlan))
@@ -706,6 +708,23 @@ func (a *App) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// handleUpdateApply: GitArc'ı İMZALI yeni sürüme günceller (indir → SSHSIG doğrula → ikiliyi değiştir). Yeniden başlatma kullanıcıdadır.
+// POST {version: "X.Y.Z"}. Takım modunda kapalı. Koruma: guard (Host, oturum çerezi, X-Requested-With, Origin) + sürüm biçimi + imza.
+func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Version string `json:"version"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	res, err := a.mgr.ApplyUpdate(strings.TrimSpace(req.Version))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 func (a *App) handleProtectBranch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Profile string   `json:"profile"`
@@ -967,6 +986,16 @@ func openBrowser(url string) {
 }
 
 func main() {
+	// Alt komutlar bayrak çözümlemesinden ÖNCE: `gitarc version` (kendini güncelleme sürümü bununla doğrular) ve `gitarc update`.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "-version", "--version":
+			fmt.Println(versionLine())
+			return
+		case "update":
+			os.Exit(runUpdateCLI(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, nil))
+		}
+	}
 	addr := flag.String("addr", "127.0.0.1:7432", "dinlenecek yerel adres (örn. 127.0.0.1:7432 veya 127.0.0.1:0)")
 	repoPath := flag.String("repo", ".", "doğrudan açılacak yerel git deposu yolu")
 	demoMode := flag.Bool("demo", false, "örnek GitArc playground deposuyla başlat")

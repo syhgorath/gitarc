@@ -2,7 +2,6 @@ package gitengine
 
 import (
 	"errors"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"gitarc/internal/model"
+	"gitarc/internal/selfupdate"
 )
 
 var (
@@ -61,6 +61,8 @@ type Manager struct {
 	// parent: bu Yönetici, çalışan bir kuyruk koşusunun SABİTLENMİŞ (tek projeli) kopyasıdır (bkz. pinnedFor); günlük kayıtları ana
 	// Yöneticiye, kendi proje kimliğiyle iletilir. Ana Yönetici'de nil.
 	parent *Manager
+	// updaterFactory: kendini güncelleme motoru (nil = gerçek GitHub); yalnızca testler değiştirir.
+	updaterFactory func() *selfupdate.Updater
 }
 
 // ActiveRepoID: sunucuda şu an etkin olan projenin kimliği ("" = proje yok). İstemciler değiştirici isteklerde kendi
@@ -1569,41 +1571,44 @@ func buildSandboxSimulation() simWorkspace {
 }
 
 // CheckForUpdates inspects remote git tags to detect whether a newer GitArc release exists.
-// selfRepoURL: GitArc'ın KENDİ deposu. Sürüm kontrolü AÇIK PROJENİN değil buranın etiketlerine bakar (eskiden açık projenin `origin`'ine
-// bakıyordu: başka bir proje açıkken hiç etiketi yoktu ve GitArc güncellenmiş olsa bile "güncel" deniyordu). Test için değiştirilebilir.
-var selfRepoURL = "https://github.com/syhgorath/gitarc.git"
+// SetUpdater: kendini güncelleme motorunu değiştirir (testler ve gömülü kullanım; nil = gerçek GitHub'a bağlı varsayılan).
+func (m *Manager) SetUpdater(f func() *selfupdate.Updater) {
+	m.mu.Lock()
+	m.updaterFactory = f
+	m.mu.Unlock()
+}
 
-// CheckForUpdates: GitArc'ın kendi etiketlerinden en yenisini okur (yalnızca kullanıcı "Yeni sürüm var mı?" dediğinde çağrılır; ağ gerekir).
-// Okunamazsa (ağ yok, zaman aşımı) `checkError` doluşur ve "güncel" DENMEZ: arayüz "denetlenemedi" gösterir.
+// newUpdater: GitArc'ın kendini güncelleme motoru (internal/selfupdate). Sürüm denetimi AÇIK PROJENİN değil GitArc'ın KENDİ deposunun
+// release'lerine bakar. `GITARC_SELF_REPO` ("sahip/depo") çatallar ve testler için geçersiz kılar. Testte `updaterFactory` ile değiştirilir.
+func (m *Manager) newUpdater() *selfupdate.Updater {
+	if m.updaterFactory != nil {
+		return m.updaterFactory()
+	}
+	u := &selfupdate.Updater{
+		Repo:    strings.TrimSpace(os.Getenv("GITARC_SELF_REPO")),
+		Version: AppVersion,
+	}
+	if os.Getenv("GITARC_UPDATE_OFFLINE") == "1" { // testler/CI: ağa hiç çıkma (denetim "okunamadı" döner)
+		u.Head = func(string) (int, string) { return 0, "" }
+		u.Download = func(string, string, int64) error { return fmt.Errorf("çevrimdışı (GITARC_UPDATE_OFFLINE)") }
+	}
+	return u
+}
+
+// CheckForUpdates: yalnızca kullanıcı "Yeni sürüm var mı?" dediğinde çağrılır (ağ gerekir). Okunamazsa `checkError` dolar ve "güncel" DENMEZ.
+// installable: bu platform için İMZALI dosya var ve imzacı tanımlı; değilse note nedeni söyler (arayüz "Güncelle" düğmesini göstermez).
 func (m *Manager) CheckForUpdates() (map[string]any, error) {
-	latest := AppVersion
 	updateCmd := "git pull --ff-only origin main && go build -o gitarc ."
+	res, err := m.newUpdater().Check()
+	latest := res.Latest
+	if latest == "" {
+		latest = AppVersion
+	}
 	checkError := ""
-
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	url := selfRepoURL
-	if v := strings.TrimSpace(os.Getenv("GITARC_SELF_REPO")); v != "" {
-		url = v // çatal (fork) kullanan ya da testler için geçersiz kılma
-	}
-	out, _, err := runCmd(ctx, os.TempDir(), "git", "ls-remote", "--tags", "--sort=-v:refname", url)
 	if err != nil {
-		checkError = "GitArc'ın sürüm listesi okunamadı: " + shortErr(out, err)
-	} else {
-		for _, line := range strings.Split(out, "\n") {
-			fields := strings.Fields(line)
-			if len(fields) < 2 {
-				continue
-			}
-			ref := strings.TrimSuffix(fields[1], "^{}")
-			if strings.HasPrefix(ref, "refs/tags/v") {
-				latest = strings.TrimPrefix(ref, "refs/tags/v")
-				break
-			}
-		}
+		checkError = "GitArc'ın sürüm bilgisi okunamadı: " + err.Error()
 	}
-
-	avail := checkError == "" && compareSemver(latest, AppVersion) > 0
+	avail := checkError == "" && res.Available
 	m.mu.Lock()
 	m.latestVer = latest
 	m.updateAvail = avail
@@ -1612,19 +1617,49 @@ func (m *Manager) CheckForUpdates() (map[string]any, error) {
 	} else {
 		m.recordLogLocked("ok", "Sürüm Kontrolü", "", fmt.Sprintf("Mevcut v%s · Uzak v%s (Güncelleme: %v)", AppVersion, latest, avail), "")
 	}
+	teamMode := m.teamMode
 	m.mu.Unlock()
 
-	res := map[string]any{
+	out := map[string]any{
 		"currentVersion":  AppVersion,
 		"latestVersion":   latest,
 		"updateAvailable": avail,
 		"updateCommand":   updateCmd,
-		"teamMode":        m.IsTeamMode(),
+		"teamMode":        teamMode,
+		"installable":     avail && res.Installable && !teamMode,
+	}
+	if res.Asset != "" {
+		out["asset"] = res.Asset
+	}
+	note := res.Note
+	if teamMode && avail {
+		note = "takım sunucusu modunda (-team) otomatik güncelleme kapalı: sunucuyu kendiniz güncelleyin"
+	}
+	if note != "" {
+		out["note"] = note
 	}
 	if checkError != "" {
-		res["checkError"] = checkError
+		out["checkError"] = checkError
 	}
-	return res, nil
+	return out, nil
+}
+
+// ApplyUpdate: `version` sürümünü indirir, İMZASINI doğrular ve çalışan ikiliyi değiştirir (yeniden başlatma kullanıcıdadır).
+// Takım sunucusu modunda ve demo/çevrimdışı durumda kapalıdır. Başarı ve hata kullanıcı günlüğüne yazılır.
+func (m *Manager) ApplyUpdate(version string) (map[string]any, error) {
+	if m.IsTeamMode() {
+		return nil, fmt.Errorf("takım sunucusu modunda (-team) otomatik güncelleme kapalı")
+	}
+	u := m.newUpdater()
+	var steps []string
+	u.Log = func(s string) { steps = append(steps, s) }
+	res, err := u.Apply(version)
+	if err != nil {
+		m.recordLog("error", "Kendini Güncelleme", "", err.Error(), strings.Join(steps, "\n"))
+		return nil, err
+	}
+	m.recordLog("ok", "Kendini Güncelleme", "", fmt.Sprintf("v%s → v%s kuruldu (imza doğrulandı); yeniden başlatın. Yedek: %s", res.From, res.To, res.Backup), "")
+	return map[string]any{"from": res.From, "to": res.To, "backup": res.Backup, "restartRequired": true, "steps": steps}, nil
 }
 
 func compareSemver(a, b string) int {

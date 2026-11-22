@@ -194,6 +194,7 @@ try {
     await expect(`document.getElementById('sec-update-status').textContent.includes('Henüz denetlenmedi')`, 'denetim yapılmadan "güncel" yazıyor');
     await click('#btn-run-update-check');
     await expect(`document.getElementById('sec-update-status').textContent.includes('Denetlenemedi')`, 'ulaşılamayan sürüm kaynağı "denetlenemedi" demedi');
+    await expect(hidden('#btn-apply-update'), 'denetlenemediyse "Güncelle" düğmesi GÖRÜNMEMELİ');
     await click('#sec-close');
     await expect(hidden('#security-update-modal'), 'pencere kapanmadı');
   });

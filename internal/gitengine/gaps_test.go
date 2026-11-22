@@ -1,11 +1,14 @@
 package gitengine
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gitarc/internal/selfupdate"
 )
 
 func switchLive(t *testing.T, dir string) *Manager {
@@ -110,65 +113,133 @@ func TestCompareSemver(t *testing.T) {
 	}
 }
 
-// Sürüm kontrolü GitArc'ın KENDİ deposunun etiketlerine bakar; açık projenin etiketlerine DEĞİL (eskiden açık projenin origin'ine bakıyordu).
-func TestCheckForUpdatesReadsGitArcsOwnTagsNotTheOpenProjects(t *testing.T) {
-	// GitArc'ın "kendi deposu" (test için yerel bare): v99.0.0 ve v1.2.0
-	selfDir, selfRun := newTempRepo(t)
-	selfBare := t.TempDir()
-	if out, err := exec.Command("git", "init", "--bare", "-b", "main", selfBare).CombinedOutput(); err != nil {
-		t.Fatalf("%v %s", err, out)
+// fakeUpdater: ağa çıkmadan GitHub release'lerini taklit eder.
+func fakeUpdater(latestLoc string, assets map[string][]byte, signers []selfupdate.Signer) func() *selfupdate.Updater {
+	return func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			Version: AppVersion, GOOS: "linux", GOARCH: "amd64", Signers: signers,
+			Head: func(u string) (int, string) {
+				if strings.HasSuffix(u, "/releases/latest") {
+					return 302, latestLoc
+				}
+				if _, ok := assets[u]; ok {
+					return 200, ""
+				}
+				return 404, ""
+			},
+			Download: func(u, dest string, max int64) error {
+				b, ok := assets[u]
+				if !ok {
+					return fmt.Errorf("HTTP 404")
+				}
+				return os.WriteFile(dest, b, 0o600)
+			},
+			RunVersion: func(string) (string, error) { return "gitarc 99.0.0", nil },
+		}
 	}
-	selfRun("remote", "add", "origin", selfBare)
-	selfRun("push", "-u", "origin", "main")
-	selfRun("tag", "v99.0.0")
-	selfRun("tag", "v1.2.0")
-	selfRun("push", "origin", "--tags")
-	_ = selfDir
-	old := selfRepoURL
-	selfRepoURL = selfBare
-	defer func() { selfRepoURL = old }()
+}
 
-	// Açık proje: etiketi OLMAYAN başka bir depo. Eskiden bu yüzden "güncel" denirdi.
-	dir, _ := newTempRepo(t)
+// Sürüm kontrolü GitArc'ın KENDİ release'lerine bakar; açık projenin etiketlerine DEĞİL.
+func TestCheckForUpdatesReadsGitArcsOwnReleasesNotTheOpenProjects(t *testing.T) {
+	signers := selfupdate.ParseAllowedSigners(readFileT(t, "../selfupdate/testdata/signers"))
+	base := "https://github.com/syhgorath/gitarc/releases/download/v99.0.0/gitarc-99.0.0-linux-amd64"
+	assets := map[string][]byte{base: []byte("x"), base + ".sig": []byte("y")}
+
+	dir, _ := newTempRepo(t) // açık proje: etiketi/release'i olmayan başka bir depo
 	mgr := switchLive(t, dir)
+	mgr.SetUpdater(fakeUpdater("https://github.com/syhgorath/gitarc/releases/tag/v99.0.0", assets, signers))
 	res, err := mgr.CheckForUpdates()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res["latestVersion"] != "99.0.0" || res["updateAvailable"] != true {
-		t.Fatalf("GitArc'ın kendi etiketlerinden 99.0.0 beklenirdi (açık projenin etiketi yok): %+v", res)
-	}
-	if res["currentVersion"] != AppVersion {
-		t.Fatalf("currentVersion mismatch: %+v", res)
+	if res["latestVersion"] != "99.0.0" || res["updateAvailable"] != true || res["installable"] != true || res["asset"] != "gitarc-99.0.0-linux-amd64" {
+		t.Fatalf("yeni sürüm kurulabilir olmalı: %+v", res)
 	}
 	if _, bad := res["checkError"]; bad {
 		t.Fatalf("okundu: checkError olmamalı: %+v", res)
 	}
-
-	// Etiketsiz kendi deposu → güncelleme yok.
-	emptyBare := t.TempDir()
-	if out, err := exec.Command("git", "init", "--bare", "-b", "main", emptyBare).CombinedOutput(); err != nil {
-		t.Fatalf("%v %s", err, out)
+	// imzacı yok → güncelleme VAR ama kurulamaz (düğme gösterilmez), neden yazılır
+	mgr.SetUpdater(fakeUpdater("https://github.com/syhgorath/gitarc/releases/tag/v99.0.0", assets, []selfupdate.Signer{}))
+	res, _ = mgr.CheckForUpdates()
+	if res["updateAvailable"] != true || res["installable"] != false || res["note"] == nil {
+		t.Fatalf("imzacı yoksa kurulamaz ve neden yazılmalı: %+v", res)
 	}
-	selfRepoURL = emptyBare
+	// takım sunucusu modu → kurulamaz
+	mgr.SetUpdater(fakeUpdater("https://github.com/syhgorath/gitarc/releases/tag/v99.0.0", assets, signers))
+	mgr.SetTeamMode(true)
+	res, _ = mgr.CheckForUpdates()
+	if res["installable"] != false || !strings.Contains(fmt.Sprint(res["note"]), "takım") {
+		t.Fatalf("takım modunda otomatik güncelleme kapalı olmalı: %+v", res)
+	}
+	mgr.SetTeamMode(false)
+	// release yok / aynı sürüm → güncelleme yok
+	mgr.SetUpdater(fakeUpdater("https://github.com/syhgorath/gitarc/releases/tag/v"+AppVersion, assets, signers))
 	res, _ = mgr.CheckForUpdates()
 	if res["updateAvailable"] != false {
-		t.Fatalf("etiket yok: güncelleme bildirilmemeli: %+v", res)
+		t.Fatalf("aynı sürümde güncelleme olmamalı: %+v", res)
 	}
 }
 
 // Sürüm listesi okunamazsa (ağ yok) "güncel" DENMEZ: checkError döner ve updateAvailable false kalır; arayüz "denetlenemedi" yazar.
 func TestCheckForUpdatesUnreachableIsReportedNotGreen(t *testing.T) {
-	old := selfRepoURL
-	selfRepoURL = filepath.Join(t.TempDir(), "yok-boyle-bir-depo.git")
-	defer func() { selfRepoURL = old }()
-	res, err := NewManager("").CheckForUpdates()
+	mgr := NewManager("")
+	mgr.SetUpdater(func() *selfupdate.Updater {
+		return &selfupdate.Updater{Version: AppVersion, Head: func(string) (int, string) { return 0, "" }}
+	})
+	res, err := mgr.CheckForUpdates()
 	if err != nil {
 		t.Fatal(err)
 	}
 	msg, _ := res["checkError"].(string)
-	if msg == "" || res["updateAvailable"] != false {
-		t.Fatalf("okunamadı: checkError dolu ve updateAvailable=false beklenirdi: %+v", res)
+	if msg == "" || res["updateAvailable"] != false || res["installable"] != false {
+		t.Fatalf("okunamadı: checkError dolu, güncelleme/kurulabilir false beklenirdi: %+v", res)
+	}
+}
+
+func readFileT(t *testing.T, p string) string {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// ApplyUpdate: takım modunda kapalı; imza/sürüm hataları kullanıcı günlüğüne error olarak yazılır ve çalışan ikili değişmez.
+func TestApplyUpdateIsBlockedInTeamModeAndLogsFailures(t *testing.T) {
+	mgr := NewManager("")
+	mgr.SetTeamMode(true)
+	if _, err := mgr.ApplyUpdate("99.0.0"); err == nil || !strings.Contains(err.Error(), "takım") {
+		t.Fatalf("takım modunda kapalı olmalı: %v", err)
+	}
+	mgr.SetTeamMode(false)
+	signers := selfupdate.ParseAllowedSigners(readFileT(t, "../selfupdate/testdata/signers"))
+	// indirilen içerik imzayla UYUŞMUYOR → reddedilir
+	base := "https://github.com/syhgorath/gitarc/releases/download/v99.0.0/gitarc-99.0.0-linux-amd64"
+	assets := map[string][]byte{base: []byte("sahte"), base + ".sig": []byte(readFileT(t, "../selfupdate/testdata/fake-binary.sig"))}
+	exe := filepath.Join(t.TempDir(), "gitarc")
+	if err := os.WriteFile(exe, []byte("ESKI"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mgr.SetUpdater(func() *selfupdate.Updater {
+		u := fakeUpdater("https://github.com/syhgorath/gitarc/releases/tag/v99.0.0", assets, signers)()
+		u.ExePath = exe
+		return u
+	})
+	if _, err := mgr.ApplyUpdate("99.0.0"); err == nil || !strings.Contains(err.Error(), "İMZA") {
+		t.Fatalf("imza uyuşmuyorsa reddedilmeli: %v", err)
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "ESKI" {
+		t.Fatal("reddedilen güncellemede ikili değişmemeli")
+	}
+	var logged bool
+	for _, l := range mgr.recentLogs() {
+		if l.Action == "Kendini Güncelleme" && l.Level == "error" {
+			logged = true
+		}
+	}
+	if !logged {
+		t.Fatal("başarısız güncelleme günlüğe error olarak yazılmalı")
 	}
 }
 

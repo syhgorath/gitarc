@@ -12,7 +12,7 @@ import { renderRayPopovers } from './modules/rails.js';
 import { pollDecision } from './modules/polling.js';
 import { detectPushes, playPushTraces } from './modules/trace.js';
 import { renderKPIs } from './modules/kpi.js';
-import { renderTopbar, updateStatusText } from './modules/topbar.js';
+import { renderTopbar, updateStatusText, updateActionModel } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
 import { openConflictStudio, closeConflictStudio, applyConflictStudio } from './modules/conflict-studio.js';
 import {
@@ -474,10 +474,37 @@ async function bootstrap() {
       }
       if (el.secUpdateStatus) el.secUpdateStatus.textContent = updateStatusText(state.snapshot?.repo, res);
       showToast(res.checkError ? 'Sürüm denetlenemedi' : (res.updateAvailable ? `⬆ Yeni sürüm: v${res.latestVersion}` : '✓ GitArc güncel'), res.checkError ? 'danger' : 'ok');
+      renderUpdateAction(res);
     } catch (err) {
       showToast(`Sürüm denetlenemedi: ${err.message}`, 'danger');
     }
   }));
+  // "Güncelle": GitArc'ı İMZALI yeni sürüme günceller (sunucuda: indir → imza doğrula → ikiliyi değiştir). Önce açık onay; sonra yeniden başlatma kullanıcıda.
+  function renderUpdateAction(res) {
+    const m = updateActionModel(res);
+    if (el.btnApplyUpdate) {
+      el.btnApplyUpdate.hidden = !m.showApply;
+      el.btnApplyUpdate.textContent = m.label || '⬇️ Güncelle';
+      el.btnApplyUpdate.dataset.version = m.version;
+    }
+    if (el.secUpdateNote) { el.secUpdateNote.hidden = !m.note; el.secUpdateNote.textContent = m.note; }
+  }
+  el.btnApplyUpdate?.addEventListener('click', async () => {
+    const version = el.btnApplyUpdate.dataset.version;
+    if (!version) return;
+    if (!window.confirm(`GitArc v${version} sürümüne güncellenecek.\n\nYeni ikili GitHub'dan indirilir, imzası doğrulanır (doğrulanamazsa HİÇBİR ŞEY kurulmaz) ve çalışan ikili değiştirilir; eskisi yedeklenir.\nSonra GitArc'ı yeniden başlatmanız gerekir.\n\nDevam edilsin mi?`)) return;
+    await runWithBtnBusy(el.btnApplyUpdate, '⏳ Güncelleniyor...', async () => {
+      try {
+        const r = await apiCall('/api/system/update-apply', 'POST', { version });
+        if (el.secUpdateStatus) el.secUpdateStatus.textContent = `✅ v${r.from} → v${r.to} kuruldu (imza doğrulandı). GitArc'ı YENİDEN BAŞLATIN: bu sayfa hâlâ eski sürümü çalıştırıyor.`;
+        el.btnApplyUpdate.hidden = true;
+        showToast(`✅ v${r.to} kuruldu: GitArc'ı yeniden başlatın`, 'ok');
+      } catch (err) {
+        showToast(`Güncelleme başarısız: ${err.message}`, 'danger');
+        if (el.secUpdateNote) { el.secUpdateNote.hidden = false; el.secUpdateNote.textContent = `Güncelleme başarısız (çalışan sürüm değişmedi): ${err.message}`; }
+      }
+    });
+  });
   el.secCopyUpdateCmd?.addEventListener('click', async () => {
     const cmd = el.secUpdateCmd?.textContent || '';
     try { await navigator.clipboard.writeText(cmd); showToast('Güncelleme komutu kopyalandı', 'ok'); } catch { showToast('Kopyalanamadı: komutu elle seçin', 'danger'); }
