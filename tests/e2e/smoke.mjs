@@ -272,6 +272,22 @@ try {
     await click('#studio-close');
     await expect(hidden('#conflict-studio-modal'), 'stüdyo kapanmadı');
   });
+  await step('Toplu Yayınla: aday dallar listelenir, plan hesaplanır, tek tıkla yayınlanır, sonuç adım adım gösterilir', async () => {
+    await click('#btn-publish');
+    await expect(visible('#publish-modal'), 'Toplu Yayınla penceresi açılmadı');
+    await expect(`document.querySelectorAll('#publish-body .publish-row').length >= 2 && !!document.querySelector('#publish-body .publish-go') && !document.querySelector('#publish-body .publish-go').disabled`, 'aday dallar ya da etkin "Yayınla" düğmesi yok');
+    // bir dalı çıkarınca plan yeniden hesaplanır (düğme metni dal sayısını söyler)
+    await expect(`document.querySelector('#publish-body .publish-go').textContent.includes('2 dal pushlanır')`, 'düğme metni 2 dalı söylemiyor');
+    await b.eval(`document.querySelector('#publish-body .publish-row input[type=checkbox]').click()`);
+    await expect(`document.querySelector('#publish-body .publish-go')?.textContent.includes('1 dal pushlanır')`, 'dal çıkarılınca plan yenilenmedi');
+    await b.eval(`document.querySelector('#publish-body .publish-row input[type=checkbox]').click()`);
+    await expect(`document.querySelector('#publish-body .publish-go')?.textContent.includes('2 dal pushlanır')`, 'dal geri eklenince plan yenilenmedi');
+    await click('#publish-body .publish-go');
+    await expect(`!!document.querySelector('#publish-body .publish-result.ok') && document.querySelectorAll('#publish-body .publish-result .layer-line').length >= 2`, 'yayın sonucu (adım adım) görünmedi');
+    await expect(`document.querySelector('#publish-body .publish-result').textContent.includes('Yayınlandı')`, 'sonuç "Yayınlandı" demiyor');
+    await click('#publish-close');
+    await expect(hidden('#publish-modal'), 'Toplu Yayınla penceresi kapanmadı');
+  });
   await step('konsolda hata yok', async () => noConsoleErrors());
 
   console.log('Canlı depo (birleşmiş dal):');

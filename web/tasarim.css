@@ -4223,6 +4223,12 @@ body.no-project .loading-hint {
 .mcp-gated { display: grid; gap: 4px; margin: 6px 0; }
 .mcp-gated-row { display: grid; grid-template-columns: auto minmax(150px, auto) 1fr; gap: 8px; align-items: baseline; font-size: 12px; cursor: pointer; }
 .mcp-gated-row span { opacity: .8; }
+.publish-rows { display: grid; gap: 8px; }
+.publish-row-top { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.publish-row-head { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; flex-wrap: wrap; }
+.publish-queue-opt { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; cursor: pointer; }
+.publish-go { align-self: flex-start; }
+.publish-bad { color: var(--warn-orange, #f59e0b); }
 .mcp-skills { display: grid; gap: 8px; }
 .skill-card { display: grid; gap: 6px; }
 .skill-card h4 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
