@@ -40,3 +40,32 @@ test('MCP config uses the live repo path and never a personal path', () => {
   state.snapshot = null;
   assert.ok(!buildMCPConfigText().includes('/Users/'));
 });
+
+
+// Çakışma Stüdyosu: strateji düğmeleri / editör (modül bölünmesinde işleyiciler kaybolmuştu; düğmeler hiç tıklanamıyordu).
+const { chooseStudioStrategy, editStudioPreview } = await import('../../web/modules/conflict-studio.js');
+
+test('chooseStudioStrategy: seçilen strateji geçer; özel editördeyken yazılan metin dosyaya kaydedilir; bilinmeyen anahtar union olur', () => {
+  const file = { path: 'a.go' };
+  const st = { strategy: 'ours', customByPath: {} };
+  assert.equal(chooseStudioStrategy(st, 'theirs', file, 'x'), true);
+  assert.equal(st.strategy, 'theirs');
+  assert.deepEqual(st.customByPath, {}, 'özel değilken metin kaydedilmez');
+  chooseStudioStrategy(st, 'custom', file, 'x');
+  chooseStudioStrategy(st, 'union', file, 'benim düzenlemem');
+  assert.equal(st.customByPath['a.go'], 'benim düzenlemem', 'özelden çıkarken yazılan metin kaybolmamalı');
+  chooseStudioStrategy(st, 'saçma', file, '');
+  assert.equal(st.strategy, 'union');
+  assert.equal(chooseStudioStrategy(null, 'ours', file, ''), false);
+});
+
+test('editStudioPreview: elle yazınca strateji "özel"e döner (yoksa yazılanlar sessizce uygulanmazdı); zaten özelse değişmez', () => {
+  const file = { path: 'a.go' };
+  const st = { strategy: 'ours', customByPath: {} };
+  assert.equal(editStudioPreview(st, file, 'yeni'), true);
+  assert.equal(st.strategy, 'custom');
+  assert.equal(st.customByPath['a.go'], 'yeni');
+  assert.equal(editStudioPreview(st, file, 'yeni 2'), false);
+  assert.equal(st.customByPath['a.go'], 'yeni 2');
+  assert.equal(editStudioPreview(null, file, 'x'), false);
+});

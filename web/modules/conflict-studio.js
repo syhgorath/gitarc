@@ -26,6 +26,54 @@ export function studioPreviewForStrategy(file, strat, customByPath) {
   return file.unionPreview || '';
 }
 
+/** Saf (durumu değiştirir): strateji düğmesine basıldı. Özel editördeyken yazılan metin kaybolmasın diye önce dosyaya kaydedilir. */
+export function chooseStudioStrategy(st, key, curFile, previewText) {
+  if (!st) return false;
+  if (st.strategy === 'custom' && curFile) st.customByPath[curFile.path] = previewText;
+  st.strategy = ['union', 'ours', 'theirs', 'custom'].includes(key) ? key : 'union';
+  return true;
+}
+
+/** Saf (durumu değiştirir): önizleme alanına yazıldı. Yazılan metin yalnızca "özel" stratejide uygulanır; bu yüzden elle düzenleme
+ *  stratejiyi kendiliğinden "özel"e çevirir (yoksa yazılanlar sessizce yok sayılır). true = strateji değişti. */
+export function editStudioPreview(st, curFile, text) {
+  if (!st) return false;
+  if (curFile) st.customByPath[curFile.path] = text;
+  if (st.strategy === 'custom') return false;
+  st.strategy = 'custom';
+  return true;
+}
+
+/** Stüdyo düğmelerinin/alanının olay işleyicileri (modül bölünmesinde kaybolmuşlardı: düğmeler hiç tıklanamıyordu). Bir kez çağrılır. */
+export function bindConflictStudioEvents() {
+  el.studioStrategyBar?.querySelectorAll('.strat-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const st = state.studio;
+      if (!chooseStudioStrategy(st, btn.getAttribute('data-strat'), getActiveStudioFile(), el.studioRightPreview?.value ?? '')) return;
+      renderConflictStudio();
+      if (st.strategy === 'custom') el.studioRightPreview?.focus();
+    });
+  });
+  el.studioRightPreview?.addEventListener('input', () => {
+    const st = state.studio;
+    if (editStudioPreview(st, getActiveStudioFile(), el.studioRightPreview.value)) {
+      // Yeniden çizmek imleci/yazdığını bozardı: yalnızca etkin düğmeyi ve rozeti güncelle.
+      el.studioStrategyBar?.querySelectorAll('.strat-btn').forEach((b) => b.classList.toggle('active', b.getAttribute('data-strat') === 'custom'));
+      if (el.studioModeBadge) el.studioModeBadge.textContent = STUDIO_MODE_LABELS.custom;
+    }
+  });
+  document.getElementById('studio-copy-ai')?.addEventListener('click', async () => {
+    const txt = state.studio?.payload?.aiPrompt;
+    if (!txt) return;
+    try {
+      await navigator.clipboard.writeText(txt);
+      showToast('AI / MCP çözüm istemi panoya kopyalandı', 'ok');
+    } catch {
+      showToast('Pano izni verilemedi', 'warn');
+    }
+  });
+}
+
 export function renderConflictStudio() {
   const st = state.studio;
   if (!st) return;
