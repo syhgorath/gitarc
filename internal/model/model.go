@@ -249,6 +249,9 @@ type CIFailExtract struct {
 	FileLine string `json:"fileLine,omitempty"`
 	Message  string `json:"message"`
 	ReproCmd string `json:"reproCmd,omitempty"`
+	// Class: düzeltmenin kimde olacağına dair KABA ipucu. "mekanik" (derleme/lint: genelde açık ve küçük düzeltme) ya da
+	// "mantik" (test/panic: neden insan/güçlü model bakışı gerektirir). Flaky teşhisi geçmiş ister (aynı SHA'da yeniden koşu); burada YAPILMAZ.
+	Class string `json:"class,omitempty"`
 }
 
 // ConflictDetail reports in-memory `git merge-tree --write-tree` results.

@@ -3,6 +3,18 @@ import { state, el } from './state.js';
 import { esc, truncate, showToast } from './utils.js';
 import { apiCall } from './api.js';
 
+// Radar kartındaki CI özeti: önce ayıklanan GERÇEK hata (test adı + dosya:satır + mesaj), yoksa ham logun atlanmamış ilk satırları.
+export function ciSnippetOf(ci) {
+  if (!ci) return '';
+  if (ci.failureSummary) return ci.failureSummary;
+  const ex = (ci.extracts || [])[0];
+  if (ex) return [ex.symbol, ex.fileLine, ex.message].filter(Boolean).join(' · ');
+  if (ci.rawLog && (ci.state === 'FAILURE' || ci.status === 'failure')) {
+    return ci.rawLog.split('\n').filter((l) => l && !l.startsWith('… (')).slice(0, 3).join('\n');
+  }
+  return '';
+}
+
 export function getMergedLogs() {
   const serverLogs = state.snapshot?.logs || [];
   const seenMsgs = new Set(serverLogs.map((l) => `${l.level}:${l.message}`));
@@ -262,12 +274,7 @@ export function renderRadar(callbacks = {}) {
       filesHtml = files.map((f) => `<span class="rc-file-tag">${esc(f)}</span>`).join('');
     }
 
-    let ciSnippet = '';
-    if (b?.pr?.ci?.failureSummary) {
-      ciSnippet = b.pr.ci.failureSummary;
-    } else if (b?.pr?.ci?.rawLog && (b?.pr?.ci?.state === 'FAILURE' || b?.pr?.ci?.status === 'failure')) {
-      ciSnippet = b.pr.ci.rawLog.split('\n').filter(Boolean).slice(0, 3).join('\n');
-    }
+    const ciSnippet = ciSnippetOf(b?.pr?.ci);
 
     let actBtnText = '🎯 Odaklan & İncele';
     let actAction = 'select';

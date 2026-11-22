@@ -4,6 +4,8 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ## [Yayımlanmamış]
 
+- **CI hata ayıklayıcı artık başarısız testi gösteriyor:** uzun `go test -v -race` logunda `--- FAIL` ortada kalıyor, eskiden yalnızca son 16 KB alınıp sonra ayıklandığı için panel "0 kritik bulgu" diyor ve PASS satırları gösteriyordu. Ayıklama tam log üzerinde yapılıyor, gösterilen metin hata satırlarının çevresinden kuruluyor (atlanan aralıklar işaretli); her bulguya kaba `class` (mekanik/mantik) eklendi; Radar kartı özeti gerçek hatayı (test adı · dosya:satır · mesaj) gösteriyor.
+
 ### Belgeler
 - **MIT lisansı eklendi (`LICENSE`):** README "açık kaynak" diyordu ama repoda lisans dosyası yoktu (lisans yoksa varsayılan olarak tüm haklar saklıdır, kullanım/dağıtım izni yoktur). Metin KeyLab'ınkiyle aynı (MIT, © 2026 syhgorath); README'ye lisans rozeti ve "Lisans" bölümü eklendi.
 - **README: rozetler, canlı demo bağlantısı, indirme notu:** CI / sürüm / yıldız / canlı demo rozetleri; canlı demo bağlantısı (https://syhgorath.github.io/gitarc/); "İndirme" notu (derlenmiş ikili henüz yok, kaynaktan derleme komutu). Pages demosu artık `main`'de `web/` değişince kendiliğinden yayınlanır (`pages.yml` `push` tetikleyicisi; elle tetikleme de duruyor).
