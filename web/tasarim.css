@@ -3181,6 +3181,8 @@ body {
   overscroll-behavior: contain;
   padding-right: 4px;
 }
+/* Gövde flex sütunu: uzun içerikte çocuklar sıkışmasın (config kutusu minnacık kalıyordu), taşan kısım kaydırılsın. */
+.modal-card.modal-scroll > .modal-body > * { flex-shrink: 0; }
 
 .modal-dot.warn {
   background: var(--warn-orange);
