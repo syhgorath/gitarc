@@ -35,6 +35,11 @@ func TestBrowserSmoke(t *testing.T) {
 	if os.Getenv("GITARC_E2E") == "0" {
 		t.Skip("GITARC_E2E=0")
 	}
+	// Her koşu KENDİ geçici ev dizinini kullanır: duman testi skill'i kurar (~/.claude/skills); `-count=N` ile tekrarlarda önceki koşunun
+	// kurulumu bir sonrakini bozmasın (ve gerçek ev dizinine hiç yazılmasın).
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("node not installed")

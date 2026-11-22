@@ -172,3 +172,15 @@ func TestPublishRunStartsTheQueueOnceThePRsAreVisible(t *testing.T) {
 		t.Fatalf("iki PR'lık koşu kaydı olmalı: %+v", r)
 	}
 }
+
+// Varsayılan sıra KARARLI olmalı (dal adına göre): anlık görüntü sırası değişse bile plan aynı kalır.
+func TestPublishDefaultOrderIsStable(t *testing.T) {
+	dir, _, _ := publishWorld(t)
+	mgr := switchLive(t, dir)
+	for i := 0; i < 8; i++ {
+		plan, err := mgr.PublishPlan(nil)
+		if err != nil || len(plan.Items) != 2 || plan.Items[0].Branch != "feat/a" || plan.Items[1].Branch != "feat/b" {
+			t.Fatalf("sıra dal adına göre kararlı olmalı: %+v %v", plan.Items, err)
+		}
+	}
+}

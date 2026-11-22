@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -82,14 +83,21 @@ func publishCandidateIDs(snap model.CockpitSnapshot) []string {
 			hasCompanion[b.ParentBranch] = true
 		}
 	}
-	var ids []string
+	type cand struct{ id, name string }
+	var cands []cand
 	for _, b := range snap.Branches {
 		if !isPublishCompanion(b) && hasCompanion[b.Name] {
 			continue
 		}
 		if publishItemFor(b, snap.Repo.DefaultBranch).Action != "blocked" {
-			ids = append(ids, b.ID)
+			cands = append(cands, cand{b.ID, realBranchName(b)})
 		}
+	}
+	// KARARLI varsayılan sıra (dal adı): anlık görüntü sırası her çağrıda aynı olmayabilir; kullanıcı ▲▼ ile istediği sıraya getirir.
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].name < cands[j].name })
+	ids := make([]string, 0, len(cands))
+	for _, c := range cands {
+		ids = append(ids, c.id)
 	}
 	return ids
 }
