@@ -14,7 +14,7 @@ import { detectPushes, playPushTraces } from './modules/trace.js';
 import { renderKPIs } from './modules/kpi.js';
 import { renderTopbar, updateStatusText, updateActionModel } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
-import { openConflictStudio, closeConflictStudio, applyConflictStudio } from './modules/conflict-studio.js';
+import { openConflictStudio, closeConflictStudio, applyConflictStudio, bindConflictStudioEvents } from './modules/conflict-studio.js';
 import {
   openAddProjectModal, closeAddProjectModal, handleAddProjectSubmit, handleRemoveCurrentProject,
   handleBrowseFolderClick, handleFallbackFolderPicker
@@ -446,6 +446,7 @@ async function bootstrap() {
   document.getElementById('studio-close')?.addEventListener('click', closeConflictStudio);
   document.getElementById('studio-cancel')?.addEventListener('click', closeConflictStudio);
   el.studioApplyBtn?.addEventListener('click', () => applyConflictStudio(applySnapshot));
+  bindConflictStudioEvents();
 
   // Security & Protection Modal Events
   el.btnNoProjectAdd?.addEventListener('click', () => openAddProjectModal());

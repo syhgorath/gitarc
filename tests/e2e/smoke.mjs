@@ -259,6 +259,16 @@ try {
     await expect(`[...document.querySelectorAll('.radar-card button')].some((x) => x.textContent.includes('Çakışma Stüdyosu'))`, 'radarda çakışma kartı yok');
     await b.eval(`[...document.querySelectorAll('.radar-card button')].find((x) => x.textContent.includes('Çakışma Stüdyosu')).click()`);
     await expect(visible('#conflict-studio-modal'), 'stüdyo açılmadı');
+    // Strateji düğmeleri GERÇEKTEN tıklanır (işleyicileri kaybolmuştu; hiç yakalanmamıştı): seçim değişir, önizleme ve rozet güncellenir.
+    const activeStrat = () => b.eval(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat')`);
+    await click('#studio-strategy-bar [data-strat="theirs"]');
+    await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') === 'theirs' && document.getElementById('studio-mode-badge').textContent.includes('Theirs')`, '"Sadece bu dalın kodu" düğmesi seçimi değiştirmedi');
+    await click('#studio-strategy-bar [data-strat="ours"]');
+    await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') === 'ours'`, '"Main\'deki kod" düğmesi seçimi değiştirmedi');
+    // Elle yazınca strateji "özel"e döner (yoksa yazılanlar uygulanmazdı)
+    await b.eval(`(() => { const t = document.getElementById('studio-right-preview'); t.value = t.value + '\\n// elle'; t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') === 'custom'`, 'önizlemeye yazınca strateji "özel"e dönmedi');
+    if ((await activeStrat()) !== 'custom') throw new Error('strateji özel değil');
     await click('#studio-close');
     await expect(hidden('#conflict-studio-modal'), 'stüdyo kapanmadı');
   });
