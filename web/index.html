@@ -407,7 +407,7 @@
 
     <!-- MODAL: MCP & AI BAĞLANTI MERKEZİ -->
     <div class="modal-backdrop" id="mcp-connect-modal" hidden>
-      <div class="modal-card modal-lg" role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">
+      <div class="modal-card modal-lg modal-scroll" role="dialog" aria-modal="true" aria-labelledby="mcp-modal-title">
         <div class="modal-head">
           <h3 id="mcp-modal-title"><span class="modal-dot"></span>🔌 MCP &amp; AI Bağlantısı</h3>
           <button type="button" class="icon-close" id="mcp-close" aria-label="Kapat">✕</button>
@@ -434,6 +434,9 @@
             <div class="mcp-gated" id="mcp-gated"></div>
             <div class="layer-line">İşaretlediğiniz araçlar yukarıdaki yapılandırmaya <code>env</code> olarak eklenir; hiçbiri işaretli değilse hepsi kapalı kalır.</div>
           </div>
+          <div class="prot-step">3 · Skill'ler (Claude Code)</div>
+          <div class="layer-line">GitArc'ın getirdiği hazır talimatlar. Claude Code bunları <code>~/.claude/skills</code> altından okur; kurulum yalnızca sizin tıklamanızla yapılır, farklı bir dosyanın üzerine onaysız yazılmaz.</div>
+          <div class="mcp-skills" id="mcp-skills"></div>
           <div class="modal-foot">
             <button type="button" class="btn primary" id="mcp-copy-json">📋 Yapılandırmayı kopyala</button>
             <button type="button" class="btn ghost" id="mcp-close-btn">Kapat</button>

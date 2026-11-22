@@ -332,3 +332,40 @@ func TestNoProjectStateAPI(t *testing.T) {
 		t.Fatal("once a project is open the mutation guard must step aside")
 	}
 }
+
+func TestSkillEndpointsListInstallAndGuardRules(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	c := newAPIClient(t, gitengine.NewManager(""))
+
+	if rec := c.do(http.MethodPost, "/api/system/skills", `{}`); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("liste GET olmalı: %d", rec.Code)
+	}
+	rec := c.do(http.MethodGet, "/api/system/skills", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ci-fix"`) || !strings.Contains(rec.Body.String(), `"not_installed"`) {
+		t.Fatalf("liste: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := c.do(http.MethodGet, "/api/system/skills/install", ""); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("kurulum POST olmalı: %d", rec.Code)
+	}
+	// istemci yol gönderemez: ad listede yoksa reddedilir, hiçbir şey yazılmaz
+	if rec := c.do(http.MethodPost, "/api/system/skills/install", `{"name":"../../evil"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("kötü ad: %d", rec.Code)
+	}
+	if rec := c.do(http.MethodPost, "/api/system/skills/install", `{"name":"ci-fix"}`); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"up_to_date"`) {
+		t.Fatalf("kurulum: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "ci-fix", "SKILL.md")); err != nil {
+		t.Fatalf("dosya yazılmalı: %v", err)
+	}
+	// CSRF: X-Requested-With olmadan kurulum yapılamaz
+	r := httptest.NewRequest(http.MethodPost, "http://"+c.host+"/api/system/skills/install", bytes.NewBufferString(`{"name":"ci-fix"}`))
+	r.Host = c.host
+	r.AddCookie(c.cookie)
+	w := httptest.NewRecorder()
+	c.h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("başlıksız POST reddedilmeli: %d", w.Code)
+	}
+}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -775,63 +774,162 @@ func mergeUniqueFiles(a, b []string) []string {
 	return out
 }
 
-func buildSuggestedCommitAndPR(repoPath, branchHint string, files []string) (commitMsg, prTitle, prBody string) {
-	ver := ""
-	if rawVer, err := os.ReadFile(filepath.Join(repoPath, "VERSION")); err == nil {
-		ver = strings.TrimSpace(string(rawVer))
+// changeSummary: bir değişikliğin GÜVENİLİR kaynaklardan çıkarılmış özeti. Hiçbir şey UYDURULMAZ: yalnızca bu değişikliğin kendi eklediği
+// CHANGELOG satırları ve kendi commit başlıkları kullanılır (eskiden CHANGELOG'un ilk 5 maddesi alınıyordu: dalla ilgisiz, eski maddeler).
+type changeSummary struct {
+	bullets  []string // bu değişikliğin CHANGELOG.md'ye EKLEDİĞİ "- " satırları
+	subjects []string // bu değişikliğin commit başlıkları (en yeni önce)
+}
+
+// addedChangelogBullets: bir `git diff -- CHANGELOG.md` çıktısından EKLENEN madde satırları (saf).
+func addedChangelogBullets(diff string, limit int) []string {
+	var out []string
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "+++") || !strings.HasPrefix(line, "+- ") {
+			continue
+		}
+		out = append(out, strings.TrimSpace(strings.TrimPrefix(line, "+")))
+		if len(out) >= limit {
+			break
+		}
 	}
-	var bullets []string
-	if rawCL, err := os.ReadFile(filepath.Join(repoPath, "CHANGELOG.md")); err == nil {
-		inFirst := false
-		for _, line := range strings.Split(string(rawCL), "\n") {
-			t := strings.TrimSpace(line)
-			if strings.HasPrefix(t, "## [") {
-				if inFirst {
-					break
+	return out
+}
+
+type draftKey struct{ repo, base, head string }
+
+var (
+	draftMu    sync.Mutex
+	draftCache = map[draftKey]changeSummary{}
+)
+
+// gatherChangeSummary: base..head arasındaki değişikliğin özeti. headRef boşsa yalnızca çalışma ağacı (HEAD'e göre) incelenir.
+// includeWorktree: head'e ek olarak kaydedilmemiş değişiklikler de eklenir. Commit'e bağlı sonuç (worktree'siz) SHA'ya göre önbelleklenir.
+func gatherChangeSummary(ctx context.Context, repoPath, baseRef, headRef, headSHA string, includeWorktree bool) changeSummary {
+	key := draftKey{filepath.Clean(repoPath), baseRef, headSHA}
+	cacheable := headRef != "" && !includeWorktree && headSHA != ""
+	if cacheable {
+		draftMu.Lock()
+		cs, ok := draftCache[key]
+		draftMu.Unlock()
+		if ok {
+			return cs
+		}
+	}
+	var cs changeSummary
+	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if headRef != "" {
+		if out, _, err := runCmd(cctx, repoPath, "git", "diff", baseRef+"..."+headRef, "--", "CHANGELOG.md"); err == nil {
+			cs.bullets = addedChangelogBullets(out, 8)
+		}
+		if out, _, err := runCmd(cctx, repoPath, "git", "log", "--format=%s", "--max-count=12", baseRef+".."+headRef); err == nil {
+			for _, l := range strings.Split(out, "\n") {
+				if l = strings.TrimSpace(l); l != "" {
+					cs.subjects = append(cs.subjects, l)
 				}
-				inFirst = true
-				continue
-			}
-			if inFirst && strings.HasPrefix(t, "- ") && len(bullets) < 5 {
-				bullets = append(bullets, t)
 			}
 		}
 	}
-
-	prefix := "feat"
-	if ver != "" {
-		prefix = fmt.Sprintf("feat(v%s)", ver)
-	} else if branchHint != "" && branchHint != "wip/working-tree" {
-		prefix = fmt.Sprintf("feat(%s)", branchHint)
+	if headRef == "" || includeWorktree {
+		if out, _, err := runCmd(cctx, repoPath, "git", "diff", "HEAD", "--", "CHANGELOG.md"); err == nil {
+			cs.bullets = append(cs.bullets, addedChangelogBullets(out, 8)...)
+		}
 	}
+	if cacheable {
+		draftMu.Lock()
+		if len(draftCache) > 512 {
+			draftCache = map[draftKey]changeSummary{}
+		}
+		draftCache[key] = cs
+		draftMu.Unlock()
+	}
+	return cs
+}
 
-	summary := "değişiklikleri kaydet"
+var conventionalTypes = map[string]bool{"feat": true, "fix": true, "docs": true, "refactor": true, "chore": true, "test": true, "ci": true, "perf": true, "build": true, "style": true}
+var reConventional = regexp.MustCompile(`^[a-z]+(\([^)]*\))?!?: `)
+
+// commitTypeFor: değişiklik türü önce dal adından ("fix/x" → fix), yoksa değişen dosyalardan (hepsi .md/docs → docs, hepsi test → test,
+// hepsi .github → ci), o da belirsizse "chore". Sürüm numarası TÜR DEĞİLDİR (eskiden "feat(v0.10.0)" yazılıyordu).
+func commitTypeFor(branchHint string, files []string) string {
+	if i := strings.Index(branchHint, "/"); i > 0 && conventionalTypes[branchHint[:i]] {
+		return branchHint[:i]
+	}
+	if len(files) > 0 {
+		all := func(pred func(string) bool) bool {
+			for _, f := range files {
+				if !pred(strings.ToLower(f)) {
+					return false
+				}
+			}
+			return true
+		}
+		switch {
+		case all(func(f string) bool { return strings.HasSuffix(f, ".md") || strings.HasPrefix(f, "docs/") }):
+			return "docs"
+		case all(func(f string) bool { return strings.Contains(f, "test") }):
+			return "test"
+		case all(func(f string) bool { return strings.HasPrefix(f, ".github/") }):
+			return "ci"
+		}
+	}
+	return "chore"
+}
+
+// clauseOf: bir CHANGELOG maddesinin başlık olabilecek ilk parçası ("**Başlık:** açıklama" → "Başlık").
+func clauseOf(bullet string) string {
+	c := strings.TrimSpace(strings.TrimPrefix(bullet, "- "))
+	c = strings.ReplaceAll(c, "**", "")
+	if i := strings.Index(c, ":"); i > 6 && i < 72 {
+		c = strings.TrimSpace(c[:i])
+	}
+	if len(c) > 72 {
+		c = strings.TrimSpace(c[:72])
+		if j := strings.LastIndex(c, " "); j > 40 {
+			c = c[:j]
+		}
+	}
+	return c
+}
+
+// composeCommitAndPR: özetten commit mesajı / PR başlığı / PR gövdesi (saf). Güvenilir kaynak yoksa YALNIZCA dosya listesi (gerçek bilgi) kullanılır.
+func composeCommitAndPR(branchHint string, files []string, cs changeSummary) (commitMsg, prTitle, prBody string) {
+	typ := commitTypeFor(branchHint, files)
+	fileSummary := "değişiklikleri kaydet"
 	if len(files) == 1 {
-		summary = filepath.Base(files[0]) + " güncellendi"
+		fileSummary = filepath.Base(files[0]) + " güncellendi"
 	} else if len(files) > 0 {
-		first := filepath.Base(files[0])
-		summary = fmt.Sprintf("%s ve ilgili dosyalar güncellendi", first)
+		fileSummary = fmt.Sprintf("%s ve ilgili dosyalar güncellendi", filepath.Base(files[0]))
 	}
-	commitMsg = fmt.Sprintf("%s: %s", prefix, summary)
-	prTitle = commitMsg
-	if len(bullets) > 0 {
-		firstClean := strings.TrimPrefix(bullets[0], "- ")
-		firstClean = strings.ReplaceAll(firstClean, "**", "")
-		if idx := strings.Index(firstClean, ":"); idx > 6 && idx < 72 {
-			firstClean = strings.TrimSpace(firstClean[:idx])
+	switch {
+	case len(cs.bullets) > 0:
+		prTitle = fmt.Sprintf("%s: %s", typ, clauseOf(cs.bullets[0]))
+	case len(cs.subjects) > 0:
+		prTitle = cs.subjects[len(cs.subjects)-1] // dalın ilk (en eski) commit'i: değişikliğin konusunu o söyler
+		if len(cs.subjects) == 1 || !reConventional.MatchString(prTitle) {
+			prTitle = cs.subjects[0]
 		}
-		if len(firstClean) > 10 && len(firstClean) <= 72 {
-			prTitle = fmt.Sprintf("%s: %s", prefix, firstClean)
+		if !reConventional.MatchString(prTitle) {
+			prTitle = fmt.Sprintf("%s: %s", typ, prTitle)
 		}
+	default:
+		prTitle = fmt.Sprintf("%s: %s", typ, fileSummary)
 	}
+	commitMsg = prTitle
 
 	var body strings.Builder
 	body.WriteString("## Neler Değişti?\n")
-	if len(bullets) > 0 {
-		for _, b := range bullets {
+	switch {
+	case len(cs.bullets) > 0:
+		for _, b := range cs.bullets {
 			body.WriteString(b + "\n")
 		}
-	} else {
+	case len(cs.subjects) > 0:
+		for i := len(cs.subjects) - 1; i >= 0; i-- { // eskiden yeniye
+			body.WriteString("- " + cs.subjects[i] + "\n")
+		}
+	default:
 		for i, f := range files {
 			if i >= 12 {
 				body.WriteString(fmt.Sprintf("- ... ve %d dosya daha\n", len(files)-12))
@@ -850,8 +948,13 @@ func buildSuggestedCommitAndPR(repoPath, branchHint string, files []string) (com
 			body.WriteString("- `" + f + "`\n")
 		}
 	}
-	prBody = strings.TrimSpace(body.String())
-	return commitMsg, prTitle, prBody
+	return commitMsg, prTitle, strings.TrimSpace(body.String())
+}
+
+// buildSuggestedCommitAndPR: dalın/çalışma ağacının KENDİ değişikliğinden öneri. headRef boşsa çalışma ağacı (HEAD'e göre).
+func buildSuggestedCommitAndPR(ctx context.Context, repoPath, branchHint string, files []string, baseRef, headRef, headSHA string, includeWorktree bool) (commitMsg, prTitle, prBody string) {
+	cs := gatherChangeSummary(ctx, repoPath, baseRef, headRef, headSHA, includeWorktree)
+	return composeCommitAndPR(branchHint, files, cs)
 }
 
 // Dal başına "birleşmiş PR var mı" sorgusu ~1 sn'lik bir `gh` ağ çağrısıdır ve her anlık görüntüde her dal için
@@ -1176,7 +1279,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			branchChanged = mergeUniqueFiles(branchChanged, dirtyFiles)
 		}
 		if hemisphere == "lower" && state == "open" {
-			_, draftTitle, draftBody = buildSuggestedCommitAndPR(repoPath, name, branchChanged)
+			_, draftTitle, draftBody = buildSuggestedCommitAndPR(ctx, repoPath, name, branchChanged, baseRef, name, localSHA, isHead && uncommitted > 0)
 			if subject != "" && (draftTitle == "" || uncommitted == 0) {
 				draftTitle = subject
 			}
@@ -1240,7 +1343,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 	}
 
 	if headOnDefault && dirtyCount > 0 && lastSpine >= 0 {
-		commitMsg, prTitle, prBody := buildSuggestedCommitAndPR(repoPath, "main", dirtyFiles)
+		commitMsg, prTitle, prBody := buildSuggestedCommitAndPR(ctx, repoPath, "main", dirtyFiles, "", "", "", false)
 		branches = append(branches, model.BranchArc{
 			ID:               "local-wip-working-tree",
 			Name:             "Çalışma Alanı (Kaydedilmemiş)",

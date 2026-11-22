@@ -68,6 +68,18 @@ try {
     await expect(`document.getElementById('mcp-config-snippet').textContent.includes('GITARC_MCP_ALLOW_QUEUE_RUN')`, 'işaretlenen aracın env değeri yapılandırmaya girmedi');
     await click('#mcp-gated input[type=checkbox]');
     await expect(`!document.getElementById('mcp-config-snippet').textContent.includes('"env"')`, 'işaret kaldırılınca env yapılandırmadan çıkmadı');
+    // Pencere ekrandan uzunsa kart görünüm alanını aşmaz; gövde kendi içinde kayar (daha önce taşıyordu).
+    await expect(`(() => { const c = document.querySelector('#mcp-connect-modal .modal-card'); const b = c.querySelector('.modal-body'); const cs = getComputedStyle(c); const r = c.getBoundingClientRect(); return cs.maxHeight !== 'none' && getComputedStyle(b).overflowY === 'auto' && r.top >= 0 && r.bottom <= innerHeight; })()`, 'MCP penceresi ekrana sığmıyor ya da gövdesi kaydırılabilir değil');
+    // Sıkışma yan etkisi: yapılandırma kutusu içeriğinin tamamını göstermeli (kayan gövdede minnacık kalıyordu).
+    await expect(`(() => { const p = document.getElementById('mcp-config-snippet'); return p.clientHeight >= p.scrollHeight - 2 && p.clientHeight > 100; })()`, 'MCP yapılandırma kutusu sıkışıp küçüldü');
+    // Skill'ler: kart gelir; kurulum düğmesi GERÇEKTEN tıklanınca dosya yazılır ve kart "güncel" olur. Yalnızca yol, testin yalıtılmış
+    // geçici ev dizinindeyse tıklanır (elle çalıştırılan bir sunucuda geliştiricinin gerçek ~/.claude klasörüne yazmayalım).
+    await expect(`document.querySelectorAll('#mcp-skills .skill-card').length >= 1 && !!document.querySelector('#mcp-skills .skill-install') && !!document.querySelector('#mcp-skills .skill-copy')`, 'Skill kartı/düğmeleri görünmüyor');
+    if (await b.eval(`document.querySelector('#mcp-skills .skill-path').textContent.includes('gitarc-test-home')`)) {
+      await expect(`document.querySelector('#mcp-skills .chip').textContent.includes('kurulu değil') && !document.querySelector('#mcp-skills .skill-install').disabled`, 'kurulmamış skill için kurulum düğmesi etkin olmalı');
+      await click('#mcp-skills .skill-install');
+      await expect(`document.querySelector('#mcp-skills .chip').textContent.includes('güncel') && document.querySelector('#mcp-skills .skill-install').disabled`, 'kurulumdan sonra skill "güncel" görünmüyor');
+    }
     await click('#mcp-close');
     await expect(hidden('#mcp-connect-modal'), 'MCP penceresi kapanmadı');
   });

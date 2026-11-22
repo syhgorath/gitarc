@@ -29,3 +29,25 @@ test('kapalı araç listesi sunucudaki beş ortam değişkeniyle birebir', () =>
     'GITARC_MCP_ALLOW_PROTECTION', 'GITARC_MCP_ALLOW_QUEUE', 'GITARC_MCP_ALLOW_QUEUE_RUN', 'GITARC_MCP_ALLOW_RESOLVE', 'GITARC_MCP_ALLOW_UPDATE',
   ]);
 });
+
+import { skillCardModel } from '../../web/modules/mcp-modal.js';
+
+test('skillCardModel: kurulum düğmesi durumu dürüst; farklı dosya onay ister, güncel/okunamayan/takım modunda kapalı', () => {
+  const sk = (status, extra = {}) => ({ name: 'ci-fix', path: '/h/.claude/skills/ci-fix/SKILL.md', status, ...extra });
+  const fresh = skillCardModel(sk('not_installed'));
+  assert.equal(fresh.install.disabled, false);
+  assert.equal(fresh.install.confirm, '', 'yeni kurulum onay istemez');
+  assert.equal(skillCardModel(sk('up_to_date')).install.disabled, true);
+  assert.match(skillCardModel(sk('up_to_date')).chip, /güncel/);
+  const diff = skillCardModel(sk('different'));
+  assert.equal(diff.install.disabled, false);
+  assert.match(diff.install.confirm, /Üzerine yazılsın mı/);
+  assert.match(diff.install.confirm, /ci-fix\/SKILL\.md/);
+  const bad = skillCardModel(sk('unreadable', { note: 'sembolik bağ' }));
+  assert.equal(bad.install.disabled, true);
+  assert.match(bad.install.why, /sembolik/);
+  const team = skillCardModel(sk('not_installed'), true);
+  assert.equal(team.install.disabled, true);
+  assert.match(team.install.why, /Takım modunda/);
+  assert.match(fresh.manualNote, /\.claude\/skills\/ci-fix\/SKILL\.md/);
+});

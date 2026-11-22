@@ -4,13 +4,11 @@
 
 ## 1. Commit ve Pull Request İş Akışı (Kalıcı Kullanıcı Tercihi)
 
-Kullanıcı bu projede her geliştirme, hata düzeltme veya özellik ekleme oturumunun sonunda Git ve GitHub işlemlerini kendisi tek tıkla (kopyala-yapıştır ile) çalıştırmak istemektedir:
+Kullanıcı commit, push ve PR açma işlemlerini **GitArc'ın kendisinden** (`Push & PR` / `Commit & PR`) yapar:
 
-- Değişiklikleri tamamladıktan ve doğrulama komutunu (`go vet ./... && go test -count=1 -v ./... && go build -o gitarc .`) çalıştırdıktan sonra (tam komut seti için Bölüm 4) **otomatik commit veya push yapma** (kullanıcı açıkça istemedikçe).
-- Bunun yerine her zaman yanıtın sonunda aşağıdaki kalıpta hazır, tek tıkla kopyalanabilir komut blokları ve açıklamalar sun:
-  1. **Dal / Commit Komutu:** Önerilen branch adı (`git checkout -b ...`), `git add`, anlamlı Conventional Commit başlıklı `git commit -m "..."` ve `git push -u origin ...` komutu.
-  2. **PR Başlığı (Tek Satır):** GitHub Web arayüzüne yapıştırılacak yalın PR başlığı.
-  3. **PR Açıklaması / Gövde Metni (Markdown):** Ne, neden değişti ve doğrulama adımlarını içeren, GitHub Web arayüzüne yapıştırılacak hazır Markdown gövdesi (`gh pr create` yerine web tercih edilmektedir).
+- Değişiklikleri tamamladıktan ve doğrulama komutunu (`go vet ./... && go test -count=1 -race -cover ./... && go build -o gitarc .`, tam set için Bölüm 4) çalıştırdıktan sonra **otomatik commit veya push yapma** (kullanıcı açıkça istemedikçe).
+- Yanıtın sonunda **git/commit/PR başlığı/PR gövdesi blokları VERME** (kullanıcı artık istemiyor; "Evet, hazırla" derse ver). Bunun yerine yalnızca ne değiştiğini, neyin doğrulandığını ve neyin doğrulanmadığını kısaca söyle.
+- **PR başlığı ve gövdesi GitArc tarafından üretilir** (`buildSuggestedCommitAndPR`): dalın `CHANGELOG.md`'ye EKLEDİĞİ `- ` satırları, yoksa dalın commit başlıkları, yoksa değişen dosya listesi. Bu yüzden her değişiklikte `CHANGELOG.md`'ye (`[Yayımlanmamış]` altına) bir madde yaz; **maddenin ilk cümlesi/`**Başlık:**` kısmı temiz bir PR başlığı olmalı**, devamı gereksiz uzamamalı. PR metni uydurma içermemeli (çalıştırılmamış doğrulama iddiası yazma).
 
 ## 2. Kırmızı Çizgiler (Asla İhlal Etme)
 
