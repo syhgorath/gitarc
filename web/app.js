@@ -25,6 +25,7 @@ import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modu
 import { refreshProtectionPlan, applyShownProtection } from './modules/protection.js';
 import { openQueueModal, closeQueueModal } from './modules/queue.js';
 import { mergeBranch } from './modules/merge.js';
+import { promoteCopy } from './modules/inspector-model.js';
 
 // Central Branch Selection
 export function selectBranch(branchId) {
@@ -100,11 +101,12 @@ function handleMergeBranch(branchId, btnEl = null) {
 
 async function handlePromoteBranch(branchId, title = undefined, body = undefined, btnEl = null) {
   const b = (state.snapshot?.branches || []).find((x) => x.id === branchId);
-  const confirmed = window.confirm(`"${b?.name || branchId}" dalını origin'e pushlamak ve GitHub üzerinde Pull Request oluşturmak istiyor musunuz?`);
+  const copy = promoteCopy(b || { name: branchId });
+  const confirmed = window.confirm(copy.confirm);
   if (!confirmed) return;
 
-  showToast('⏳ Dal pushlanıyor ve GitHub PR oluşturuluyor...', 'info');
-  await runWithBtnBusy(btnEl, '⏳ Push & PR Açılıyor...', async () => {
+  showToast(copy.companion ? '⏳ Yerel commit\'ler pushlanıyor...' : '⏳ Dal pushlanıyor ve GitHub PR oluşturuluyor...', 'info');
+  await runWithBtnBusy(btnEl, copy.busy, async () => {
     try {
       const snap = state.offlineMode
         ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.promoteBranch(branchId, title || '', body || '') : state.snapshot)
@@ -115,7 +117,7 @@ async function handlePromoteBranch(branchId, title = undefined, body = undefined
         });
       if (b?.name) delete state.draftPrEdits[b.name];
       applySnapshot(snap);
-      showToast('Dal origin’e pushlandı ve PR açılarak uzağa (GitHub) taşındı!', 'ok');
+      showToast(copy.done, 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }

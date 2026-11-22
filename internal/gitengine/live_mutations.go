@@ -12,6 +12,14 @@ import (
 	"gitarc/internal/model"
 )
 
+// realBranchName: git'e gidecek GERÇEK dal adı. "(yerel)" eşlik kartının görünen adı geçerli bir dal adı değildir.
+func realBranchName(b model.BranchArc) string {
+	if b.ParentBranch != "" {
+		return b.ParentBranch
+	}
+	return b.Name
+}
+
 func (m *Manager) findLiveBranch(live *repoEntry, branchID string) (model.BranchArc, model.CockpitSnapshot, error) {
 	m.mu.RLock()
 	opts := m.repoOptionsLocked()
@@ -23,7 +31,7 @@ func (m *Manager) findLiveBranch(live *repoEntry, branchID string) (model.Branch
 	}
 	for _, b := range snap.Branches {
 		if b.ID == branchID {
-			if err := validateBranchName(b.Name); err != nil {
+			if err := validateBranchName(realBranchName(b)); err != nil {
 				return model.BranchArc{}, snap, err
 			}
 			return b, snap, nil
@@ -237,6 +245,18 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody s
 	b, snap, err := m.findLiveBranch(live, branchID)
 	if err != nil {
 		return model.CockpitSnapshot{}, err
+	}
+	if b.ParentBranch != "" {
+		// "(yerel)" eşlik kartı: pushlanmamış commit'leri olan AÇIK PR dalı. İşlem gerçek dala gider; PR zaten var, yenisi açılmaz.
+		for _, p := range snap.Branches {
+			if p.Name == b.ParentBranch && p.ParentBranch == "" {
+				b = p
+				break
+			}
+		}
+		if b.ParentBranch != "" || b.PR == nil {
+			return model.CockpitSnapshot{}, fmt.Errorf("%s dalının açık PR'ı bulunamadı; yerel commit'leri pushlamak için önce \"Push & PR\" ile PR açın", realBranchName(b))
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

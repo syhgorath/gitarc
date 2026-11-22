@@ -213,6 +213,13 @@ export function actionRowHtmlOf(b, ctx = {}) {
           ${diffBtn}
         `;
       }
+    } else if (b.parentBranch) {
+      // "(yerel)" eşlik kartı: açık PR dalındaki pushlanmamış commit'ler. Yalnızca pushla (mevcut PR güncellenir); geç/sil/merge YOK:
+      // bunlar gerçek dalın üst kartının işidir, görünen ad ("dal (yerel)") git dal adı değildir.
+      actionRowHtml = `
+        <button type="button" class="cap-btn sky" data-act="promote" title="Pushlanmamış commit'leri origin'e gönder; mevcut PR güncellenir">⬆ Pushla (PR güncellenir)</button>
+        ${diffBtn}
+      `;
     } else {
       const hasOpenPR = Boolean(b.pr && b.pr.number > 0 && b.pr.reviewState !== 'MERGED');
       const isSynced = b.aheadMain === 0 && (b.uncommittedCount || 0) === 0;
