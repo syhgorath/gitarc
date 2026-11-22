@@ -66,7 +66,7 @@ export function initElements() {
     'studio-line-badge', 'studio-mode-badge', 'studio-left-conflict', 'studio-right-preview',
     'studio-error-banner', 'studio-error-text', 'studio-run-vet', 'studio-apply',
     'mcp-connect-modal', 'mcp-config-snippet', 'mcp-gated', 'mcp-skills',
-    'btn-queue', 'queue-modal', 'queue-candidates', 'queue-result',
+    'btn-publish', 'publish-modal', 'publish-body', 'btn-queue', 'queue-modal', 'queue-candidates', 'queue-result',
     'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'loading-hint', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
     'sec-prot-summary', 'prot-profiles', 'prot-checks', 'prot-now', 'prot-changes', 'prot-notes', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
@@ -155,6 +155,9 @@ export function initElements() {
   el.mcpGated = el['mcp-gated'];
   el.mcpSkills = el['mcp-skills'];
   el.mcpConfigSnippet = el['mcp-config-snippet'];
+  el.btnPublish = el['btn-publish'];
+  el.publishModal = el['publish-modal'];
+  el.publishBody = el['publish-body'];
   el.btnQueue = el['btn-queue'];
   el.queueModal = el['queue-modal'];
   el.queueCandidates = el['queue-candidates'];
