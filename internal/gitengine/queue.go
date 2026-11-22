@@ -278,12 +278,20 @@ func (m *Manager) queuePlanLive(live *repoEntry, ids []string) (model.QueuePlan,
 	var merged []model.BranchArc
 	for i, b := range sel {
 		it := newQueueItem(i, b)
+		if b.PR != nil && b.HasRemote && b.RemoteAhead > 0 {
+			it.UnpushedCommits = b.RemoteAhead
+		}
 		if err := validateBranchName(b.Name); err != nil {
 			it.Status, it.Reason = "unknown", err.Error()
 			items = append(items, it)
 			continue
 		}
 		_, branchRef, _, rerr := resolveConflictRefs(ctx, live.path, snap.Repo.DefaultBranch, snap.Repo.RemoteName, b)
+		// Açık PR'ı olan dalda GitHub PR'ın UZAK ucunu birleştirir: yerel uç pushlanmamış commit/çözüm içerebilir ve planı yanıltırdı
+		// (yerelde çakışması çözülmüş ama pushlanmamış PR "temiz" görünürken GitHub "çakışıyor" diyordu).
+		if rerr == nil {
+			branchRef = queueHeadRef(ctx, live.path, snap.Repo.RemoteName, b, branchRef)
+		}
 		var branchSHA string
 		if rerr == nil {
 			branchSHA, rerr = revParse(ctx, live.path, branchRef)
@@ -348,6 +356,24 @@ func (m *Manager) queuePlanLive(live *repoEntry, ids []string) (model.QueuePlan,
 		items = append(items, it)
 	}
 	return assembleQueuePlan("live", snap.Repo.DefaultBranch, items, strict), nil
+}
+
+// queueHeadRef: planın simüle edeceği uç. Açık PR'ı + uzak izi olan dalda uzak uç (GitHub'ın birleştireceği); yoksa/okunamazsa verilen ref.
+func queueHeadRef(ctx context.Context, repoPath, remoteName string, b model.BranchArc, fallback string) string {
+	if b.PR == nil || !b.HasRemote {
+		return fallback
+	}
+	if remoteName == "" {
+		remoteName = "origin"
+	}
+	ref := b.RemoteRef
+	if ref == "" {
+		ref = remoteName + "/" + b.Name
+	}
+	if _, err := revParse(ctx, repoPath, ref); err != nil {
+		return fallback
+	}
+	return ref
 }
 
 func revParse(ctx context.Context, repoPath, ref string) (string, error) {

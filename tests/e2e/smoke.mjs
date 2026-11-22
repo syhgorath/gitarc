@@ -292,6 +292,9 @@ try {
     await expect(`(async()=>{const m=await import('/modules/state.js'); return m.state.snapshot?.repo?.mode==='live';})()`, 'canlı kipte açılmadı');
     await expect(hidden('#demo-banner'), 'canlı depoda demo şeridi görünmemeli');
   });
+  await step('üst çubukta "Şu an" çipi görünür ve gerçek dalı (main) gösterir', async () => {
+    await expect(`(() => { const c = document.getElementById('head-chip'); return !!c && !c.hidden && c.textContent.includes('main') && c.classList.contains('on-default'); })()`, 'üst çubuk dal çipi yok ya da yanlış dalı gösteriyor');
+  });
   await step('birleşmiş dalı seçince "Değişen Dosyalar" satırları yüklenir', async () => {
     await b.eval(`(async()=>{const m=await import('/modules/state.js'); const app=await import('/app.js'); const t=m.state.snapshot.branches.find((x)=>x.state==='merged'); app.selectBranch(t.id);})()`);
     await expect(`document.querySelectorAll('.merged-file-row').length > 0`, 'dosya satırı yüklenmedi');

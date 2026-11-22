@@ -4338,3 +4338,9 @@ body.no-project .loading-hint {
 .radar-card.action-failure .rc-count { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--warn-border); color: var(--warn); background: var(--warn-weak); }
 .radar-card.action-failure .rc-dismiss { min-width: 28px; font-weight: 800; }
 .radar-card.action-failure .rc-time { opacity: .6; font-family: var(--mono); font-size: 11px; }
+
+/* Üst çubuk: çalışma klasörünün şu an açık olduğu dal */
+.head-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; font-family: var(--mono, ui-monospace, monospace); white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.head-chip[hidden] { display: none; }
+.head-chip.on-default { color: var(--text-muted, #8b98a5); }
+.head-chip.off-default { color: var(--warn-orange, #f59e0b); border-color: var(--warn-orange, #f59e0b); background: rgba(245, 158, 11, 0.08); }

@@ -453,7 +453,7 @@ func BuildDiagnostics(branches []model.BranchArc) []model.DiagnosticItem {
 			})
 		}
 
-		if (b.OriginGone || b.State == "gone") && !b.LongLived {
+		if (b.OriginGone || b.State == "gone") && !b.LongLived && !(b.IsHEAD && b.UncommittedCount > 0) {
 			items = append(items, model.DiagnosticItem{
 				ID:         "gone-" + b.ID,
 				Severity:   "info",
@@ -461,7 +461,7 @@ func BuildDiagnostics(branches []model.BranchArc) []model.DiagnosticItem {
 				BranchID:   b.ID,
 				BranchName: b.Name,
 				Title:      "Uzakta Silinmiş Dal (origin: gone)",
-				Detail:     fmt.Sprintf("%s uzakta merge edilip silinmiş; yerelde temizlenebilir", b.Name),
+				Detail:     prunableDetail(b),
 				ActionHint: "Tek Tıkla Temizle (Prune Gone)",
 			})
 		}
@@ -494,4 +494,11 @@ func mainCIFailureDiag(mc *model.MainCIStatus, defaultBranch string) model.Diagn
 		ActionHint: "Başarısız çalıştırmayı GitHub Actions'ta açıp inceleyin",
 		URL:        mc.URL,
 	}
+}
+
+func prunableDetail(b model.BranchArc) string {
+	if b.WorktreePath != "" {
+		return fmt.Sprintf("%s uzakta merge edilip silinmiş ama BAŞKA bir klasörde açık (%s); önce o klasörü kaldırın (git worktree remove), sonra temizlenebilir", b.Name, b.WorktreePath)
+	}
+	return fmt.Sprintf("%s uzakta merge edilip silinmiş; yerelde temizlenebilir", b.Name)
 }
