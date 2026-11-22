@@ -27,6 +27,9 @@ import (
 
 const queueStepTimeout = 120 * time.Second
 
+// queueStepFingerprint: "update" adımında CI durumu parmak izine GİRMEZ (ci boş verilir): güncelleme CI'a bakmadan karar verilir,
+// plan ile uygulama arasında CI'ın RUNNING→SUCCESS dönmesi (yavaş makinede olur) güvenli bir adımı boşuna reddettirirdi.
+// Güvenlik dal ucu + ana dal ucu ile korunur; "merge" adımında CI hâlâ parmak izindedir (yeşil varsayılmaz).
 func queueStepFingerprint(action, branch, headSHA, baseSHA, ci string) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{action, branch, headSHA, baseSHA, ci}, "\x00")))
 	return hex.EncodeToString(sum[:8])
@@ -76,7 +79,7 @@ func decideQueueStep(plan model.QueueStepPlan, in queueStepInput) model.QueueSte
 	if up.Status == "ready" {
 		plan.Action = "update"
 		plan.Reason = fmt.Sprintf("main'in %d yeni commit'i dalın içine merge edilip uzak PR dalına push edilir; CI yeniden başlar", up.Behind)
-		plan.Fingerprint = queueStepFingerprint("update", plan.Branch, up.HeadSHA, up.BaseSHA, plan.CI)
+		plan.Fingerprint = queueStepFingerprint("update", plan.Branch, up.HeadSHA, up.BaseSHA, "")
 		return plan
 	}
 	if up.Status != "up_to_date" {

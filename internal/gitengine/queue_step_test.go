@@ -326,3 +326,19 @@ func TestQueueStepWithoutProjectIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// Yavaş makinede CI, plan ile uygulama arasında RUNNING→SUCCESS dönebilir; "update" adımı CI'a bakmadan karar verildiği için
+// parmak izi bundan etkilenmemeli (CI'da görülen kuyruk-koşusu testi kırılganlığı). "merge" ise CI'a BAĞLI kalır.
+func TestQueueStepUpdateFingerprintIgnoresCIButMergeDoesNot(t *testing.T) {
+	up := model.BranchUpdatePlan{Status: "ready", HeadSHA: "h", BaseSHA: "b", Behind: 2}
+	fp := func(ci string) string {
+		return decideQueueStep(model.QueueStepPlan{Branch: "x", PR: 1}, queueStepInput{PRState: "OPEN", CI: ci, Update: up}).Fingerprint
+	}
+	if fp("RUNNING") == "" || fp("RUNNING") != fp("SUCCESS") {
+		t.Fatalf("update parmak izi CI'dan bağımsız olmalı: %q vs %q", fp("RUNNING"), fp("SUCCESS"))
+	}
+	up.Status = "up_to_date"
+	if fp("SUCCESS") == "" || fp("SUCCESS") == queueStepFingerprint("merge", "x", "h", "b", "UNKNOWN") {
+		t.Fatal("merge parmak izi CI'a bağlı kalmalı")
+	}
+}
