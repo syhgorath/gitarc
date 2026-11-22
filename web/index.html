@@ -519,9 +519,11 @@
               <span class="chip accent mono" id="sec-team-chip">Bireysel Masaüstü</span>
             </h4>
             <div class="layer-line" id="sec-update-status">Mevcut sürüm: v0.10.0</div>
+            <div class="prot-note" id="sec-update-note" hidden></div>
             <div class="cmd-box"><code class="cmd-code" id="sec-update-cmd">git pull --ff-only origin main &amp;&amp; go build -o gitarc .</code></div>
             <div class="det-actions">
               <button type="button" class="btn primary sm" id="btn-run-update-check">🔄 Yeni sürüm var mı?</button>
+              <button type="button" class="btn warn sm" id="btn-apply-update" hidden>⬇️ Güncelle</button>
               <button type="button" class="btn sm" id="sec-copy-update-cmd">📋 Güncelleme komutunu kopyala</button>
             </div>
           </div>

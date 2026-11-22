@@ -73,6 +73,24 @@ test('updateStatusText: hiç denetlenmediyse "güncel" DENMEZ; denetlenemediyse 
   assert.match(updateStatusText({ appVersion: '0.10.0', latestVersion: '0.10.0' }), /Güncel/);
 });
 
+import { updateActionModel } from '../../web/modules/topbar.js';
+
+test('updateActionModel: "Güncelle" düğmesi yalnızca sunucu "kurulabilir" derse görünür; yoksa NEDEN ve elle yol yazılır', () => {
+  const none = { showApply: false, label: '', version: '', note: '' };
+  assert.deepEqual(updateActionModel(null), none);
+  assert.deepEqual(updateActionModel({ checkError: 'ağ yok' }), none, 'denetlenemediyse düğme/not yok');
+  assert.deepEqual(updateActionModel({ updateAvailable: false, latestVersion: '0.10.0' }), none, 'güncelse düğme yok');
+  const ok = updateActionModel({ updateAvailable: true, installable: true, latestVersion: '0.11.1' });
+  assert.equal(ok.showApply, true);
+  assert.equal(ok.version, '0.11.1');
+  assert.match(ok.label, /v0\.11\.1 sürümüne güncelle/);
+  assert.match(ok.note, /imzası doğrulanır/);
+  const cant = updateActionModel({ updateAvailable: true, installable: false, note: 'imza anahtarı tanımlı değil', updateCommand: 'git pull && go build' });
+  assert.equal(cant.showApply, false);
+  assert.match(cant.note, /Otomatik kurulamıyor: imza anahtarı tanımlı değil/);
+  assert.match(cant.note, /git pull && go build/);
+});
+
 import { ciSnippetOf } from '../../web/modules/dock.js';
 
 test('ciSnippetOf: ayıklanan hata ham log gürültüsünden önce gelir; atlanan-satır işaretçisi özete girmez', () => {

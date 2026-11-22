@@ -26,6 +26,7 @@ func TestMain(m *testing.M) {
 	}
 	os.Setenv("HOME", home)
 	os.Setenv("USERPROFILE", home)
+	os.Setenv("GITARC_UPDATE_OFFLINE", "1") // sürüm denetimi testlerde gerçek GitHub'a gitmesin
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)
