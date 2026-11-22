@@ -1,0 +1,4 @@
+# CHANGELOG.md: farklı PR'ların AYNI noktaya eklediği satırlar çakışma sayılmasın.
+# "union" iki tarafın eklediği satırları da korur (çakışma işareti üretmez); kuyrukta/yerelde her PR için elle çözme gerekmez.
+# Dikkat: aynı SATIRI iki taraf farklı düzenlerse ikisi de kalır (eski sürüm + yeni sürüm yan yana); birleştirmeden sonra göz atın.
+CHANGELOG.md merge=union
