@@ -40,6 +40,8 @@ Kullanıcı commit, push ve PR açma işlemlerini **GitArc'ın kendisinden** (`P
    - **Uydurma Konum Çizme:** Gerçek merge/konum bilgisi bulunamayan birleşmiş dalı sahte bir noktaya sabitleyip parabol çizme; `HistoryOnly` ile işaretle, tuvalin sol üstündeki `🗂 Geçmiş` çipinde listele (`TestMergedBranchOutsideSpineWindowIsHistoryOnly`). Birleşmiş yayların uç genişletmesi `MAX_MERGE_SPREAD` ile sınırlı kalmalıdır.
    - **Görsel Dürüstlük:** Eylemi olmayan öğede gereksiz buton gösterme; yalnızca yerel kalıntısı duran birleşmiş parabollerde `💻 Local` / `HEAD·Local` rozeti, alt ray kalıntı kuyruğu ve `🧹` butonu göster, tamamen temiz yeşil kapsüllerde `🧹` butonunu gizle.
 
+**CHANGELOG çakışması:** `.gitattributes` içindeki `CHANGELOG.md merge=union` kuralını silme; farklı PR'ların aynı noktaya eklediği satırları çakışmasız birleştirir (kuyruk bu yüzden durmaz). `changelog_merge_test.go` kuralı korur. Aynı satırı iki taraf farklı düzenlerse ikisi de kalır; birleştirmeden sonra göz at.
+
 **Demo kuralı:** Demo/simülasyon verisi kullanıcıya KENDİLİĞİNDEN gösterilmez (yalnızca `gitarc -repo sim` ile). Depo bulunamazsa `mode:"none"` ("Henüz proje yok") döner; yeni bir `NewManager(yol)` çağrısında sahte depoya düşme. Testler/gömülü kullanım `NewManager("")` ile simülasyonu kullanır.
 
 **Terim notu:** Arayüzde kullanıcıya "Üst Ray/Alt Ray" değil **"Uzak" (GitHub/PR) ve "Yerel" (local)** denir. Kod içi adlar (`upper`/`lower`, `btn-upper-ray`) tarihsel olarak aynı kalır; yeni kullanıcı metinleri Yerel/Uzak yazılmalıdır.
