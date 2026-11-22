@@ -33,12 +33,37 @@ export function updateStatusText(repo, res = null) {
   return `v${cur} · Henüz denetlenmedi: "Yeni sürüm var mı?" ile denetleyin`;
 }
 
+// "Güncelle" düğmesi ve not: yalnızca sunucu "kurulabilir" (imzalı dosya var, imzacı tanımlı, takım modu değil) derse düğme görünür; aksi halde
+// NEDEN yazılır ve kaynaktan güncelleme komutu önerilir. Denetim hatası/güncel durumda ikisi de boş.
+export function updateActionModel(res) {
+  if (!res || res.checkError || !res.updateAvailable) return { showApply: false, label: '', version: '', note: '' };
+  if (res.installable) {
+    return { showApply: true, label: `⬇️ v${res.latestVersion} sürümüne güncelle`, version: res.latestVersion, note: 'İndirilir, imzası doğrulanır, çalışan ikili değiştirilir (eskisi yedeklenir). Sonra GitArc\'ı yeniden başlatın.' };
+  }
+  return { showApply: false, label: '', version: '', note: `Otomatik kurulamıyor: ${res.note || 'bu sürüm için imzalı dosya yok'}. Kaynaktan: ${res.updateCommand || 'git pull --ff-only origin main && go build -o gitarc .'}` };
+}
+
 export function versionView(repo) {
   const text = `v${repo.appVersion || '0.10.0'}${repo.teamMode ? ' · TEAM' : ''}${repo.updateAvailable ? ' ⬆ Güncelle' : ''}`;
   return { text, className: `btn mono ${repo.updateAvailable ? 'warn' : 'ghost'}` };
 }
 
 // Temizlenebilir (silinmiş/birleşmiş kalıntı) dal sayısı.
+/** Saf: üst çubuktaki "Şu an: <dal>" çipi. Dal adı canlı depoda sunucudan (repo.currentBranch), demo/yedek motorda HEAD dalından gelir.
+ *  Ana dalda değilsen (ya da kaydedilmemiş dosya varsa) dikkat çeker; dal bilinmiyorsa (detached HEAD / proje yok) çip gizlenir. */
+export function headChipModel(repo, branches = []) {
+  const name = repo?.currentBranch || (branches || []).find((b) => b.isHead)?.name || '';
+  if (!name || repo?.mode === 'none') return { show: false, text: '', title: '', tone: 'neutral' };
+  const def = repo?.defaultBranch || 'main';
+  const dirty = Number(repo?.dirtyCount) || 0;
+  const off = name !== def;
+  const text = `🌿 ${name}${dirty > 0 ? ` · ${dirty} kaydedilmemiş` : ''}`;
+  const title = off
+    ? `Çalışma klasörü şu an "${name}" dalında (${def} değil)${dirty > 0 ? `; ${dirty} dosya kaydedilmemiş` : ''}.`
+    : `Çalışma klasörü ana dalda (${def})${dirty > 0 ? `; ${dirty} dosya kaydedilmemiş` : ''}.`;
+  return { show: true, text, title, tone: off ? 'off-default' : 'on-default' };
+}
+
 export function cleanableCount(branches) {
   return (branches || []).filter((b) => b.prunable).length;
 }
@@ -147,6 +172,13 @@ export function renderTopbar(callbacks = {}) {
   if (el.engineStatus) el.engineStatus.textContent = snap.repo.mode === 'live' ? '● Canlı Repo Bağlı' : (snap.repo.mode === 'none' ? '● Proje yok' : '● Simülasyon Hazır');
 
   renderRepoSelect(snap);
+  const head = headChipModel(snap.repo, snap.branches);
+  if (el.headChip) {
+    el.headChip.hidden = !head.show;
+    el.headChip.textContent = head.text;
+    el.headChip.title = head.title;
+    el.headChip.className = `head-chip ${head.tone}`;
+  }
 
   if (el.btnRemoveProject) el.btnRemoveProject.hidden = snap.repo.mode !== 'live';
   const cleanable = cleanableCount(snap.branches);

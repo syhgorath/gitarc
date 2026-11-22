@@ -206,6 +206,7 @@ try {
     await expect(`document.getElementById('sec-update-status').textContent.includes('Henüz denetlenmedi')`, 'denetim yapılmadan "güncel" yazıyor');
     await click('#btn-run-update-check');
     await expect(`document.getElementById('sec-update-status').textContent.includes('Denetlenemedi')`, 'ulaşılamayan sürüm kaynağı "denetlenemedi" demedi');
+    await expect(hidden('#btn-apply-update'), 'denetlenemediyse "Güncelle" düğmesi GÖRÜNMEMELİ');
     await click('#sec-close');
     await expect(hidden('#security-update-modal'), 'pencere kapanmadı');
   });
@@ -278,6 +279,9 @@ try {
   await step('gerçek depo canlı kipte açılır, demo şeridi yok', async () => {
     await expect(`(async()=>{const m=await import('/modules/state.js'); return m.state.snapshot?.repo?.mode==='live';})()`, 'canlı kipte açılmadı');
     await expect(hidden('#demo-banner'), 'canlı depoda demo şeridi görünmemeli');
+  });
+  await step('üst çubukta "Şu an" çipi görünür ve gerçek dalı (main) gösterir', async () => {
+    await expect(`(() => { const c = document.getElementById('head-chip'); return !!c && !c.hidden && c.textContent.includes('main') && c.classList.contains('on-default'); })()`, 'üst çubuk dal çipi yok ya da yanlış dalı gösteriyor');
   });
   await step('birleşmiş dalı seçince "Değişen Dosyalar" satırları yüklenir', async () => {
     await b.eval(`(async()=>{const m=await import('/modules/state.js'); const app=await import('/app.js'); const t=m.state.snapshot.branches.find((x)=>x.state==='merged'); app.selectBranch(t.id);})()`);

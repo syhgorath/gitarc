@@ -20,6 +20,9 @@ func IsPrunable(b model.BranchArc) bool {
 	if b.IsHEAD && b.UncommittedCount > 0 {
 		return false
 	}
+	if b.WorktreePath != "" {
+		return false // başka klasörde açık: git silmeyi reddeder; "temizle" düğmesi hata verirdi
+	}
 	mergedPR := b.PR != nil && b.PR.ReviewState == "MERGED" && b.RemoteAhead == 0
 	gone := b.OriginGone || b.State == "gone"
 	merged := b.State == "merged" || mergedPR

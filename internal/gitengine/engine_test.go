@@ -1173,7 +1173,8 @@ func TestRealWorldSquashCrossPRAndProtectionAccuracy(t *testing.T) {
 		t.Fatalf("expected 4 dirty files (1 staged + 3 untracked), got %d (%+v)", len(dirtyFiles), dirtyFiles)
 	}
 
-	// 5. HEAD olan dal için git branch -D doğrudan önerilmemeli; git switch main eklenmeli ve kirliyse uyarılmalı (Madde 2)
+	// 5. HEAD olan dal için git branch -D doğrudan önerilmemeli. Kirliyse (kaydedilmemiş iş) silme/stash HİÇ önerilmez: önce commit
+	// (eskiden "git switch main && git branch -D" önerilirdi; bitmemiş işi silmeye/gizlemeye yönlendiriyordu).
 	headDirtyBranch := model.BranchArc{
 		Name:             "belgeler-3",
 		State:            "merged",
@@ -1181,8 +1182,9 @@ func TestRealWorldSquashCrossPRAndProtectionAccuracy(t *testing.T) {
 		UncommittedCount: 4,
 	}
 	cmdDirty := BuildSuggestedCommand(headDirtyBranch, "main")
-	if !strings.Contains(cmdDirty, "⚠️ DİKKAT") || !strings.Contains(cmdDirty, "git switch main && git branch -D belgeler-3") {
-		t.Fatalf("expected warning and git switch main in suggested cmd for dirty HEAD branch, got: %q", cmdDirty)
+	if !strings.Contains(cmdDirty, "⚠️") || !strings.Contains(cmdDirty, "SİLMEYİN") || !strings.Contains(cmdDirty, "git add -A && git commit") ||
+		strings.Contains(cmdDirty, "branch -D") || strings.Contains(cmdDirty, "stash") {
+		t.Fatalf("dirty HEAD branch: expected a commit-first warning without delete/stash advice, got: %q", cmdDirty)
 	}
 
 	headCleanBranch := model.BranchArc{

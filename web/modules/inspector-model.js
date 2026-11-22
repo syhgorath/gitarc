@@ -121,7 +121,7 @@ export function commitScope(firstFile) {
 // Form alanlarının varsayılan değerleri. Sanal çalışma alanı (wip) için dosyalardan dal adı, commit mesajı
 // ve PR gövdesi türetilir; gerçek dallarda dalın kendi bilgileri kullanılır.
 export function workingTreeDefaults(b, candidateFiles, snap, isVirtualWip) {
-  let defaultWtBranch = b.name;
+  let defaultWtBranch = b.parentBranch || b.name;
   let branchPlaceholder = 'feat/ozellik-adi';
   let defaultCommitMsg = b.lastCommitMsg || '';
   if (/update\s+\d+\s+files/i.test(defaultCommitMsg) || defaultCommitMsg.startsWith('Pushlanmamış yerel çalışma')) {
@@ -155,6 +155,25 @@ export function workingTreeDefaults(b, candidateFiles, snap, isVirtualWip) {
 }
 
 // "Push Öncesi PR" formunun başlangıç değerleri (kullanıcı taslağı varsa o).
+/** Push düğmesinin metinleri. "(yerel)" eşlik kartı mevcut PR'ın dalındaki pushlanmamış commit'leri temsil eder: yeni PR açılmaz. */
+export function promoteCopy(b) {
+  if (b?.parentBranch) {
+    const n = Number(b.remoteAhead || b.aheadMain) || 0;
+    return {
+      companion: true,
+      confirm: `"${b.parentBranch}" dalının pushlanmamış ${n > 0 ? `${n} commit'i` : 'commit\'leri'} origin'e pushlansın mı? Mevcut PR güncellenir; yeni PR açılmaz.`,
+      busy: '⏳ Pushlanıyor...',
+      done: 'Yerel commit\'ler origin\'e pushlandı; mevcut PR güncellendi.',
+    };
+  }
+  return {
+    companion: false,
+    confirm: `"${b?.name || ''}" dalını origin'e pushlamak ve GitHub üzerinde Pull Request oluşturmak istiyor musunuz?`,
+    busy: '⏳ Push & PR Açılıyor...',
+    done: 'Dal origin’e pushlandı ve PR açılarak uzağa (GitHub) taşındı!',
+  };
+}
+
 export function promoteDefaults(b, savedDraft) {
   return {
     title: savedDraft?.title ?? b.draftPrTitle ?? b.lastCommitMsg ?? ('feat: ' + b.name),

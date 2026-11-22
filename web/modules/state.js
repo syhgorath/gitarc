@@ -54,7 +54,7 @@ export const el = {};
 
 export function initElements() {
   const ids = [
-    'rail-svg', 'svg-viewport', 'repo-select', 'mode-badge', 'kpi-pills',
+    'rail-svg', 'svg-viewport', 'repo-select', 'head-chip', 'mode-badge', 'kpi-pills',
     'radar-list', 'bottom-dock', 'dock-tab-radar', 'dock-tab-logs',
     'dock-tab-actions', 'dock-radar-count', 'dock-log-count', 'dock-action-count',
     'dock-toggle-btn', 'dock-clear-btn', 'dock-pane-radar', 'dock-pane-logs',
@@ -70,7 +70,7 @@ export function initElements() {
     'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'loading-hint', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
     'sec-prot-summary', 'prot-profiles', 'prot-checks', 'prot-now', 'prot-changes', 'prot-notes', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
-    'sec-update-cmd', 'btn-run-update-check', 'sec-copy-update-cmd', 'btn-add-project', 'btn-remove-project', 'add-project-modal',
+    'sec-update-cmd', 'btn-run-update-check', 'btn-apply-update', 'sec-update-note', 'sec-copy-update-cmd', 'btn-add-project', 'btn-remove-project', 'add-project-modal',
     'add-project-form', 'project-path-input', 'project-name-input', 'add-proj-close',
     'add-proj-cancel', 'btn-start-tour', 'tour-backdrop', 'tour-card',
     'tour-step-badge', 'tour-step-title', 'tour-step-body', 'tour-prev-btn',
@@ -102,6 +102,7 @@ export function initElements() {
   el.studioDiffFullscreen = el['studio-diff-fullscreen'];
   el.studioDiffContent = el['studio-diff-content'];
   el.modeBadge = el['mode-badge'];
+  el.headChip = el['head-chip'];
   el.kpiPills = el['kpi-pills'];
   el.radarList = el['radar-list'];
   el.dock = el['bottom-dock'];
@@ -189,6 +190,8 @@ export function initElements() {
   el.secUpdateStatus = el['sec-update-status'];
   el.secUpdateCmd = el['sec-update-cmd'];
   el.btnRunUpdateCheck = el['btn-run-update-check'];
+  el.btnApplyUpdate = el['btn-apply-update'];
+  el.secUpdateNote = el['sec-update-note'];
   el.secCopyUpdateCmd = el['sec-copy-update-cmd'];
   el.btnAddProject = el['btn-add-project'];
   el.btnRemoveProject = el['btn-remove-project'];

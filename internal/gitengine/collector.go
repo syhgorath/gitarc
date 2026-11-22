@@ -277,10 +277,13 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 	}
 
 	markLongLived(branches, defaultBranch)
+	annotateWorktrees(ctx, repoPath, branches)
 	markPrunable(branches)
 	ComputeCrossPRCollisions(branches)
 	AssignLanes(branches)
 	diags := BuildDiagnostics(branches)
+	stashes := stashEntries(ctx, repoPath)
+	diags = append(diags, stashDiagnostics(stashes)...)
 	if mc := mainCIFor(repoPath); mc != nil && mc.State == "FAILURE" {
 		diags = append([]model.DiagnosticItem{mainCIFailureDiag(mc, defaultBranch)}, diags...)
 	}
@@ -300,6 +303,8 @@ func CollectLiveRepo(repoID, repoName, repoPath string, repos []model.RepoOption
 			ID:                repoID,
 			Name:              repoName,
 			Path:              repoPath,
+			Stashes:           stashes,
+			CurrentBranch:     curBranchName,
 			DefaultBranch:     defaultBranch,
 			BaseBranchPinned:  pinnedBaseBranch(ctx, repoPath) != "",
 			BaseCandidates:    baseCandidates(ctx, repoPath, defaultBranch),
@@ -543,7 +548,8 @@ func BuildSuggestedCommand(b model.BranchArc, defBranch string) string {
 		}
 		if b.IsHEAD {
 			if b.UncommittedCount > 0 {
-				return fmt.Sprintf("# ⚠️ DİKKAT: Aktif dalda (%s) kaydedilmemiş %d dosya var! Silmeden önce commit veya stash yapın.\ngit switch %s && git branch -D %s && git fetch --prune origin", b.Name, b.UncommittedCount, defBranch, b.Name)
+				// Silme/stash ÖNERİLMEZ: kaydedilmemiş iş var. Önce commit; silme ancak ondan sonra düşünülür.
+				return fmt.Sprintf("# ⚠️ Aktif dalda (%s) kaydedilmemiş %d dosya var: dalı SİLMEYİN. Önce commit edin (git add -A && git commit), işiniz dalda güvende olsun; temizlik ondan sonra.", b.Name, b.UncommittedCount)
 			}
 			return fmt.Sprintf("git switch %s && git branch -D %s && git fetch --prune origin", defBranch, b.Name)
 		}
@@ -1088,6 +1094,15 @@ func isSquashMerged(ctx context.Context, repoPath, branchName, defaultBranch, ba
 
 // isFreshLocalBranch: dal hiç "yaşanmamış" mı? Upstream'i yok ve reflog'unda yalnızca oluşturma kaydı ("branch: Created from")
 // var. Reflog okunamazsa (kapalı/süresi dolmuş) false döner: kanıt yoksa eski davranış (kalıntı sayılabilir) korunur.
+// tracksDefaultBranch: upstream (kısa ad, örn. "origin/main") varsayılan dalın kendisi mi.
+func tracksDefaultBranch(upstream, defaultBranch string) bool {
+	if upstream == "" || defaultBranch == "" {
+		return false
+	}
+	i := strings.Index(upstream, "/")
+	return i > 0 && upstream[i+1:] == defaultBranch
+}
+
 func isFreshLocalBranch(ctx context.Context, repoPath, name, upstream string) bool {
 	if upstream != "" {
 		return false
@@ -1168,6 +1183,11 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			cacheHits++
 		}
 
+		// `git checkout -b x origin/main` dalı origin/main'i İZLEYEN yapar: bu dalın kendi uzak kopyası değildir. Eskiden "uzakta var",
+		// sonra (ata + 0 ileri) "uzakta silinmiş kalıntı" sayılıyordu; üzerinde çalışılan yeni dal silinecek gibi gösteriliyordu.
+		if tracksDefaultBranch(upstream, defaultBranch) {
+			upstream, track = "", ""
+		}
 		remoteAhead, remoteBehind, originGone := parseUpstreamTrack(track)
 		hasRemote := upstream != "" && !originGone
 		var prPtr *model.PRStatus
@@ -1321,6 +1341,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			branches = append(branches, model.BranchArc{
 				ID:               "local-wip-" + sanitizeID(name),
 				Name:             name + " (yerel)",
+				ParentBranch:     name,
 				Hemisphere:       "lower",
 				State:            "open",
 				StartSpineIndex:  startIdx,
