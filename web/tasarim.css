@@ -3224,6 +3224,10 @@ body {
   font-weight: 600;
 }
 
+/* Çakışma Stüdyosu: dosya sekmesindeki strateji etiketi ve not satırı */
+.studio-tab-strat { font-size: 11px; opacity: .8; margin-left: 4px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); }
+.studio-strat-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
 .strat-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -26,22 +26,59 @@ export function studioPreviewForStrategy(file, strat, customByPath) {
   return file.unionPreview || '';
 }
 
-/** Saf (durumu değiştirir): strateji düğmesine basıldı. Özel editördeyken yazılan metin kaybolmasın diye önce dosyaya kaydedilir. */
-export function chooseStudioStrategy(st, key, curFile, previewText) {
-  if (!st) return false;
-  if (st.strategy === 'custom' && curFile) st.customByPath[curFile.path] = previewText;
-  st.strategy = ['union', 'ours', 'theirs', 'custom'].includes(key) ? key : 'union';
+const STRATEGY_KEYS = ['union', 'ours', 'theirs', 'custom'];
+const STRATEGY_SHORT = { union: '✦ ikisi', ours: '🛡 main', theirs: '🚀 dal', custom: '🤖 özel' };
+
+/** Saf: bir dosyanın stratejisi. Dosya başına seçilmediyse stüdyonun varsayılanı (sunucunun önerdiği). */
+export function studioStrategyOf(st, file) {
+  if (!st) return 'union';
+  const own = file && st.strategyByPath ? st.strategyByPath[file.path] : undefined;
+  return STRATEGY_KEYS.includes(own) ? own : (STRATEGY_KEYS.includes(st.strategy) ? st.strategy : 'union');
+}
+
+/** Saf (durumu değiştirir): strateji düğmesine basıldı; YALNIZCA etkin dosyayı etkiler. Dosya "özel" iken yazılan metin kaybolmasın diye
+ *  önce kaydedilir. all=true ise (Tüm dosyalara uygula) seçim her dosyaya yazılır. */
+export function chooseStudioStrategy(st, key, curFile, previewText, all = false) {
+  if (!st || !curFile) return false;
+  st.strategyByPath = st.strategyByPath || {};
+  if (studioStrategyOf(st, curFile) === 'custom') st.customByPath[curFile.path] = previewText;
+  const k = STRATEGY_KEYS.includes(key) ? key : 'union';
+  if (all) {
+    (st.payload?.files || []).forEach((f) => { st.strategyByPath[f.path] = k; });
+  } else {
+    st.strategyByPath[curFile.path] = k;
+  }
   return true;
 }
 
-/** Saf (durumu değiştirir): önizleme alanına yazıldı. Yazılan metin yalnızca "özel" stratejide uygulanır; bu yüzden elle düzenleme
- *  stratejiyi kendiliğinden "özel"e çevirir (yoksa yazılanlar sessizce yok sayılır). true = strateji değişti. */
+/** Saf (durumu değiştirir): önizleme alanına yazıldı. Yazılan metin yalnızca "özel" stratejide uygulanır; bu yüzden elle düzenleme O DOSYANIN
+ *  stratejisini kendiliğinden "özel"e çevirir (yoksa yazılanlar sessizce yok sayılır). true = strateji değişti. */
 export function editStudioPreview(st, curFile, text) {
-  if (!st) return false;
-  if (curFile) st.customByPath[curFile.path] = text;
-  if (st.strategy === 'custom') return false;
-  st.strategy = 'custom';
+  if (!st || !curFile) return false;
+  st.strategyByPath = st.strategyByPath || {};
+  st.customByPath[curFile.path] = text;
+  if (studioStrategyOf(st, curFile) === 'custom') return false;
+  st.strategyByPath[curFile.path] = 'custom';
   return true;
+}
+
+/** Saf: uygulama isteğinin gövdesi. Her dosya için strateji AÇIKÇA gönderilir; özel metin yalnızca "özel" dosyalar için. */
+export function studioApplyPayload(st) {
+  const files = st.payload?.files || [];
+  const fileStrategies = {};
+  const customFiles = {};
+  files.forEach((f) => {
+    const k = studioStrategyOf(st, f);
+    fileStrategies[f.path] = k;
+    if (k === 'custom' && st.customByPath[f.path] !== undefined) customFiles[f.path] = st.customByPath[f.path];
+  });
+  const distinct = new Set(Object.values(fileStrategies));
+  return {
+    strategy: st.strategy || 'union', // dosyada açık seçim yoksa varsayılan; hepsi açık gönderildiği için pratikte günlük etiketi
+    fileStrategies,
+    customFiles: Object.keys(customFiles).length ? customFiles : undefined,
+    label: distinct.size === 1 ? [...distinct][0] : 'karma',
+  };
 }
 
 /** Stüdyo düğmelerinin/alanının olay işleyicileri (modül bölünmesinde kaybolmuşlardı: düğmeler hiç tıklanamıyordu). Bir kez çağrılır. */
@@ -51,15 +88,25 @@ export function bindConflictStudioEvents() {
       const st = state.studio;
       if (!chooseStudioStrategy(st, btn.getAttribute('data-strat'), getActiveStudioFile(), el.studioRightPreview?.value ?? '')) return;
       renderConflictStudio();
-      if (st.strategy === 'custom') el.studioRightPreview?.focus();
+      if (studioStrategyOf(st, getActiveStudioFile()) === 'custom') el.studioRightPreview?.focus();
     });
+  });
+  document.getElementById('studio-strat-all')?.addEventListener('click', () => {
+    const st = state.studio;
+    const cur = getActiveStudioFile();
+    if (!st || !cur) return;
+    // etkin dosyanın şu anki stratejisini tüm dosyalara yay (özel ise yalnızca strateji; metinler dosyaya özgüdür)
+    chooseStudioStrategy(st, studioStrategyOf(st, cur), cur, el.studioRightPreview?.value ?? '', true);
+    renderConflictStudio();
   });
   el.studioRightPreview?.addEventListener('input', () => {
     const st = state.studio;
     if (editStudioPreview(st, getActiveStudioFile(), el.studioRightPreview.value)) {
-      // Yeniden çizmek imleci/yazdığını bozardı: yalnızca etkin düğmeyi ve rozeti güncelle.
+      // Yeniden çizmek imleci/yazdığını bozardı: yalnızca etkin düğmeyi, rozeti ve dosya sekmesinin etiketini güncelle.
       el.studioStrategyBar?.querySelectorAll('.strat-btn').forEach((b) => b.classList.toggle('active', b.getAttribute('data-strat') === 'custom'));
       if (el.studioModeBadge) el.studioModeBadge.textContent = STUDIO_MODE_LABELS.custom;
+      const tab = el.studioFileTabs?.querySelector('.studio-file-tab.active .studio-tab-strat');
+      if (tab) tab.textContent = STRATEGY_SHORT.custom;
     }
   });
   document.getElementById('studio-copy-ai')?.addEventListener('click', async () => {
@@ -77,9 +124,10 @@ export function bindConflictStudioEvents() {
 export function renderConflictStudio() {
   const st = state.studio;
   if (!st) return;
-  const { payload, activeFileIdx, strategy, customByPath } = st;
+  const { payload, activeFileIdx, customByPath } = st;
   const files = payload.files || [];
   const curFile = files[activeFileIdx] || files[0];
+  const strategy = studioStrategyOf(st, curFile);
 
   if (el.studioBranchBadge) el.studioBranchBadge.textContent = `${payload.branchName} ↔ ${payload.baseRef}`;
 
@@ -90,8 +138,15 @@ export function renderConflictStudio() {
       btn.type = 'button';
       btn.className = `studio-file-tab ${idx === activeFileIdx ? 'active' : ''}`;
       btn.textContent = `📄 ${f.path}`;
+      if (files.length > 1) {
+        // Dosya başına seçim: hangi dosya hangi stratejiyle çözülecek sekmede görünür.
+        const tag = document.createElement('span');
+        tag.className = 'studio-tab-strat';
+        tag.textContent = STRATEGY_SHORT[studioStrategyOf(st, f)];
+        btn.append(' ', tag);
+      }
       btn.addEventListener('click', () => {
-        if (st.strategy === 'custom' && curFile && el.studioRightPreview) {
+        if (studioStrategyOf(st, curFile) === 'custom' && curFile && el.studioRightPreview) {
           st.customByPath[curFile.path] = el.studioRightPreview.value;
         }
         st.activeFileIdx = idx;
@@ -145,7 +200,8 @@ export async function openConflictStudio(branchId) {
     state.studio = {
       payload,
       activeFileIdx: 0,
-      strategy: payload.recommended || 'union',
+      strategy: payload.recommended || 'union', // varsayılan; dosya başına seçim strategyByPath'te
+      strategyByPath: {},
       customByPath: {},
     };
     if (el.studioRunVet) el.studioRunVet.checked = true;
@@ -167,11 +223,11 @@ export async function applyConflictStudio(onApplySnapshot = null) {
   const st = state.studio;
   if (!st) return;
   const curFile = getActiveStudioFile();
-  if (st.strategy === 'custom' && curFile && el.studioRightPreview) {
+  if (studioStrategyOf(st, curFile) === 'custom' && curFile && el.studioRightPreview) {
     st.customByPath[curFile.path] = el.studioRightPreview.value;
   }
 
-  const customFiles = st.strategy === 'custom' ? st.customByPath : undefined;
+  const body = studioApplyPayload(st);
   const runVet = Boolean(el.studioRunVet?.checked);
 
   if (el.studioErrorBanner) el.studioErrorBanner.hidden = true;
@@ -183,17 +239,18 @@ export async function applyConflictStudio(onApplySnapshot = null) {
 
   try {
     const snap = state.offlineMode
-      ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.resolveConflict(st.payload.branchId, st.strategy) : state.snapshot)
+      ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.resolveConflict(st.payload.branchId, body.strategy, body.fileStrategies) : state.snapshot)
       : await apiCall('/api/branch/resolve', 'POST', {
         branchId: st.payload.branchId,
-        strategy: st.strategy,
-        customFiles,
+        strategy: body.strategy,
+        fileStrategies: body.fileStrategies,
+        customFiles: body.customFiles,
         runVet,
       });
 
     closeConflictStudio();
     if (onApplySnapshot) onApplySnapshot(snap);
-    showToast(`✓ Çakışma başarıyla çözüldü (${st.strategy.toUpperCase()}) ve doğrulandı!`, 'ok');
+    showToast(`✓ Çakışma başarıyla çözüldü (${body.label.toUpperCase()}) ve doğrulandı!`, 'ok');
   } catch (err) {
     if (el.studioErrorBanner) el.studioErrorBanner.hidden = false;
     if (el.studioErrorText) el.studioErrorText.textContent = err.message || 'Çakışma çözülemedi';

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -544,9 +545,49 @@ func generateThreeWayMergeText(ctx context.Context, repoPath, tmpDir, mbSHA, bas
 // "union", "ours", "theirs", or "custom" (via customFiles window overrides),
 // executed inside an isolated temporary git worktree without modifying the user's active tree.
 func (m *Manager) ResolveBranchConflict(branchID, strategy string, customFiles map[string]string, runVet bool) (model.CockpitSnapshot, error) {
+	return m.ResolveBranchConflictFiles(branchID, strategy, nil, customFiles, runVet)
+}
+
+// strategyLabel: günlük/commit için strateji adı. Dosya başına seçim varsa ve hepsi aynıysa o, farklıysa "karma".
+func strategyLabel(strategy string, fileStrategies map[string]string) string {
+	if len(fileStrategies) == 0 {
+		return strategy
+	}
+	distinct := map[string]bool{}
+	for _, v := range fileStrategies {
+		distinct[normalizeStudioStrategy(v)] = true
+	}
+	if len(distinct) == 1 {
+		for k := range distinct {
+			return k
+		}
+	}
+	return "karma"
+}
+
+// strategyDetail: "karma" çözümün commit mesajı için dosya başına özet ("a.go=ours, b.md=union"); karma değilse boş.
+func strategyDetail(fileStrategies map[string]string) string {
+	if strategyLabel("", fileStrategies) != "karma" {
+		return ""
+	}
+	paths := make([]string, 0, len(fileStrategies))
+	for p := range fileStrategies {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	parts := make([]string, 0, len(paths))
+	for _, p := range paths {
+		parts = append(parts, p+"="+normalizeStudioStrategy(fileStrategies[p]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// ResolveBranchConflictFiles: ResolveBranchConflict'ın dosya başına strateji destekleyen hâli. fileStrategies (dosya yolu → union|ours|theirs|custom)
+// içinde olmayan dosyalar `strategy`'yi kullanır. Anahtarlar yalnızca çakışan dosya listesinde ARANIR (hiçbir zaman yol olarak kullanılmaz).
+func (m *Manager) ResolveBranchConflictFiles(branchID, strategy string, fileStrategies, customFiles map[string]string, runVet bool) (model.CockpitSnapshot, error) {
 	strategy = normalizeStudioStrategy(strategy)
 	if live, ok := m.activeLiveRepo(); ok {
-		return m.resolveConflictLive(live, branchID, strategy, customFiles, runVet)
+		return m.resolveConflictLive(live, branchID, strategy, fileStrategies, customFiles, runVet)
 	}
 
 	m.mu.Lock()
@@ -567,13 +608,17 @@ func (m *Manager) ResolveBranchConflict(branchID, strategy string, customFiles m
 			case "custom":
 				note = "Özel / AI editör çözümü uygulandı; go vet doğrulandı."
 			}
+			label := strategyLabel(strategy, fileStrategies)
+			if label == "karma" {
+				note = "Dosya başına seçilen stratejilerle çakışma çözüldü; çalışma dizini temiz."
+			}
 			b.Conflict.HasConflict = false
 			b.Conflict.Resolved = true
-			b.Conflict.Strategy = strategy
+			b.Conflict.Strategy = label
 			b.Conflict.ResolvedNote = note
-			b.Conflict.PreviewUnified = fmt.Sprintf("✓ Çakışma Çözüm Stüdyosu (%s) ile temizlendi.\n✓ git merge-tree --write-tree: exit 0 (temiz)", strategy)
+			b.Conflict.PreviewUnified = fmt.Sprintf("✓ Çakışma Çözüm Stüdyosu (%s) ile temizlendi.\n✓ git merge-tree --write-tree: exit 0 (temiz)", label)
 			b.BehindMain = 0
-			m.recordLogLocked("ok", "Çakışma Çözümü ("+strategy+")", b.Name, note, "")
+			m.recordLogLocked("ok", "Çakışma Çözümü ("+label+")", b.Name, note, "")
 			return m.buildSimSnapshotLocked(m.repoOptionsLocked()), nil
 		}
 	}
@@ -582,9 +627,10 @@ func (m *Manager) ResolveBranchConflict(branchID, strategy string, customFiles m
 	return model.CockpitSnapshot{}, err
 }
 
-func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string, customFiles map[string]string, runVet bool) (model.CockpitSnapshot, error) {
+func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string, fileStrategies, customFiles map[string]string, runVet bool) (model.CockpitSnapshot, error) {
+	label := strategyLabel(strategy, fileStrategies)
 	failStep := func(branchName, cmdDesc string, err error) (model.CockpitSnapshot, error) {
-		m.recordLog("error", "Çakışma Çözümü ("+strategy+")", branchName, err.Error(), cmdDesc)
+		m.recordLog("error", "Çakışma Çözümü ("+label+")", branchName, err.Error(), cmdDesc)
 		return model.CockpitSnapshot{}, err
 	}
 
@@ -655,7 +701,14 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 		if customFiles != nil {
 			customWin = customFiles[relPath]
 		}
-		resolvedContent := applyWindowResolution(rawConflict, strategy, customWin)
+		fileStrat := strategy
+		if fs, ok := fileStrategies[relPath]; ok {
+			fileStrat = normalizeStudioStrategy(fs)
+			if fileStrat != "custom" {
+				customWin = "" // bu dosya için "özel" seçilmedi: eskiden yazılmış bir özel metin uygulanmaz
+			}
+		}
+		resolvedContent := applyWindowResolution(rawConflict, fileStrat, customWin)
 		if hasStrayConflictMarkers(resolvedContent) {
 			return failStep(b.Name, "stray marker check ("+relPath+")", fmt.Errorf("%s için sağlanan çözümde hâlâ <<<<<<< / >>>>>>> işaretleri var", relPath))
 		}
@@ -685,7 +738,11 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 		}
 	}
 
-	commitMsg := fmt.Sprintf("merge: resolve conflict with %s via GitArc (%s)", baseRef, strategy)
+	commitLabel := label
+	if d := strategyDetail(fileStrategies); d != "" {
+		commitLabel = "karma: " + d
+	}
+	commitMsg := fmt.Sprintf("merge: resolve conflict with %s via GitArc (%s)", baseRef, commitLabel)
 	commitArgs := append([]string{}, gitIdentityArgs...)
 	commitArgs = append(commitArgs, "commit", "--no-edit", "-m", commitMsg)
 	if _, cErrOut, _, err := runCmdStdout(ctx, wtDir, "git", commitArgs...); err != nil {
@@ -725,7 +782,7 @@ func (m *Manager) resolveConflictLive(live *repoEntry, branchID, strategy string
 	if len(shortNew) > 7 {
 		shortNew = shortNew[:7]
 	}
-	m.recordLog("ok", "Çakışma Çözümü ("+strategy+")", b.Name, fmt.Sprintf("İzole git worktree içinde çözüldü (%s)", shortNew), fmt.Sprintf("base=%s files=%s", baseRef, strings.Join(b.Conflict.Files, ", ")))
+	m.recordLog("ok", "Çakışma Çözümü ("+label+")", b.Name, fmt.Sprintf("İzole git worktree içinde çözüldü (%s)", shortNew), fmt.Sprintf("base=%s files=%s", baseRef, strings.Join(b.Conflict.Files, ", ")))
 	InvalidateGHCache(live.path)
 	return m.Snapshot()
 }
