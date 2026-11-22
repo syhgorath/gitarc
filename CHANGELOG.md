@@ -4,6 +4,8 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ## [Yayımlanmamış]
 
+- **CI hata ayıklayıcı artık başarısız testi gösteriyor:** uzun `go test -v -race` logunda `--- FAIL` ortada kalıyor, eskiden yalnızca son 16 KB alınıp sonra ayıklandığı için panel "0 kritik bulgu" diyor ve PASS satırları gösteriyordu. Ayıklama tam log üzerinde yapılıyor, gösterilen metin hata satırlarının çevresinden kuruluyor (atlanan aralıklar işaretli); her bulguya kaba `class` (mekanik/mantik) eklendi; Radar kartı özeti gerçek hatayı (test adı · dosya:satır · mesaj) gösteriyor.
+
 ### Belgeler
 - **AGENTS.md: PR/commit akışı güncellendi:** Commit/push/PR GitArc'tan yapıldığı için yapay zekâ artık komut/PR metni bloğu vermez; PR başlığı ve gövdesi dalın CHANGELOG maddelerinden üretildiği için her değişiklikte temiz başlıklı bir madde yazılır (ayrıntı: AGENTS.md Bölüm 1).
 - **MIT lisansı eklendi (`LICENSE`):** README "açık kaynak" diyordu ama repoda lisans dosyası yoktu (lisans yoksa varsayılan olarak tüm haklar saklıdır, kullanım/dağıtım izni yoktur). Metin KeyLab'ınkiyle aynı (MIT, © 2026 syhgorath); README'ye lisans rozeti ve "Lisans" bölümü eklendi.
