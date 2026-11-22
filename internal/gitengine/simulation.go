@@ -927,7 +927,11 @@ func (m *Manager) PromoteBranch(branchID string) (model.CockpitSnapshot, error) 
 func (m *Manager) PromoteBranchWithMeta(branchID, prTitle, prBody string) (model.CockpitSnapshot, error) {
 	if live, ok := m.activeLiveRepo(); ok {
 		snap, err := m.promoteBranchLive(live, branchID, prTitle, prBody)
-		return m.logLiveOutcome("Push & PR Aç", branchID, "Dal origin'e pushlandı ve PR açıldı", snap, err)
+		okMsg := "Dal origin'e pushlandı ve PR açıldı"
+		if strings.HasPrefix(branchID, "local-wip-") && branchID != "local-wip-working-tree" {
+			okMsg = "Yerel commit'ler origin'e pushlandı; mevcut PR güncellendi (yeni PR açılmadı)"
+		}
+		return m.logLiveOutcome("Push & PR Aç", branchID, okMsg, snap, err)
 	}
 
 	m.mu.Lock()
