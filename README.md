@@ -10,6 +10,10 @@
 
 ![GitArc kokpiti: parabolik raylar, KPI çipleri ve alt çekmece](docs/screenshots/kokpit.svg)
 
+> **Durum: ham / deneysel.** GitArc tek bir geliştiricinin kişisel aracıdır; hâlâ erken aşamadadır ve hata çıkarabilir. Hazır sürüm ya da imzalı ikili yoktur, kaynaktan derlenir. Arayüz yalnızca Türkçedir. Gerçek GitHub'da şimdilik yalnızca yazarın kendi depolarında kullanıldı; testlerin büyük kısmı sahte `gh` ile çalışır.
+>
+> **Güvenle denemek için:** önce [canlı demoyu](https://syhgorath.github.io/gitarc/) ya da `./gitarc -repo sim` (hiçbir depoya dokunmaz) açın. Gerçek depoda push/birleştirme gibi işlemler her zaman sizin onayınızla yapılır; zorla push (`--force`) yoktur. Bir şey ters giderse [issue açın](https://github.com/syhgorath/gitarc/issues).
+
 ## Parabolik metafor
 
 | Bölge | Anlamı |
@@ -129,7 +133,7 @@ git clone https://github.com/syhgorath/gitarc.git && cd gitarc && go build -o gi
 
 Önce denemek isterseniz kurulum gerektirmeyen [canlı demoyu](https://syhgorath.github.io/gitarc/) açın.
 
-Gereksinimler: Go (sürüm `go.mod` içinde), `git`. GitHub özellikleri (PR, CI, branch protection) için [`gh` CLI](https://cli.github.com/) kurulu ve oturum açılmış olmalıdır; `gh` yoksa (veya uzak depo GitHub değilse) PR/CI/koruma bilgisi gösterilmez, yerel Git özellikleri çalışmaya devam eder.
+Gereksinimler: Go (sürüm `go.mod` içinde; eski Go'larda `GOTOOLCHAIN` gerekeni kendiliğinden indirir), **`git` 2.38 veya üzeri** (çakışma/kuyruk planı `git merge-tree --write-tree` kullanır). GitHub özellikleri (PR, CI, branch protection) için [`gh` CLI](https://cli.github.com/) kurulu ve oturum açılmış olmalıdır; `gh` yoksa (veya uzak depo GitHub değilse) PR/CI/koruma bilgisi gösterilmez, yerel Git özellikleri çalışmaya devam eder.
 
 ```bash
 # Derle ve bulunduğun Git deposunu canlı modda aç

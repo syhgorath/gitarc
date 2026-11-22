@@ -6,6 +6,7 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) biçimini ve S
 
 ### Belgeler
 - **AGENTS.md: PR/commit akışı güncellendi:** Commit/push/PR GitArc'tan yapıldığı için yapay zekâ artık komut/PR metni bloğu vermez; PR başlığı ve gövdesi dalın CHANGELOG maddelerinden üretildiği için her değişiklikte temiz başlıklı bir madde yazılır (ayrıntı: AGENTS.md Bölüm 1).
+- **README: "ham / deneysel" durum notu ve `git` 2.38 gereksinimi:** şans eseri deneyen biri hazır sürüm/imzalı ikili olmadığını, arayüzün yalnızca Türkçe olduğunu, gerçek GitHub'da henüz sınırlı denendiğini ve güvenle nasıl deneyeceğini (canlı demo, `-repo sim`) baştan görür; `git merge-tree --write-tree` için gereken en düşük `git` sürümü yazıldı.
 - **MIT lisansı eklendi (`LICENSE`):** README "açık kaynak" diyordu ama repoda lisans dosyası yoktu (lisans yoksa varsayılan olarak tüm haklar saklıdır, kullanım/dağıtım izni yoktur). Metin KeyLab'ınkiyle aynı (MIT, © 2026 syhgorath); README'ye lisans rozeti ve "Lisans" bölümü eklendi.
 - **README: rozetler, canlı demo bağlantısı, indirme notu:** CI / sürüm / yıldız / canlı demo rozetleri; canlı demo bağlantısı (https://syhgorath.github.io/gitarc/); "İndirme" notu (derlenmiş ikili henüz yok, kaynaktan derleme komutu). Pages demosu artık `main`'de `web/` değişince kendiliğinden yayınlanır (`pages.yml` `push` tetikleyicisi; elle tetikleme de duruyor).
 - **Sponsor düğmesi:** `.github/FUNDING.yml` ile GitHub depo sayfasında ♥ Sponsor düğmesi ve README'de "Destek" bölümü eklendi (uygulamanın içinde bir şey yok).
