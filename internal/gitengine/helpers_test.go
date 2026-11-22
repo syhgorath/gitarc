@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMergeUniqueFiles(t *testing.T) {
@@ -75,6 +76,9 @@ func newTempRepo(t *testing.T) (string, func(args ...string)) {
 		t.Skip("git binary not installed")
 	}
 	dir := t.TempDir()
+	// Anlık görüntü arka planda `git fetch`/`gh` başlatır; test dizini silinmeden ÖNCE bitmelerini bekle (Cleanup'lar ters sırada çalışır,
+	// bu kayıt TempDir'inkinden sonra yapıldığı için ondan önce çalışır). Aksi hâlde yavaş CI'da "directory not empty" ile test düşer.
+	t.Cleanup(func() { settleBackground(20 * time.Second) })
 	run := func(args ...string) {
 		t.Helper()
 		cmd := exec.Command("git", args...)

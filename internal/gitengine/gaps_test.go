@@ -7,9 +7,36 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gitarc/internal/selfupdate"
 )
+
+// settleBackground: arka plandaki `git fetch` / `gh` sorguları (anlık görüntü başlatır) BİTENE kadar bekler. Beklenmezse test dizini
+// silinirken bu işlemler hâlâ .git içine yazabilir ve `TempDir RemoveAll cleanup: directory not empty` ile test (yalnızca yavaş CI'da) düşer.
+func settleBackground(limit time.Duration) {
+	deadline := time.Now().Add(limit)
+	for time.Now().Before(deadline) {
+		bgMu.Lock()
+		states := make([]*repoBG, 0, len(bgStates))
+		for _, st := range bgStates {
+			states = append(states, st)
+		}
+		bgMu.Unlock()
+		busy := false
+		for _, st := range states {
+			st.mu.Lock()
+			if st.fetchBusy || st.ghBusy {
+				busy = true
+			}
+			st.mu.Unlock()
+		}
+		if !busy {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
 
 func switchLive(t *testing.T, dir string) *Manager {
 	t.Helper()
@@ -17,6 +44,8 @@ func switchLive(t *testing.T, dir string) *Manager {
 	if _, err := mgr.SwitchRepo("live-custom"); err != nil {
 		t.Fatalf("SwitchRepo: %v", err)
 	}
+	// t.Cleanup'lar TERS sırada çalışır: bu, t.TempDir'in silinmesinden ÖNCE çalışır.
+	t.Cleanup(func() { settleBackground(20 * time.Second) })
 	return mgr
 }
 
@@ -512,5 +541,36 @@ func TestPlaygroundDefaultPathUsesHome(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	if p != filepath.Join(home, ".gitarc", "playground") {
 		t.Fatalf("unexpected playground path %q", p)
+	}
+}
+
+// settleBackground gerçekten bekler: meşgul bir arka plan işi bitmeden dönmez, bitince hemen döner (testlerin dizin silme yarışını önler).
+func TestSettleBackgroundWaitsForBusyBackgroundWork(t *testing.T) {
+	st := bgFor(t.TempDir())
+	st.mu.Lock()
+	st.fetchBusy = true
+	st.mu.Unlock()
+	done := make(chan time.Duration, 1)
+	go func() {
+		t0 := time.Now()
+		settleBackground(5 * time.Second)
+		done <- time.Since(t0)
+	}()
+	time.Sleep(150 * time.Millisecond)
+	select {
+	case d := <-done:
+		t.Fatalf("iş sürerken dönmemeli (döndü: %v)", d)
+	default:
+	}
+	st.mu.Lock()
+	st.fetchBusy = false
+	st.mu.Unlock()
+	select {
+	case d := <-done:
+		if d < 140*time.Millisecond {
+			t.Fatalf("iş bitmeden önce dönmüş: %v", d)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("iş bitince dönmeli")
 	}
 }
