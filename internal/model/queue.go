@@ -21,6 +21,9 @@ type QueueItem struct {
 	Behind                int      `json:"behind"`       // main'in kaç commit gerisinde
 	CI                    string   `json:"ci,omitempty"` // "SUCCESS" | "FAILURE" | "RUNNING" | "" (bilinmiyor; yeşil varsayılmaz)
 	Review                string   `json:"review,omitempty"`
+	// UnpushedCommits: dalın YEREL ucu GitHub'daki PR ucundan bu kadar commit önde. Plan, GitHub'ın gerçekte birleştireceği UZAK ucu
+	// simüle eder; yereldeki (pushlanmamış) çözüm/commit'ler planda YOKTUR. 0 = fark yok (ya da PR/uzak dal yok).
+	UnpushedCommits int `json:"unpushedCommits,omitempty"`
 	// AfterBlocker: kuyruk daha önceki bir engelde durduğu için bu dal fiilen o engel aşılana kadar bekler.
 	AfterBlocker bool `json:"afterBlocker,omitempty"`
 }
