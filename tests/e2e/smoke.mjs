@@ -260,15 +260,27 @@ try {
     await b.eval(`[...document.querySelectorAll('.radar-card button')].find((x) => x.textContent.includes('Çakışma Stüdyosu')).click()`);
     await expect(visible('#conflict-studio-modal'), 'stüdyo açılmadı');
     // Strateji düğmeleri GERÇEKTEN tıklanır (işleyicileri kaybolmuştu; hiç yakalanmamıştı): seçim değişir, önizleme ve rozet güncellenir.
-    const activeStrat = () => b.eval(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat')`);
     await click('#studio-strategy-bar [data-strat="theirs"]');
     await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') === 'theirs' && document.getElementById('studio-mode-badge').textContent.includes('Theirs')`, '"Sadece bu dalın kodu" düğmesi seçimi değiştirmedi');
     await click('#studio-strategy-bar [data-strat="ours"]');
     await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') === 'ours'`, '"Main\'deki kod" düğmesi seçimi değiştirmedi');
-    // Elle yazınca strateji "özel"e döner (yoksa yazılanlar uygulanmazdı)
+    // DOSYA BAŞINA strateji: seçim yalnızca açık dosyayı etkiler; diğer dosya varsayılanında kalır; sekmelerde etiketler görünür.
+    const tabStrats = () => b.eval(`[...document.querySelectorAll('#studio-file-tabs .studio-file-tab')].map((t) => t.querySelector('.studio-tab-strat')?.textContent || '')`);
+    await expect(`document.querySelectorAll('#studio-file-tabs .studio-file-tab').length >= 2 && document.querySelectorAll('#studio-file-tabs .studio-tab-strat').length >= 2`, 'çok dosyalı çakışmada sekmelerde strateji etiketi yok');
+    await click('#studio-strategy-bar [data-strat="theirs"]'); // 1. dosya → dal
+    await b.eval(`document.querySelectorAll('#studio-file-tabs .studio-file-tab')[1].click()`);
+    await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') !== 'theirs'`, '1. dosyadaki seçim 2. dosyaya SIZDI (seçim dosya başına olmalı)');
+    await b.eval(`document.querySelectorAll('#studio-file-tabs .studio-file-tab')[0].click()`);
+    await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') === 'theirs'`, '1. dosyaya dönünce seçim korunmadı');
+    const labels = await tabStrats();
+    if (labels[0] !== '🚀 dal' || labels[1] === labels[0]) throw new Error(`sekme etiketleri dosya başına olmalı: ${JSON.stringify(labels)}`);
+    // "Tüm dosyalara uygula": etkin dosyanın stratejisi herkese yayılır
+    await click('#studio-strat-all');
+    await expect(`new Set([...document.querySelectorAll('#studio-file-tabs .studio-tab-strat')].map((x) => x.textContent)).size === 1`, '"Tüm dosyalara uygula" etiketleri eşitlemedi');
+    // Elle yazınca YALNIZCA o dosyanın stratejisi "özel"e döner (yoksa yazılanlar uygulanmazdı)
     await b.eval(`(() => { const t = document.getElementById('studio-right-preview'); t.value = t.value + '\\n// elle'; t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await expect(`document.querySelector('#studio-strategy-bar .strat-btn.active')?.getAttribute('data-strat') === 'custom'`, 'önizlemeye yazınca strateji "özel"e dönmedi');
-    if ((await activeStrat()) !== 'custom') throw new Error('strateji özel değil');
+    await expect(`(() => { const l = [...document.querySelectorAll('#studio-file-tabs .studio-tab-strat')].map((x) => x.textContent); return l[0] === '🤖 özel' && l[1] !== '🤖 özel'; })()`, 'elle yazma yalnızca açık dosyayı "özel" yapmalı');
     await click('#studio-close');
     await expect(hidden('#conflict-studio-modal'), 'stüdyo kapanmadı');
   });
