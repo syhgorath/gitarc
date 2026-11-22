@@ -3165,6 +3165,23 @@ body {
   max-width: 680px;
 }
 
+/* Ekrandan uzun pencereler: kart görünüm alanını aşmaz, başlık sabit kalır, gövde kendi içinde kayar. */
+.modal-card.modal-scroll {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+}
+.modal-card.modal-scroll > .modal-head { flex: 0 0 auto; }
+.modal-card.modal-scroll > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
 .modal-dot.warn {
   background: var(--warn-orange);
 }
