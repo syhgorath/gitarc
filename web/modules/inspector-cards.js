@@ -154,13 +154,14 @@ export function branchHeaderHtml(v) {
       </div>
       <div class="det-badges">
         ${b.isHead ? '<span class="chip ok">HEAD (Aktif Dal)</span>' : ''}
+        ${b.worktreePath ? `<span class="chip warn" title="${esc(b.worktreePath)}">📁 Başka klasörde açık</span>` : ''}
         ${authorName ? `<span class="chip ${isMe ? 'accent' : 'purple'}" title="Dal/PR Sahibi">👤 @${esc(authorName)} ${isMe ? '(Ben)' : ''}</span>` : ''}
         ${b.pr?.ci ? `<span class="chip ${b.pr.ci.state === 'SUCCESS' ? 'ok' : (b.pr.ci.state === 'FAILURE' ? 'danger' : 'warn')}">CI: ${esc(b.pr.ci.state)}</span>` : ''}
         ${b.originGone ? '<span class="chip warn">origin: gone</span>' : ''}
       </div>
       <div class="det-actions">
         <button type="button" class="btn sm" id="act-branch-diff" title="Kod değişikliklerini (diff) görüntüle">🔍 Diff Gör</button>
-        ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout" ${snap.repo.teamMode ? 'disabled title="Team Server modunda paylaşılan HEAD kilitlidir"' : ''}>${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
+        ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout" ${snap.repo.teamMode ? 'disabled title="Team Server modunda paylaşılan HEAD kilitlidir"' : (b.worktreePath ? `disabled title="Bu dal başka bir klasörde açık (${esc(b.worktreePath)}); git burada geçmeyi reddeder"` : '')}>${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
         ${b.isHead && isAlreadySynced && !isVirtualWip ? `<button type="button" class="btn primary sm" id="act-checkout-main">🎯 main Omurgasına Geç</button>` : ''}
         ${canPromote && !hasOpenPR && !b.parentBranch ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
         ${hasOpenPR && !isVirtualWip ? `

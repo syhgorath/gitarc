@@ -267,6 +267,7 @@ export function renderRadar(callbacks = {}) {
     else if (d.kind === 'prune_candidate') kindLabel = 'Silinmiş/Kalıntı Dal';
     else if (d.kind === 'main_ci_failure') kindLabel = 'Omurga Testleri Kırık';
     else if (d.kind === 'stale_branch') kindLabel = 'Eskimiş Dal';
+    else if (d.kind === 'stash') kindLabel = 'Stash';
 
     const files = d.files || b?.conflict?.files || [];
     let filesHtml = '';
@@ -284,9 +285,15 @@ export function renderRadar(callbacks = {}) {
     } else if (d.kind === 'ci_failure') {
       actBtnText = '🔍 CI Hatasını Gör';
       actAction = 'select';
+    } else if (d.kind === 'prune_candidate' && b?.worktreePath) {
+      actBtnText = '🎯 Dalı İncele'; // başka klasörde açık: git silmeyi reddeder, temizle düğmesi hata verirdi
+      actAction = 'select';
     } else if (d.kind === 'prune_candidate') {
       actBtnText = '🧹 Dalı Temizle';
       actAction = 'prune';
+    } else if (d.kind === 'stash') {
+      actBtnText = '';
+      actAction = '';
     } else if (d.kind === 'main_ci_failure') {
       actBtnText = '🔗 Çalıştırmayı Aç';
       actAction = 'open-url';
@@ -302,7 +309,7 @@ export function renderRadar(callbacks = {}) {
           <strong class="rc-title">${esc(d.title)}</strong>
         </div>
         <div class="rc-actions">
-          <button type="button" class="rc-action-btn" data-act="${actAction}" data-branch="${esc(d.branchId || '')}" data-url="${esc(d.url || '')}">${actBtnText}</button>
+          ${actAction ? `<button type="button" class="rc-action-btn" data-act="${actAction}" data-branch="${esc(d.branchId || '')}" data-url="${esc(d.url || '')}">${actBtnText}</button>` : ''}
         </div>
       </div>
       <div class="rc-body">
