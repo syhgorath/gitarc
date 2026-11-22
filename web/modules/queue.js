@@ -30,6 +30,7 @@ export function queueStepModel(it) {
   const details = [];
   if (it.status !== 'clean' && it.reason) details.push(it.reason);
   if (it.conflictFiles?.length) details.push(`Çakışan dosyalar: ${it.conflictFiles.join(', ')}`);
+  if (it.unpushedCommits > 0) details.push(`⚠ Yerelde ${it.unpushedCommits} commit pushlanmamış: bu plan GitHub'daki PR ucunu simüle eder (yereldeki çözüm/commit'ler planda yok). Önce pushlayın.`);
   if (it.afterBlocker) details.push('Kuyruk daha önce durduğu için bu dal engel aşılana kadar bekler.');
   if (it.behind > 0) details.push(`main'in ${it.behind} commit gerisinde`);
   details.push(it.ci ? `CI: ${it.ci}` : 'CI: bilinmiyor (yeşil varsayılmaz)');
@@ -69,9 +70,15 @@ export function runPlanModel(plan) {
 
 const RUN_TONES = { running: 'warn', completed: 'ok', stopped: '', blocked: 'warn', timeout: 'warn', interrupted: 'warn' };
 const RUN_TITLES = {
-  running: '⏳ Koşu sürüyor', completed: '✓ Koşu bitti', stopped: '■ Koşu durduruldu',
-  blocked: '⛔ Koşu ilk sorunda durdu', timeout: '⏱ Koşu zaman aşımında durdu', interrupted: '⚠ Koşu yarım kaldı',
+  running: '⏳ Koşu sürüyor', completed: '✓ Son koşu bitti', stopped: '■ Son koşu durduruldu',
+  blocked: '⛔ Son koşu ilk sorunda durdu', timeout: '⏱ Son koşu zaman aşımında durdu', interrupted: '⚠ Son koşu yarım kaldı',
 };
+
+/** Kısa satır için başlığın simgesiz, "Son " öneksiz hâli: "⛔ Son koşu ilk sorunda durdu" → "Koşu ilk sorunda durdu". */
+function compactLabel(title) {
+  const t = title.replace(/^\S+\s+(Son\s+)?/, '');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
 /** Koşu durumunun görünümü (saf model). `lines` düz metin özeti, `steps` PR başına adım durumu, `events` zaman çizelgesi. */
 export function runStatusModel(run) {
@@ -119,8 +126,11 @@ export function runStatusModel(run) {
     phase,
     events,
     stopReason: run.stopReason || '',
-    compactLine: `Son koşu: ${(RUN_TITLES[status] || status).replace(/^\S+\s/, '')} · ${run.merged || 0}/${total} PR${lastEv && lastEv.time ? ` · ${lastEv.time}` : ''}`,
+    compactLine: `Son koşu: ${compactLabel(RUN_TITLES[status] || status)} · ${run.merged || 0}/${total} PR${lastEv && lastEv.time ? ` · ${lastEv.time}` : ''}`,
     resumable: ['blocked', 'timeout', 'interrupted', 'stopped'].includes(status),
+    // Biten koşu bir GEÇMİŞ kaydıdır: yukarıdaki plan sonradan değişmiş olabilir. Saat ve ipucuyla çelişki gibi görünmesi önlenir.
+    when: status === 'running' ? '' : (run.finishedAt || '').slice(11, 19),
+    hint: ['blocked', 'timeout', 'interrupted'].includes(status) ? 'Bu bir önceki koşunun kaydıdır. Sorunu giderdiyseniz planı yeniden hesaplayın; plan temizse koşuyu yeniden başlatın.' : '',
   };
 }
 
@@ -366,7 +376,7 @@ function renderRun(runObj, opts = {}) {
   card.className = `queue-run-card ${m.tone}`.trim();
   const head = document.createElement('div');
   head.className = 'queue-run-head';
-  appendText(head, 'span', m.title, 'queue-update-title');
+  appendText(head, 'span', m.when ? `${m.title} · ${m.when}` : m.title, 'queue-update-title');
   appendText(head, 'span', m.counter, `chip ${m.tone}`.trim());
   card.appendChild(head);
 
@@ -383,6 +393,7 @@ function renderRun(runObj, opts = {}) {
   });
   card.appendChild(steps);
   if (m.stopReason) appendText(card, 'div', m.stopReason, 'queue-run-reason');
+  if (m.hint) appendText(card, 'div', m.hint, 'layer-line queue-run-hint');
 
   // Olay günlüğü: kendi içinde kaydırılır (modalı büyütmez)
   const log = document.createElement('div');

@@ -95,7 +95,7 @@ test('merged/closed PRs are dropped from the queue view so the next plan request
 });
 
 // ---- 3b: otomatik koşu ----
-import { runPlanModel, runStatusModel } from '../../web/modules/queue.js';
+import { runPlanModel, runStatusModel, queueStepModel } from '../../web/modules/queue.js';
 
 test('run plan model: only a startable plan with a fingerprint can be confirmed; excluded PRs are listed, not run', () => {
   const m = runPlanModel({ startable: true, fingerprint: 'fp', items: [{ position: 1, pr: 4, branch: 'feat/d' }, { position: 2, pr: 5, branch: 'feat/e' }], excluded: [{ pr: 6, branch: 'feat/f' }], notes: ['not 1'] });
@@ -334,4 +334,22 @@ test('cap-queue-tag kartın akışında: konumlandırılmış (absolute) olmamal
   const css = readFileSync(new URL('../../web/tasarim.css', import.meta.url), 'utf8');
   const base = css.match(/\.cap-queue-tag\s*\{([^}]*)\}/)?.[1] || '';
   assert.ok(base.length > 0 && !/position:\s*absolute/.test(base) && /display:\s*block/.test(base), `taban kural: ${base}`);
+});
+
+test('plan adımı: pushlanmamış yerel commit varsa planın GitHub ucunu simüle ettiği açıkça söylenir', () => {
+  const warn = queueStepModel({ status: 'clean', reason: '', unpushedCommits: 2, ci: '' }).details.find((d) => d.includes('pushlanmamış'));
+  assert.match(warn, /Yerelde 2 commit pushlanmamış/);
+  assert.match(warn, /GitHub'daki PR ucunu simüle eder/);
+  assert.ok(!queueStepModel({ status: 'clean', reason: '', ci: '' }).details.some((d) => d.includes('pushlanmamış')), 'fark yoksa uyarı yok');
+});
+
+test('biten koşu kartı bir GEÇMİŞ kaydı olarak görünür: "Son koşu", saat ve yeniden planla ipucu; sürerken ipucu yok', () => {
+  const items = [{ pr: 4, branch: 'feat/d' }];
+  const b = runStatusModel({ status: 'blocked', items, finishedAt: '2026-11-22T14:56:25+03:00', stopReason: 'çakışıyor' });
+  assert.match(b.title, /Son koşu ilk sorunda durdu/);
+  assert.equal(b.when, '14:56:25');
+  assert.match(b.hint, /önceki koşunun kaydıdır.*planı yeniden hesaplayın/);
+  assert.equal(runStatusModel({ status: 'completed', items, finishedAt: '2026-11-22T14:56:25+03:00' }).hint, '', 'başarıyla biten koşuda ipucu gerekmez');
+  const r = runStatusModel({ status: 'running', items, current: 0, merged: 0 });
+  assert.deepEqual([r.when, r.hint], ['', '']);
 });
