@@ -1341,6 +1341,7 @@ func collectLocalBranches(ctx context.Context, repoPath, defaultBranch, baseRef,
 			branches = append(branches, model.BranchArc{
 				ID:               "local-wip-" + sanitizeID(name),
 				Name:             name + " (yerel)",
+				ParentBranch:     name,
 				Hemisphere:       "lower",
 				State:            "open",
 				StartSpineIndex:  startIdx,

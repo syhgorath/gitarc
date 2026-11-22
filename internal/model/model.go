@@ -200,6 +200,9 @@ type BranchArc struct {
 	RemoteBehind     int    `json:"remoteBehind"`
 	UncommittedCount int    `json:"uncommittedCount"`
 	LastCommitMsg    string `json:"lastCommitMsg,omitempty"`
+	// ParentBranch: yalnızca "(yerel)" eşlik kartında dolu: kartın temsil ettiği GERÇEK git dalı. Kartın Name'i görünen addır
+	// ("dal (yerel)") ve git dal adı olarak GEÇERSİZDİR; işlemler bu alanla gerçek dala gider.
+	ParentBranch string `json:"parentBranch,omitempty"`
 
 	// Smart Diagnostics & Conflict Radar
 	ChangedFiles   []string         `json:"changedFiles"`

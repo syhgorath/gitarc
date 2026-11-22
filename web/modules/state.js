@@ -70,7 +70,7 @@ export function initElements() {
     'logs-modal', 'logs-list', 'btn-protect-branch', 'btn-main-ci', 'btn-no-project-add', 'loading-hint', 'btn-update-check',
     'lens-path-input', 'perf-cache-badge', 'security-update-modal', 'sec-prot-badge',
     'sec-prot-summary', 'prot-profiles', 'prot-checks', 'prot-now', 'prot-changes', 'prot-notes', 'btn-enable-protection', 'sec-team-chip', 'sec-update-status',
-    'sec-update-cmd', 'btn-run-update-check', 'sec-copy-update-cmd', 'btn-add-project', 'btn-remove-project', 'add-project-modal',
+    'sec-update-cmd', 'btn-run-update-check', 'btn-apply-update', 'sec-update-note', 'sec-copy-update-cmd', 'btn-add-project', 'btn-remove-project', 'add-project-modal',
     'add-project-form', 'project-path-input', 'project-name-input', 'add-proj-close',
     'add-proj-cancel', 'btn-start-tour', 'tour-backdrop', 'tour-card',
     'tour-step-badge', 'tour-step-title', 'tour-step-body', 'tour-prev-btn',
@@ -190,6 +190,8 @@ export function initElements() {
   el.secUpdateStatus = el['sec-update-status'];
   el.secUpdateCmd = el['sec-update-cmd'];
   el.btnRunUpdateCheck = el['btn-run-update-check'];
+  el.btnApplyUpdate = el['btn-apply-update'];
+  el.secUpdateNote = el['sec-update-note'];
   el.secCopyUpdateCmd = el['sec-copy-update-cmd'];
   el.btnAddProject = el['btn-add-project'];
   el.btnRemoveProject = el['btn-remove-project'];

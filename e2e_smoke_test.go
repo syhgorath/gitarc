@@ -72,7 +72,7 @@ func TestBrowserSmoke(t *testing.T) {
 	gitRun(t, fresh, "init", "-q", "-b", "main")
 	freshURL := serveApp(t, gitengine.NewManager(fresh))
 
-	t.Setenv("GITARC_SELF_REPO", filepath.Join(t.TempDir(), "yok-boyle-bir-depo.git")) // sürüm denetimi gerçek GitHub'a gitmesin; ulaşılamayan durumu sınanır
+	t.Setenv("GITARC_UPDATE_OFFLINE", "1") // sürüm denetimi gerçek GitHub'a gitmesin; ulaşılamayan durum sınanır
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, node, filepath.Join(old, "tests", "e2e", "smoke.mjs"), noneURL, simURL, liveURL, freshURL)

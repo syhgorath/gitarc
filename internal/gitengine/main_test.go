@@ -14,7 +14,7 @@ func TestMain(m *testing.M) {
 	}
 	os.Setenv("HOME", home)
 	os.Setenv("USERPROFILE", home)
-	selfRepoURL = "" // testler gerçek GitHub'a hiç gitmesin (sürüm kontrolü testleri kendi yerel deposunu verir)
+	os.Setenv("GITARC_UPDATE_OFFLINE", "1") // sürüm denetimi testlerde gerçek GitHub'a hiç gitmesin (testler kendi sahte güncelleyicisini verir)
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)

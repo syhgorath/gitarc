@@ -33,6 +33,16 @@ export function updateStatusText(repo, res = null) {
   return `v${cur} · Henüz denetlenmedi: "Yeni sürüm var mı?" ile denetleyin`;
 }
 
+// "Güncelle" düğmesi ve not: yalnızca sunucu "kurulabilir" (imzalı dosya var, imzacı tanımlı, takım modu değil) derse düğme görünür; aksi halde
+// NEDEN yazılır ve kaynaktan güncelleme komutu önerilir. Denetim hatası/güncel durumda ikisi de boş.
+export function updateActionModel(res) {
+  if (!res || res.checkError || !res.updateAvailable) return { showApply: false, label: '', version: '', note: '' };
+  if (res.installable) {
+    return { showApply: true, label: `⬇️ v${res.latestVersion} sürümüne güncelle`, version: res.latestVersion, note: 'İndirilir, imzası doğrulanır, çalışan ikili değiştirilir (eskisi yedeklenir). Sonra GitArc\'ı yeniden başlatın.' };
+  }
+  return { showApply: false, label: '', version: '', note: `Otomatik kurulamıyor: ${res.note || 'bu sürüm için imzalı dosya yok'}. Kaynaktan: ${res.updateCommand || 'git pull --ff-only origin main && go build -o gitarc .'}` };
+}
+
 export function versionView(repo) {
   const text = `v${repo.appVersion || '0.10.0'}${repo.teamMode ? ' · TEAM' : ''}${repo.updateAvailable ? ' ⬆ Güncelle' : ''}`;
   return { text, className: `btn mono ${repo.updateAvailable ? 'warn' : 'ghost'}` };

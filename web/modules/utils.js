@@ -242,7 +242,7 @@ export function diffArgsFor(b, snap = null) {
   if (isWorkingTreeBranch(b)) return ['working-tree', 'working-tree'];
   const mc = mergeCommitOf(b, snap);
   if (mc && (mc.sha || mc.shortSha)) return [mc.sha || mc.shortSha, 'merge'];
-  return [b?.name, 'branch'];
+  return [b?.parentBranch || b?.name, 'branch'];
 }
 
 // Sanal "çalışma alanı" dalı mı? (kaydedilmemiş değişiklikleri temsil eden `local-wip-working-tree` ve ona benzer
@@ -250,5 +250,6 @@ export function diffArgsFor(b, snap = null) {
 // üretilmeyen `b.isWorkingTreeWip` alanına bakıyordu; bu yüzden çalışma alanı seçiliyken stüdyoda "Dala Aktar /
 // Commit" düğmesi hiç görünmüyordu.
 export function isWorkingTreeBranch(b) {
+  if (b && b.parentBranch) return false; // "(yerel)" eşlik kartı: kaydedilmemiş dosya değil, pushlanmamış COMMIT'leri temsil eder
   return Boolean(b && (b.id === 'local-wip-working-tree' || (b.id || '').startsWith('local-wip-') || b.name === 'wip/working-tree'));
 }

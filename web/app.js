@@ -12,7 +12,7 @@ import { renderRayPopovers } from './modules/rails.js';
 import { pollDecision } from './modules/polling.js';
 import { detectPushes, playPushTraces } from './modules/trace.js';
 import { renderKPIs } from './modules/kpi.js';
-import { renderTopbar, updateStatusText } from './modules/topbar.js';
+import { renderTopbar, updateStatusText, updateActionModel } from './modules/topbar.js';
 import { renderInspector } from './modules/inspector.js';
 import { openConflictStudio, closeConflictStudio, applyConflictStudio, bindConflictStudioEvents } from './modules/conflict-studio.js';
 import {
@@ -25,6 +25,7 @@ import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modu
 import { refreshProtectionPlan, applyShownProtection } from './modules/protection.js';
 import { openQueueModal, closeQueueModal } from './modules/queue.js';
 import { mergeBranch } from './modules/merge.js';
+import { promoteCopy } from './modules/inspector-model.js';
 
 // Central Branch Selection
 export function selectBranch(branchId) {
@@ -100,11 +101,12 @@ function handleMergeBranch(branchId, btnEl = null) {
 
 async function handlePromoteBranch(branchId, title = undefined, body = undefined, btnEl = null) {
   const b = (state.snapshot?.branches || []).find((x) => x.id === branchId);
-  const confirmed = window.confirm(`"${b?.name || branchId}" dalını origin'e pushlamak ve GitHub üzerinde Pull Request oluşturmak istiyor musunuz?`);
+  const copy = promoteCopy(b || { name: branchId });
+  const confirmed = window.confirm(copy.confirm);
   if (!confirmed) return;
 
-  showToast('⏳ Dal pushlanıyor ve GitHub PR oluşturuluyor...', 'info');
-  await runWithBtnBusy(btnEl, '⏳ Push & PR Açılıyor...', async () => {
+  showToast(copy.companion ? '⏳ Yerel commit\'ler pushlanıyor...' : '⏳ Dal pushlanıyor ve GitHub PR oluşturuluyor...', 'info');
+  await runWithBtnBusy(btnEl, copy.busy, async () => {
     try {
       const snap = state.offlineMode
         ? (window.LocalFallbackEngine ? window.LocalFallbackEngine.promoteBranch(branchId, title || '', body || '') : state.snapshot)
@@ -115,7 +117,7 @@ async function handlePromoteBranch(branchId, title = undefined, body = undefined
         });
       if (b?.name) delete state.draftPrEdits[b.name];
       applySnapshot(snap);
-      showToast('Dal origin’e pushlandı ve PR açılarak uzağa (GitHub) taşındı!', 'ok');
+      showToast(copy.done, 'ok');
     } catch (err) {
       showToast(err.message, 'danger');
     }
@@ -475,10 +477,37 @@ async function bootstrap() {
       }
       if (el.secUpdateStatus) el.secUpdateStatus.textContent = updateStatusText(state.snapshot?.repo, res);
       showToast(res.checkError ? 'Sürüm denetlenemedi' : (res.updateAvailable ? `⬆ Yeni sürüm: v${res.latestVersion}` : '✓ GitArc güncel'), res.checkError ? 'danger' : 'ok');
+      renderUpdateAction(res);
     } catch (err) {
       showToast(`Sürüm denetlenemedi: ${err.message}`, 'danger');
     }
   }));
+  // "Güncelle": GitArc'ı İMZALI yeni sürüme günceller (sunucuda: indir → imza doğrula → ikiliyi değiştir). Önce açık onay; sonra yeniden başlatma kullanıcıda.
+  function renderUpdateAction(res) {
+    const m = updateActionModel(res);
+    if (el.btnApplyUpdate) {
+      el.btnApplyUpdate.hidden = !m.showApply;
+      el.btnApplyUpdate.textContent = m.label || '⬇️ Güncelle';
+      el.btnApplyUpdate.dataset.version = m.version;
+    }
+    if (el.secUpdateNote) { el.secUpdateNote.hidden = !m.note; el.secUpdateNote.textContent = m.note; }
+  }
+  el.btnApplyUpdate?.addEventListener('click', async () => {
+    const version = el.btnApplyUpdate.dataset.version;
+    if (!version) return;
+    if (!window.confirm(`GitArc v${version} sürümüne güncellenecek.\n\nYeni ikili GitHub'dan indirilir, imzası doğrulanır (doğrulanamazsa HİÇBİR ŞEY kurulmaz) ve çalışan ikili değiştirilir; eskisi yedeklenir.\nSonra GitArc'ı yeniden başlatmanız gerekir.\n\nDevam edilsin mi?`)) return;
+    await runWithBtnBusy(el.btnApplyUpdate, '⏳ Güncelleniyor...', async () => {
+      try {
+        const r = await apiCall('/api/system/update-apply', 'POST', { version });
+        if (el.secUpdateStatus) el.secUpdateStatus.textContent = `✅ v${r.from} → v${r.to} kuruldu (imza doğrulandı). GitArc'ı YENİDEN BAŞLATIN: bu sayfa hâlâ eski sürümü çalıştırıyor.`;
+        el.btnApplyUpdate.hidden = true;
+        showToast(`✅ v${r.to} kuruldu: GitArc'ı yeniden başlatın`, 'ok');
+      } catch (err) {
+        showToast(`Güncelleme başarısız: ${err.message}`, 'danger');
+        if (el.secUpdateNote) { el.secUpdateNote.hidden = false; el.secUpdateNote.textContent = `Güncelleme başarısız (çalışan sürüm değişmedi): ${err.message}`; }
+      }
+    });
+  });
   el.secCopyUpdateCmd?.addEventListener('click', async () => {
     const cmd = el.secUpdateCmd?.textContent || '';
     try { await navigator.clipboard.writeText(cmd); showToast('Güncelleme komutu kopyalandı', 'ok'); } catch { showToast('Kopyalanamadı: komutu elle seçin', 'danger'); }

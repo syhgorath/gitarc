@@ -163,7 +163,7 @@ export function branchHeaderHtml(v) {
         <button type="button" class="btn sm" id="act-branch-diff" title="Kod değişikliklerini (diff) görüntüle">🔍 Diff Gör</button>
         ${!b.isHead && isOpen && !isVirtualWip ? `<button type="button" class="btn ghost sm" id="act-checkout" ${snap.repo.teamMode ? 'disabled title="Team Server modunda paylaşılan HEAD kilitlidir"' : (b.worktreePath ? `disabled title="Bu dal başka bir klasörde açık (${esc(b.worktreePath)}); git burada geçmeyi reddeder"` : '')}>${isRemoteOnly ? '🎯 Yerelde İndir &amp; Geç' : '🎯 Dala Geç'}</button>` : ''}
         ${b.isHead && isAlreadySynced && !isVirtualWip ? `<button type="button" class="btn primary sm" id="act-checkout-main">🎯 main Omurgasına Geç</button>` : ''}
-        ${canPromote && !hasOpenPR ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
+        ${canPromote && !hasOpenPR && !b.parentBranch ? `<button type="button" class="btn primary sm" id="act-promote">🚀 Push &amp; PR Aç</button>` : ''}
         ${hasOpenPR && !isVirtualWip ? `
           <div class="merge-group">
             <select id="merge-strategy" class="select-inline" aria-label="Merge stratejisi">
@@ -190,7 +190,7 @@ export function branchHeaderHtml(v) {
           ` : ''}
         ` : ''}
         ${hasConflict ? `<button type="button" class="btn warn sm" id="act-resolve">⚡ Çakışma Stüdyosunu Aç</button>` : ''}
-        ${!isVirtualWip && !b.longLived && (b.state !== 'merged' || b.hasLocal || b.originGone || b.hasRemote) ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
+        ${!isVirtualWip && !b.parentBranch && !b.longLived && (b.state !== 'merged' || b.hasLocal || b.originGone || b.hasRemote) ? `<button type="button" class="btn ghost sm" id="act-delete">${isRemoteOnly ? '🗑️ PR Kapat &amp; Uzak Dalı Sil' : '🧹 Sil / Temizle'}</button>` : ''}
       </div>
     </div>
   `;
@@ -435,6 +435,21 @@ export function commitStudioCardHtml(b, snap, d) {
 }
 
 export function promoteCardHtml(b, promoteTitle, promoteBody) {
+    if (b.parentBranch) {
+      // "(yerel)" eşlik kartı: yeni PR yok; yalnızca pushlanmamış commit'ler gider ve mevcut PR güncellenir.
+      return `
+      <div class="diag-card">
+        <h4>
+          <span>⬆ Yerel Commit'leri Pushla</span>
+          <span class="chip purple">Local → Remote</span>
+        </h4>
+        <div class="wt-note"><strong>${esc(b.parentBranch)}</strong> dalında origin'e henüz gitmemiş commit'ler var (↑${esc(String(b.remoteAhead || b.aheadMain || 0))}). Pushlayınca <strong>mevcut PR güncellenir</strong>; yeni PR açılmaz.</div>
+        <div class="det-actions">
+          <button type="button" class="btn primary sm" id="act-promote">🚀 Pushla (PR güncellenir)</button>
+        </div>
+      </div>
+    `;
+    }
     return `
       <div class="diag-card">
         <h4>
