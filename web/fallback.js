@@ -902,14 +902,17 @@
           files,
         };
       },
-      resolveConflict(branchId, strategy = 'union') {
+      resolveConflict(branchId, strategy = 'union', fileStrategies = null) {
         const b = sim.branches.find((x) => x.id === branchId || x.name === branchId);
         if (b?.conflict) {
+          // Dosya başına seçim varsa: hepsi aynıysa o strateji, farklıysa "karma" (sunucu simülasyonuyla — strategyLabel — AYNI kural).
+          const distinct = new Set(Object.values(fileStrategies || {}));
+          const label = distinct.size === 0 ? (strategy || 'union') : (distinct.size === 1 ? [...distinct][0] : 'karma');
           b.conflict.hasConflict = false;
           b.conflict.resolved = true;
-          b.conflict.strategy = strategy || 'union';
-          b.conflict.resolvedNote = `Çakışma (${strategy}) ile çözüldü; çalışma dizini temiz.`;
-          b.conflict.previewUnified = `✓ Çakışma Çözüm Stüdyosu (${strategy}) uygulandı.\n✓ git merge-tree --write-tree: exit 0`;
+          b.conflict.strategy = label;
+          b.conflict.resolvedNote = label === 'karma' ? 'Dosya başına seçilen stratejilerle çakışma çözüldü; çalışma dizini temiz.' : `Çakışma (${label}) ile çözüldü; çalışma dizini temiz.`;
+          b.conflict.previewUnified = `✓ Çakışma Çözüm Stüdyosu (${label}) uygulandı.\n✓ git merge-tree --write-tree: exit 0`;
           b.behindMain = 0;
         }
         return recompute();

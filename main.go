@@ -610,7 +610,9 @@ func (a *App) handleResolveConflict(w http.ResponseWriter, r *http.Request) {
 		BranchID    string            `json:"branchId"`
 		Strategy    string            `json:"strategy"`
 		CustomFiles map[string]string `json:"customFiles"`
-		RunVet      *bool             `json:"runVet"`
+		// FileStrategies: dosya yolu → union|ours|theirs|custom. Listede olmayan dosyalar Strategy'yi kullanır.
+		FileStrategies map[string]string `json:"fileStrategies"`
+		RunVet         *bool             `json:"runVet"`
 	}
 	if !decodePOST(w, r, &req) {
 		return
@@ -619,7 +621,7 @@ func (a *App) handleResolveConflict(w http.ResponseWriter, r *http.Request) {
 	if req.RunVet != nil {
 		runVet = *req.RunVet
 	}
-	snap, err := a.mgr.ResolveBranchConflict(req.BranchID, req.Strategy, req.CustomFiles, runVet)
+	snap, err := a.mgr.ResolveBranchConflictFiles(req.BranchID, req.Strategy, req.FileStrategies, req.CustomFiles, runVet)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
