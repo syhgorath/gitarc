@@ -284,7 +284,19 @@ func (m *Manager) promoteBranchLive(live *repoEntry, branchID, prTitle, prBody s
 	}
 
 	if out, _, err := runCmd(ctx, live.path, "git", "push", "-u", "origin", b.Name); err != nil {
-		return model.CockpitSnapshot{}, fmt.Errorf("push başarısız: %s (%v)", strings.TrimSpace(out), err)
+		if !isPushRejectedNonFastForward(out) {
+			return model.CockpitSnapshot{}, fmt.Errorf("push başarısız: %s (%v)", strings.TrimSpace(out), err)
+		}
+		// Uzak dal ilerlemiş (örn. kuyruk PR dalına main'i birleştirip pushladı): ham git hatası yerine izole worktree'de birleştirip pushla.
+		remote := snap.Repo.RemoteName
+		if remote == "" {
+			remote = "origin"
+		}
+		sha, ierr := m.integrateRemoteAndPush(live, snap, b, remote)
+		if ierr != nil {
+			return model.CockpitSnapshot{}, ierr
+		}
+		m.recordLog("ok", "Iraksayan Dal", b.Name, fmt.Sprintf("Uzakta ilerlemiş commit'ler yerel dalla birleştirildi (%s) ve pushlandı; zorla push yapılmadı", shortSHA(sha)), "")
 	}
 	if b.PR == nil {
 		if _, err := exec.LookPath("gh"); err == nil {
