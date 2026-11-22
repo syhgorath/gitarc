@@ -56,10 +56,20 @@ type RepoOption struct {
 }
 
 // RepoMeta holds active repository metadata and spine sync status.
+// StashInfo: `git stash list` kaydı (salt okunur bilgi).
+type StashInfo struct {
+	Ref     string `json:"ref"`
+	Message string `json:"message"`
+}
+
 type RepoMeta struct {
 	ID                string `json:"id"`
 	Name              string `json:"name"`
 	Path              string `json:"path"`
+	// CurrentBranch: çalışma klasörünün şu an açık olduğu dal (canlı depoda; detached HEAD'de boş). Üst çubuktaki "Şu an" çipini besler.
+	CurrentBranch string `json:"currentBranch,omitempty"`
+	// Stashes: depodaki stash kayıtları (en fazla 20); boşsa yok. Yalnızca canlı depoda dolar.
+	Stashes []StashInfo `json:"stashes,omitempty"`
 	DefaultBranch     string `json:"defaultBranch"`
 	// BaseBranchPinned: omurga dalı kullanıcı tarafından elle seçildi (false = otomatik tespit).
 	BaseBranchPinned bool `json:"baseBranchPinned,omitempty"`
@@ -182,6 +192,8 @@ type BranchArc struct {
 	LocalSHA         string `json:"localSha,omitempty"`
 	Author           string `json:"author,omitempty"`
 	IsHEAD           bool   `json:"isHead"`
+	// WorktreePath: dal BAŞKA bir klasörde (git worktree) açıksa o klasör. Böyle bir dal silinemez/geçilemez; "temizle" adayı sayılmaz.
+	WorktreePath string `json:"worktreePath,omitempty"`
 	AheadMain        int    `json:"aheadMain"`
 	BehindMain       int    `json:"behindMain"`
 	RemoteAhead      int    `json:"remoteAhead"`

@@ -39,6 +39,21 @@ export function versionView(repo) {
 }
 
 // Temizlenebilir (silinmiş/birleşmiş kalıntı) dal sayısı.
+/** Saf: üst çubuktaki "Şu an: <dal>" çipi. Dal adı canlı depoda sunucudan (repo.currentBranch), demo/yedek motorda HEAD dalından gelir.
+ *  Ana dalda değilsen (ya da kaydedilmemiş dosya varsa) dikkat çeker; dal bilinmiyorsa (detached HEAD / proje yok) çip gizlenir. */
+export function headChipModel(repo, branches = []) {
+  const name = repo?.currentBranch || (branches || []).find((b) => b.isHead)?.name || '';
+  if (!name || repo?.mode === 'none') return { show: false, text: '', title: '', tone: 'neutral' };
+  const def = repo?.defaultBranch || 'main';
+  const dirty = Number(repo?.dirtyCount) || 0;
+  const off = name !== def;
+  const text = `🌿 ${name}${dirty > 0 ? ` · ${dirty} kaydedilmemiş` : ''}`;
+  const title = off
+    ? `Çalışma klasörü şu an "${name}" dalında (${def} değil)${dirty > 0 ? `; ${dirty} dosya kaydedilmemiş` : ''}.`
+    : `Çalışma klasörü ana dalda (${def})${dirty > 0 ? `; ${dirty} dosya kaydedilmemiş` : ''}.`;
+  return { show: true, text, title, tone: off ? 'off-default' : 'on-default' };
+}
+
 export function cleanableCount(branches) {
   return (branches || []).filter((b) => b.prunable).length;
 }
@@ -147,6 +162,13 @@ export function renderTopbar(callbacks = {}) {
   if (el.engineStatus) el.engineStatus.textContent = snap.repo.mode === 'live' ? '● Canlı Repo Bağlı' : (snap.repo.mode === 'none' ? '● Proje yok' : '● Simülasyon Hazır');
 
   renderRepoSelect(snap);
+  const head = headChipModel(snap.repo, snap.branches);
+  if (el.headChip) {
+    el.headChip.hidden = !head.show;
+    el.headChip.textContent = head.text;
+    el.headChip.title = head.title;
+    el.headChip.className = `head-chip ${head.tone}`;
+  }
 
   if (el.btnRemoveProject) el.btnRemoveProject.hidden = snap.repo.mode !== 'live';
   const cleanable = cleanableCount(snap.branches);

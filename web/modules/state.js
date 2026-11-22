@@ -54,7 +54,7 @@ export const el = {};
 
 export function initElements() {
   const ids = [
-    'rail-svg', 'svg-viewport', 'repo-select', 'mode-badge', 'kpi-pills',
+    'rail-svg', 'svg-viewport', 'repo-select', 'head-chip', 'mode-badge', 'kpi-pills',
     'radar-list', 'bottom-dock', 'dock-tab-radar', 'dock-tab-logs',
     'dock-tab-actions', 'dock-radar-count', 'dock-log-count', 'dock-action-count',
     'dock-toggle-btn', 'dock-clear-btn', 'dock-pane-radar', 'dock-pane-logs',
@@ -102,6 +102,7 @@ export function initElements() {
   el.studioDiffFullscreen = el['studio-diff-fullscreen'];
   el.studioDiffContent = el['studio-diff-content'];
   el.modeBadge = el['mode-badge'];
+  el.headChip = el['head-chip'];
   el.kpiPills = el['kpi-pills'];
   el.radarList = el['radar-list'];
   el.dock = el['bottom-dock'];
