@@ -1,0 +1,5 @@
+# GitArc sürüm imzacıları (ssh allowed_signers biçimi). Güncelleme YALNIZCA buradaki açık anahtarlarla imzalı ikilileri kurar.
+# Satır biçimi:   gitarc-release namespaces="gitarc-release" ssh-ed25519 AAAA...
+#
+# Bu dosya ikiliye GÖMÜLÜR (go:embed). Anahtar yoksa kendini güncelleme KAPALIDIR (fail-closed).
+# Özel anahtar ASLA repoya, CI'a ya da sohbete konmaz; yalnızca bakımcının makinesinde durur (bkz. docs/RELEASING.md).
