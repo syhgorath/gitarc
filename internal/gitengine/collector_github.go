@@ -765,11 +765,9 @@ func fetchGHPRs(ctx context.Context, repoPath string) (map[string]model.PRStatus
 		if ciState == "FAILURE" && runID != "" {
 			logCtx, logCancel := context.WithTimeout(ctx, ghLogTimeout)
 			if logOut, _, err := runCmd(logCtx, repoPath, "gh", "run", "view", runID, "--log-failed"); err == nil && strings.TrimSpace(logOut) != "" {
-				if len(logOut) > 16000 {
-					logOut = logOut[len(logOut)-16000:]
-				}
-				rawLog = logOut
-				extracts = ExtractCILog(rawLog)
+				// Ayıklama TAM log üzerinde yapılır; gösterilen metin hata satırlarının çevresinden kurulur (CondenseCILog).
+				extracts = ExtractCILog(logOut)
+				rawLog = CondenseCILog(logOut, 16000)
 			}
 			logCancel()
 		}

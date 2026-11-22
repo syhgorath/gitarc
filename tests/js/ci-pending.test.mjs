@@ -72,3 +72,13 @@ test('updateStatusText: hiç denetlenmediyse "güncel" DENMEZ; denetlenemediyse 
   assert.match(updateStatusText({ appVersion: '0.10.0' }, { currentVersion: '0.10.0', latestVersion: '0.10.0', updateAvailable: false }), /Güncel \(v0\.10\.0\)/);
   assert.match(updateStatusText({ appVersion: '0.10.0', latestVersion: '0.10.0' }), /Güncel/);
 });
+
+import { ciSnippetOf } from '../../web/modules/dock.js';
+
+test('ciSnippetOf: ayıklanan hata ham log gürültüsünden önce gelir; atlanan-satır işaretçisi özete girmez', () => {
+  assert.equal(ciSnippetOf(null), '');
+  const ci = { state: 'FAILURE', rawLog: '… (400 satır atlandı)\nbir\niki', extracts: [{ symbol: 'TestX', fileLine: 'a_test.go:4', message: 'olmadı' }] };
+  assert.equal(ciSnippetOf(ci), 'TestX · a_test.go:4 · olmadı');
+  assert.equal(ciSnippetOf({ state: 'FAILURE', rawLog: '… (9 satır atlandı)\nbir\niki' }), 'bir\niki');
+  assert.equal(ciSnippetOf({ state: 'SUCCESS', rawLog: 'x' }), '');
+});

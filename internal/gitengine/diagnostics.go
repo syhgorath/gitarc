@@ -26,6 +26,19 @@ func cleanCILogLine(raw string) string {
 
 // ExtractCILog parses noisy CI / Go test logs into concise actionable error extracts.
 func ExtractCILog(rawLog string) []model.CIFailExtract {
+	ex := extractCILogRaw(rawLog)
+	for i := range ex {
+		switch ex[i].Kind {
+		case "compile_error", "lint_fail":
+			ex[i].Class = "mekanik"
+		default:
+			ex[i].Class = "mantik"
+		}
+	}
+	return ex
+}
+
+func extractCILogRaw(rawLog string) []model.CIFailExtract {
 	if strings.TrimSpace(rawLog) == "" {
 		return nil
 	}
@@ -162,6 +175,56 @@ func ExtractCILog(rawLog string) []model.CIFailExtract {
 	}
 
 	return extracts
+}
+
+var reFailLine = regexp.MustCompile(`---\s+FAIL:|^FAIL\b|panic:|\.go:\d+(?::\d+)?:|❌|##\[error\]|\bError:`)
+
+// CondenseCILog: logu en çok `limit` bayta indirir ama SONUNU değil HATA SATIRLARININ ÇEVRESİNİ tutar. Eskiden son N bayt
+// alınıyordu; uzun `go test -v` çıktısında `--- FAIL` ortada kaldığı için kesik metinde hiç görünmüyor ve panel "0 bulgu" diyordu.
+// Hata satırı yoksa eski davranış (son `limit` bayt). Atlanan aralıklar "… (N satır atlandı)" ile işaretlenir.
+func CondenseCILog(full string, limit int) string {
+	if len(full) <= limit {
+		return full
+	}
+	lines := strings.Split(full, "\n")
+	keep := make([]bool, len(lines))
+	any := false
+	for i, l := range lines {
+		if reFailLine.MatchString(cleanCILogLine(l)) {
+			any = true
+			for k := i - 3; k <= i+3; k++ {
+				if k >= 0 && k < len(lines) {
+					keep[k] = true
+				}
+			}
+		}
+	}
+	if !any {
+		return full[len(full)-limit:]
+	}
+	var b strings.Builder
+	skipped := 0
+	flush := func() {
+		if skipped > 0 {
+			fmt.Fprintf(&b, "… (%d satır atlandı)\n", skipped)
+			skipped = 0
+		}
+	}
+	for i, l := range lines {
+		if !keep[i] {
+			skipped++
+			continue
+		}
+		flush()
+		b.WriteString(l)
+		b.WriteByte('\n')
+	}
+	flush()
+	out := b.String()
+	if len(out) > limit {
+		out = out[:limit] // hata satırları başta/ortada; en sona atılan kısım tekrar eden gürültüdür
+	}
+	return out
 }
 
 func normalizeGoPkg(rawPkg string) string {
