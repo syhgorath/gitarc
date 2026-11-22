@@ -45,6 +45,7 @@
         </label>
         <button type="button" class="btn warn" id="btn-prune-gone" title="Uzakta silinmiş veya birleşmiş dalları temizle">🧹 Temizle <span class="badge-count" id="prune-count">0</span></button>
         <button type="button" class="btn ghost" id="btn-main-ci" hidden title="Merge sonrası omurga testleri">main CI</button>
+        <button type="button" class="btn ghost" id="btn-publish" title="Toplu yayınla: yerel dalları tek onayla pushla, PR aç ve kuyruk koşusunu başlat">🚀 Yayınla</button>
         <button type="button" class="btn ghost" id="btn-queue" title="Merge kuyruğu: PR'ları sırayla main'e birleştirmenin salt okunur planı ve onayınla uygulanan sıradaki adım">🚦 Kuyruk</button>
         <button type="button" class="btn ghost" id="btn-protect-branch" title="GitHub main dal koruma ve güvenlik durumu">🛡️ Koruma</button>
         <button type="button" class="btn ghost" id="btn-mcp-connect" title="AI &amp; MCP bağlantısını yapılandır">🔌 MCP</button>
@@ -462,6 +463,23 @@
           <div class="queue-result" id="queue-result" aria-live="polite"></div>
           <div class="modal-foot">
             <button type="button" class="btn ghost" id="queue-close-btn">Kapat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: TOPLU YAYINLA -->
+    <div class="modal-backdrop" id="publish-modal" hidden>
+      <div class="modal-card modal-lg modal-scroll" role="dialog" aria-modal="true" aria-labelledby="publish-modal-title">
+        <div class="modal-head">
+          <h3 id="publish-modal-title"><span class="modal-dot"></span>🚀 Toplu Yayınla</h3>
+          <button type="button" class="icon-close" id="publish-close" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="layer-line">Pushlanmamış commit'i olan yerel dalları <strong>tek onayla</strong> yayınlar: her dalı pushlar, PR yoksa açar (başlık/açıklama dalın kendi CHANGELOG satırından), istersen kuyruk koşusunu başlatır. Sıra, birleştirme sırasıdır. Hiçbir adımda zorla push (<code>--force</code>) yoktur; ilk sorunda durur, önceki dallar yayınlanmış kalır.</div>
+          <div class="publish-body" id="publish-body" aria-live="polite"></div>
+          <div class="modal-foot">
+            <button type="button" class="btn ghost" id="publish-close-btn">Kapat</button>
           </div>
         </div>
       </div>

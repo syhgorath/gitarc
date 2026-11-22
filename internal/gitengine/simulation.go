@@ -1222,16 +1222,40 @@ func (m *Manager) ResetSimulation() model.CockpitSnapshot {
 	return m.buildSimSnapshotLocked(m.repoOptionsLocked())
 }
 
+// clonePRStatus / cloneConflictDetail: derin kopya (iç içe CI, dilimler dahil). nil → nil.
+func clonePRStatus(p *model.PRStatus) *model.PRStatus {
+	if p == nil {
+		return nil
+	}
+	c := *p
+	if p.CI != nil {
+		ci := *p.CI
+		ci.Extracts = append([]model.CIFailExtract(nil), p.CI.Extracts...)
+		ci.Checks = append([]model.CICheckStep(nil), p.CI.Checks...)
+		c.CI = &ci
+	}
+	return &c
+}
+
+func cloneConflictDetail(d *model.ConflictDetail) *model.ConflictDetail {
+	if d == nil {
+		return nil
+	}
+	c := *d
+	c.Files = append([]string(nil), d.Files...)
+	return &c
+}
+
 func (m *Manager) buildSimSnapshotLocked(opts []model.RepoOption) model.CockpitSnapshot {
 	branches := make([]model.BranchArc, len(m.simRepo.branches))
 	copy(branches, m.simRepo.branches)
 	for i := range branches {
+		// Anlık görüntü sanal durumla İŞARETÇİ paylaşmamalı: arka plandaki kuyruk koşusu (MergeBranch/FixCI...) PR/CI/Conflict alanlarını yazarken
+		// HTTP yanıtı aynı nesneleri JSON'a çevirirse veri yarışı olur (CI'da `-race` ile TestBrowserSmoke düştü). Derin kopya alınır.
+		branches[i].PR = clonePRStatus(branches[i].PR)
+		branches[i].Conflict = cloneConflictDetail(branches[i].Conflict)
 		if branches[i].PR != nil && branches[i].PR.CI != nil && branches[i].PR.CI.RawLog != "" {
-			ciCopy := *branches[i].PR.CI
-			ciCopy.Extracts = ExtractCILog(ciCopy.RawLog)
-			prCopy := *branches[i].PR
-			prCopy.CI = &ciCopy
-			branches[i].PR = &prCopy
+			branches[i].PR.CI.Extracts = ExtractCILog(branches[i].PR.CI.RawLog)
 		}
 		branches[i].CanAmendCommit = branches[i].IsHEAD && branches[i].State == "open" && branches[i].AheadMain > 0
 		branches[i].SuggestedCmd = BuildSuggestedCommand(branches[i], m.simRepo.repo.DefaultBranch)

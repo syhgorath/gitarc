@@ -75,7 +75,7 @@ try {
     // Skill'ler: kart gelir; kurulum düğmesi GERÇEKTEN tıklanınca dosya yazılır ve kart "güncel" olur. Yalnızca yol, testin yalıtılmış
     // geçici ev dizinindeyse tıklanır (elle çalıştırılan bir sunucuda geliştiricinin gerçek ~/.claude klasörüne yazmayalım).
     await expect(`document.querySelectorAll('#mcp-skills .skill-card').length >= 1 && !!document.querySelector('#mcp-skills .skill-install') && !!document.querySelector('#mcp-skills .skill-copy')`, 'Skill kartı/düğmeleri görünmüyor');
-    if (await b.eval(`document.querySelector('#mcp-skills .skill-path').textContent.includes('gitarc-test-home')`)) {
+    if (await b.eval(`document.querySelector('#mcp-skills .skill-path').textContent.includes('TestBrowserSmoke')`)) {
       await expect(`document.querySelector('#mcp-skills .chip').textContent.includes('kurulu değil') && !document.querySelector('#mcp-skills .skill-install').disabled`, 'kurulmamış skill için kurulum düğmesi etkin olmalı');
       await click('#mcp-skills .skill-install');
       await expect(`document.querySelector('#mcp-skills .chip').textContent.includes('güncel') && document.querySelector('#mcp-skills .skill-install').disabled`, 'kurulumdan sonra skill "güncel" görünmüyor');
@@ -283,6 +283,22 @@ try {
     await expect(`(() => { const l = [...document.querySelectorAll('#studio-file-tabs .studio-tab-strat')].map((x) => x.textContent); return l[0] === '🤖 özel' && l[1] !== '🤖 özel'; })()`, 'elle yazma yalnızca açık dosyayı "özel" yapmalı');
     await click('#studio-close');
     await expect(hidden('#conflict-studio-modal'), 'stüdyo kapanmadı');
+  });
+  await step('Toplu Yayınla: aday dallar listelenir, plan hesaplanır, tek tıkla yayınlanır, sonuç adım adım gösterilir', async () => {
+    await click('#btn-publish');
+    await expect(visible('#publish-modal'), 'Toplu Yayınla penceresi açılmadı');
+    await expect(`document.querySelectorAll('#publish-body .publish-row').length >= 2 && !!document.querySelector('#publish-body .publish-go') && !document.querySelector('#publish-body .publish-go').disabled`, 'aday dallar ya da etkin "Yayınla" düğmesi yok');
+    // bir dalı çıkarınca plan yeniden hesaplanır (düğme metni dal sayısını söyler)
+    await expect(`document.querySelector('#publish-body .publish-go').textContent.includes('2 dal pushlanır')`, 'düğme metni 2 dalı söylemiyor');
+    await b.eval(`document.querySelector('#publish-body .publish-row input[type=checkbox]').click()`);
+    await expect(`document.querySelector('#publish-body .publish-go')?.textContent.includes('1 dal pushlanır')`, 'dal çıkarılınca plan yenilenmedi');
+    await b.eval(`document.querySelector('#publish-body .publish-row input[type=checkbox]').click()`);
+    await expect(`document.querySelector('#publish-body .publish-go')?.textContent.includes('2 dal pushlanır')`, 'dal geri eklenince plan yenilenmedi');
+    await click('#publish-body .publish-go');
+    await expect(`!!document.querySelector('#publish-body .publish-result.ok') && document.querySelectorAll('#publish-body .publish-result .layer-line').length >= 2`, 'yayın sonucu (adım adım) görünmedi');
+    await expect(`document.querySelector('#publish-body .publish-result').textContent.includes('Yayınlandı')`, 'sonuç "Yayınlandı" demiyor');
+    await click('#publish-close');
+    await expect(hidden('#publish-modal'), 'Toplu Yayınla penceresi kapanmadı');
   });
   await step('konsolda hata yok', async () => noConsoleErrors());
 

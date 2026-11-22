@@ -24,6 +24,7 @@ import { openMCPConnectModal, closeMCPConnectModal, buildMCPConfigText } from '.
 import { openDiffViewer, closeDiffViewer, initDiffViewerListeners } from './modules/diff-viewer.js';
 import { refreshProtectionPlan, applyShownProtection } from './modules/protection.js';
 import { openQueueModal, closeQueueModal } from './modules/queue.js';
+import { openPublishModal, closePublishModal } from './modules/publish.js';
 import { mergeBranch } from './modules/merge.js';
 import { promoteCopy } from './modules/inspector-model.js';
 
@@ -520,6 +521,8 @@ async function bootstrap() {
   el.btnEnableProtection?.addEventListener('click', () => applyShownProtection(applySnapshot));
 
   // Merge kuyruğu planı penceresi
+  el.btnPublish?.addEventListener('click', () => openPublishModal(applySnapshot));
+  ['publish-close', 'publish-close-btn'].forEach((id) => document.getElementById(id)?.addEventListener('click', closePublishModal));
   el.btnQueue?.addEventListener('click', () => openQueueModal(applySnapshot));
   ['queue-close', 'queue-close-btn'].forEach((id) => document.getElementById(id)?.addEventListener('click', closeQueueModal));
 

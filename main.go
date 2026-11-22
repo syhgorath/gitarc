@@ -244,6 +244,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/repo/protection/plan", a.guard(a.handleProtectionPlan))
 	mux.HandleFunc("/api/queue/plan", a.guard(a.handleQueuePlan))
+	mux.HandleFunc("/api/publish/plan", a.guard(a.handlePublishPlan))
+	mux.HandleFunc("/api/publish/run", a.guard(a.handlePublishRun))
 	mux.HandleFunc("/api/branch/update/plan", a.guard(a.handleBranchUpdatePlan))
 	mux.HandleFunc("/api/branch/update", a.guard(a.handleBranchUpdate))
 	mux.HandleFunc("/api/queue/step/plan", a.guard(a.handleQueueStepPlan))
@@ -915,6 +917,40 @@ func (a *App) handleQueuePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, plan)
+}
+
+// handlePublishPlan: "Toplu yayınla" planı (SALT OKUNUR). branchIds boşsa tüm yayınlanabilir yerel dallar.
+func (a *App) handlePublishPlan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchIDs []string `json:"branchIds"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	plan, err := a.mgr.PublishPlan(req.BranchIDs)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// handlePublishRun: planı yürütür (her dalı pushla, PR yoksa aç, istenirse kuyruk koşusunu başlat). confirm = planın parmak izi.
+func (a *App) handlePublishRun(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BranchIDs  []string `json:"branchIds"`
+		Confirm    string   `json:"confirm"`
+		StartQueue bool     `json:"startQueue"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	res, err := a.mgr.PublishRun(req.BranchIDs, req.Confirm, req.StartQueue)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 // handleProtectionPlan: koruma profilinin ne değiştireceğini döndürür; hiçbir şey uygulamaz.
