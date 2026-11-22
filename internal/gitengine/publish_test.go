@@ -96,7 +96,7 @@ func TestPublishRunStopsAtTheFirstFailureAndSaysSo(t *testing.T) {
 	dir, run, _ := publishWorld(t)
 	mgr := switchLive(t, dir)
 	plan, _ := mgr.PublishPlan(nil)
-	// ikinci dalı origin'e SALDIRGAN biçimde ilerlet: origin'deki feat/b yerelle ıraksak → normal push reddedilir (force yok)
+	// ikinci dalı origin'de yerelle ÇAKIŞACAK biçimde ilerlet (force yok: push reddedilir ya da birleştirme çakışmayı bildirir)
 	other := t.TempDir()
 	if out, err := runGitOut(other, "clone", "-q", strings.TrimSpace(mustGit(t, dir, "remote", "get-url", "origin")), "."); err != nil {
 		t.Fatalf("clone: %v %s", err, out)
@@ -106,7 +106,9 @@ func TestPublishRunStopsAtTheFirstFailureAndSaysSo(t *testing.T) {
 			t.Fatalf("%v: %v %s", a, err, out)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(other, "baska.txt"), []byte("x"), 0o644); err != nil {
+	// feat/b'nin KENDİ dosyasını (addFeatureBranch: feat_b.txt) farklı içerikle değiştir: yerel commit'le ÇAKIŞAN bir ıraksama. (Çakışmayan ıraksama
+	// artık kendiliğinden birleştirilip pushlanır; yalnızca gerçek çakışma adımı durdurur.)
+	if err := os.WriteFile(filepath.Join(other, "feat_b.txt"), []byte("uzaktaki baska surum\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, a := range [][]string{{"add", "-A"}, {"commit", "-qm", "baska"}, {"push", "-q", "origin", "feat/b"}} {
@@ -122,7 +124,7 @@ func TestPublishRunStopsAtTheFirstFailureAndSaysSo(t *testing.T) {
 	if res.Completed || res.QueueStarted || len(res.Steps) != 2 {
 		t.Fatalf("yarım kalmalı, kuyruk başlamamalı: %+v", res)
 	}
-	if !res.Steps[0].OK || res.Steps[1].OK || !strings.Contains(res.Steps[1].Message, "push") {
+	if !res.Steps[0].OK || res.Steps[1].OK || !(strings.Contains(res.Steps[1].Message, "push") || strings.Contains(res.Steps[1].Message, "ÇAKIŞIYOR")) {
 		t.Fatalf("ilk dal yayınlanmış, ikincisi push hatasıyla durmalı: %+v", res.Steps)
 	}
 	if !strings.Contains(res.QueueNote, "durdu") {
