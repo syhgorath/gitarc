@@ -96,6 +96,8 @@ var noProjectAllowed = map[string]bool{
 	"/api/repo/remove":            true,
 	"/api/system/choose-folder":   true,
 	"/api/system/update-check":    true,
+	"/api/system/skills":          true,
+	"/api/system/skills/install":  true,
 	"/api/system/git-status-ping": true,
 	"/api/logs/clear":             true,
 }
@@ -235,6 +237,8 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("/api/sync-spine", a.guard(a.handleSyncSpine))
 	mux.HandleFunc("/api/logs/clear", a.guard(a.handleClearLogs))
 	mux.HandleFunc("/api/system/update-check", a.guard(a.handleUpdateCheck))
+	mux.HandleFunc("/api/system/skills", a.guard(a.handleSkills))
+	mux.HandleFunc("/api/system/skills/install", a.guard(a.handleSkillInstall))
 	mux.HandleFunc("/api/repo/protect", a.guard(a.handleProtectBranch))
 	mux.HandleFunc("/api/repo/protection/plan", a.guard(a.handleProtectionPlan))
 	mux.HandleFunc("/api/queue/plan", a.guard(a.handleQueuePlan))
@@ -704,6 +708,32 @@ func (a *App) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handleSkills: GitArc'ın getirdiği Claude Code skill'leri ve kurulum durumu (salt okunur).
+func (a *App) handleSkills(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "GET bekleniyor")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"skills": a.mgr.SkillsStatus(), "teamMode": a.mgr.IsTeamMode()})
+}
+
+// handleSkillInstall: skill'i ~/.claude/skills altına yazar. Yalnızca ad alınır; hedef yol sunucuda sabittir.
+func (a *App) handleSkillInstall(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name      string `json:"name"`
+		Overwrite bool   `json:"overwrite"`
+	}
+	if !decodePOST(w, r, &req) {
+		return
+	}
+	info, err := a.mgr.InstallSkill(req.Name, req.Overwrite)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (a *App) handleProtectBranch(w http.ResponseWriter, r *http.Request) {

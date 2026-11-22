@@ -4204,6 +4204,11 @@ body.no-project .loading-hint {
 .mcp-gated { display: grid; gap: 4px; margin: 6px 0; }
 .mcp-gated-row { display: grid; grid-template-columns: auto minmax(150px, auto) 1fr; gap: 8px; align-items: baseline; font-size: 12px; cursor: pointer; }
 .mcp-gated-row span { opacity: .8; }
+.mcp-skills { display: grid; gap: 8px; }
+.skill-card { display: grid; gap: 6px; }
+.skill-card h4 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.skill-path { font-size: 11px; opacity: .75; word-break: break-all; }
+.skill-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Öneri kartı: hangi projeye ait olduğu (yanlış projede onaylanmasın) */
 .proposal-project { margin: 6px 0 10px; padding: 6px 10px; border-radius: 8px; font-size: 12px; background: var(--chip-bg, rgba(74,163,255,.12)); border: 1px solid var(--accent, #4aa3ff); }
